@@ -1,0 +1,46 @@
+{
+  "apiVersion": "v1alpha1",
+  "kind": "Flow",
+  "meta": {
+    "id": "demo.echo-flow",
+    "name": "Hello Mentat",
+    "description": "Prompt \u2192 Ollama-LLM \u2192 Console",
+    "version": "0.1.0",
+    "createdBy": "@flexinfer",
+    "createdAt": "2025-07-22T14:05:00Z"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "prompt1",
+        "type": "ui.prompt",
+        "position": {"x": 120, "y": 80},
+        "outputs": {"text": "Hello, Mentat!"}
+      },
+      {
+        "id": "llm1",
+        "type": "flexinfer.ollama.chat:0.2.1",
+        "position": {"x": 400, "y": 80},
+        "params": {"model": "llama3:8b"}
+      },
+      {
+        "id": "console1",
+        "type": "ui.console",
+        "position": {"x": 680, "y": 80}
+      }
+    ],
+    "edges": [
+      {"from": "prompt1.text", "to": "llm1.text"},
+      {"from": "llm1.text", "to": "console1.text"}
+    ]
+  },
+  "layout": {
+    "zoom": 0.9,
+    "viewport": {"x": 0, "y": 0}
+  },
+  "runConfig": {
+    "maxTokens": 2048,
+    "temperature": 0.7,
+    "secrets": ["OLLAMA_BASE_URL"]
+  }
+}
