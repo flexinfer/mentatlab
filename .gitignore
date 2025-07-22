@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+services/*/.venv/
+
+# Node
+services/frontend/node_modules/
+
+# Misc
+.env
+services/gateway/.pdm-python
