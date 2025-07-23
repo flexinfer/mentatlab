@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactFlow, {
   Controls,
   Background,
@@ -7,6 +7,7 @@ import ReactFlow, {
   Edge,
   NodeProps,
   useReactFlow,
+  useStoreApi,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import DOMPurify from 'dompurify';
@@ -15,6 +16,8 @@ import { Node as GraphNode, Edge as GraphEdge } from '../types/graph';
 import { getWebSocketService, WebSocketMessage } from '../services/websocketService';
 import { logInfo, logError, logUserAction, logWebSocketEvent, logger } from '../utils/logger';
 import useStore from '../store'; // Import the Zustand store
+import CollaboratorCursor from './CollaboratorCursor';
+import { CursorPosition, WorkflowChange } from '../types/collaboration';
 
 interface CustomNodeData {
   label: string;
@@ -74,7 +77,9 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
   const setNodes = useStore((state) => state.setNodes); // Get setNodes from store
   const setEdges = useStore((state) => state.setEdges); // Get setEdges from store
   const updateNodes = useStore((state) => state.updateNodes); // Get updateNodes from store
-
+  const applyWorkflowChanges = useStore((state) => state.applyWorkflowChanges); // Get applyWorkflowChanges from store
+  const store = useStoreApi();
+  const [collaboratorCursors, setCollaboratorCursors] = useState<Record<string, CursorPosition>>({});
 
   useEffect(() => {
     const fetchFlow = async () => {
@@ -118,7 +123,7 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
   useEffect(() => {
     const wsService = getWebSocketService();
     
-    // Handle WebSocket messages
+    // Handle WebSocket messages (original functionality)
     const unsubscribeMessages = wsService.onMessage((message: WebSocketMessage) => {
       logWebSocketEvent('message received', {
         component: 'FlowCanvas',
@@ -151,6 +156,21 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
       });
     });
 
+    // Handle incoming cursor updates
+    const unsubscribeCursorUpdates = wsService.onCursorUpdate((position: CursorPosition) => {
+      setCollaboratorCursors(prev => ({
+        ...prev,
+        [position.userId]: position,
+      }));
+    });
+
+    // Handle incoming workflow state changes
+    const unsubscribeWorkflowChanges = wsService.onWorkflowStateChange((changes: WorkflowChange[]) => {
+      // Apply changes to Zustand store
+      applyWorkflowChanges(changes);
+      logInfo('Workflow state updated from server', { component: 'FlowCanvas', changes });
+    });
+
     // Connect to WebSocket
     wsService.connect().catch((error) => {
       logError('Failed to connect to WebSocket', error, {
@@ -163,8 +183,10 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
     return () => {
       unsubscribeMessages();
       unsubscribeState();
+      unsubscribeCursorUpdates();
+      unsubscribeWorkflowChanges();
     };
-  }, [updateNodes]);
+  }, [updateNodes, store, applyWorkflowChanges]);
 
   const onSelectionChange = useCallback(
     ({ nodes }: { nodes: Node[] }) => {
@@ -217,8 +239,15 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
     [screenToFlowPosition, addNode] // Add addNode to dependency array
   );
 
+  const onMouseMove = useCallback((event: React.MouseEvent) => {
+    const wsService = getWebSocketService();
+    const flowPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY });
+    // In a real app, you'd get the actual user ID and name
+    wsService.sendCursorPosition({ x: flowPosition.x, y: flowPosition.y, userId: 'user1', userName: 'User 1' });
+  }, [screenToFlowPosition]);
+
   return (
-    <div className="reactflow-wrapper h-full w-full" ref={reactFlowWrapper}>
+    <div className="reactflow-wrapper h-full w-full" ref={reactFlowWrapper} data-testid="flow-canvas">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -230,10 +259,14 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
         onSelectionChange={onSelectionChange}
         nodeTypes={nodeTypes}
         fitView
+        onMouseMove={onMouseMove}
       >
         <MiniMap />
         <Controls />
         <Background />
+        {Object.values(collaboratorCursors).map(cursor => (
+          <CollaboratorCursor key={cursor.userId} cursor={cursor} />
+        ))}
       </ReactFlow>
     </div>
   );

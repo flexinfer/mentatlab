@@ -1,3 +1,5 @@
+import { CursorPosition, WorkflowChange, CollaborationEvent } from '../types/collaboration';
+
 export interface WebSocketMessage {
   event_type: string;
   payload: {
@@ -16,6 +18,8 @@ export interface WebSocketConfig {
 
 export type WebSocketEventHandler = (message: WebSocketMessage) => void;
 export type ConnectionStateHandler = (state: 'connecting' | 'connected' | 'disconnected' | 'error') => void;
+export type CursorUpdateHandler = (position: CursorPosition) => void;
+export type WorkflowStateChangeHandler = (changes: WorkflowChange[]) => void;
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
@@ -25,6 +29,8 @@ export class WebSocketService {
   private heartbeatIntervalId: number | null = null;
   private messageHandlers: Set<WebSocketEventHandler> = new Set();
   private stateHandlers: Set<ConnectionStateHandler> = new Set();
+  private cursorUpdateHandlers: Set<CursorUpdateHandler> = new Set();
+  private workflowStateChangeHandlers: Set<WorkflowStateChangeHandler> = new Set();
   private isManuallyDisconnected = false;
 
   constructor(config: WebSocketConfig) {
@@ -172,22 +178,49 @@ export class WebSocketService {
    */
   private handleMessage(event: MessageEvent): void {
     try {
-      const message: WebSocketMessage = JSON.parse(event.data);
+      const parsedData: any = JSON.parse(event.data);
       
-      // Validate message structure
-      if (!message.event_type || !message.payload) {
-        console.warn('Invalid WebSocket message format:', message);
-        return;
+      // Check if it's a collaboration event
+      if (parsedData.type && parsedData.payload) {
+        const collaborationMessage: CollaborationEvent = parsedData;
+        if (collaborationMessage.type === 'user_cursor_updated') {
+          this.cursorUpdateHandlers.forEach(handler => {
+            try {
+              handler(collaborationMessage.payload as CursorPosition);
+            } catch (error) {
+              console.error('Error in cursor update handler:', error);
+            }
+          });
+        } else if (collaborationMessage.type === 'workflow_state_changed') {
+          this.workflowStateChangeHandlers.forEach(handler => {
+            try {
+              handler(collaborationMessage.payload as WorkflowChange[]);
+            } catch (error) {
+              console.error('Error in workflow state change handler:', error);
+            }
+          });
+        }
       }
 
-      // Notify all handlers
-      this.messageHandlers.forEach(handler => {
-        try {
-          handler(message);
-        } catch (error) {
-          console.error('Error in WebSocket message handler:', error);
-        }
-      });
+      // Also notify general message handlers for all messages (including collaboration ones if needed elsewhere)
+      // Or, if WebSocketMessage is only for non-collaboration events, filter here.
+      // For now, assuming general handlers might also process these, or they are distinct.
+      // If the original WebSocketMessage structure is still used for other events,
+      // we need to ensure it's handled correctly.
+      // For simplicity, let's assume if 'type' exists, it's a collaboration event,
+      // otherwise, it's an old-style WebSocketMessage.
+      if (parsedData.event_type && parsedData.payload) {
+        const message: WebSocketMessage = parsedData;
+        this.messageHandlers.forEach(handler => {
+          try {
+            handler(message);
+          } catch (error) {
+            console.error('Error in WebSocket message handler:', error);
+          }
+        });
+      } else if (!parsedData.type) { // If it's neither a new collaboration event nor an old WebSocketMessage
+        console.warn('Unknown WebSocket message format:', parsedData);
+      }
 
     } catch (error) {
       console.error('Failed to parse WebSocket message:', error);
@@ -268,6 +301,48 @@ export class WebSocketService {
     this.disconnect();
     this.messageHandlers.clear();
     this.stateHandlers.clear();
+    this.cursorUpdateHandlers.clear();
+    this.workflowStateChangeHandlers.clear();
+  }
+
+  /**
+   * Send cursor position to server
+   */
+  sendCursorPosition(position: CursorPosition): boolean {
+    return this.send({
+      type: 'cursor_position_update',
+      payload: position,
+    });
+  }
+
+  /**
+   * Send workflow changes to server
+   */
+  sendWorkflowChanges(changes: WorkflowChange[]): boolean {
+    return this.send({
+      type: 'workflow_changes',
+      payload: changes,
+    });
+  }
+
+  /**
+   * Add handler for incoming cursor updates
+   */
+  onCursorUpdate(handler: CursorUpdateHandler): () => void {
+    this.cursorUpdateHandlers.add(handler);
+    return () => {
+      this.cursorUpdateHandlers.delete(handler);
+    };
+  }
+
+  /**
+   * Add handler for incoming workflow state changes
+   */
+  onWorkflowStateChange(handler: WorkflowStateChangeHandler): () => void {
+    this.workflowStateChangeHandlers.add(handler);
+    return () => {
+      this.workflowStateChangeHandlers.delete(handler);
+    };
   }
 }
 

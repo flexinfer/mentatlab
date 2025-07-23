@@ -40,7 +40,7 @@ const AgentPalette: React.FC = () => {
   }
 
   return (
-    <div className="p-4 border-r bg-gray-50 h-full overflow-y-auto">
+    <div className="p-4 border-r bg-gray-50 h-full overflow-y-auto" data-testid="agent-palette">
       <h2 className="text-lg font-semibold mb-4">Agent Palette</h2>
       {agents.length === 0 ? (
         <p>No agents available.</p>
@@ -52,6 +52,7 @@ const AgentPalette: React.FC = () => {
               className="p-4 border rounded-md shadow-sm cursor-grab bg-white"
               draggable
               onDragStart={(event) => onDragStart(event, agent)}
+              data-testid={`agent-card-${agent.name}`}
             >
               <h3 className="text-md font-semibold">{agent.name}</h3>
               <p className="text-sm text-gray-600">{agent.description}</p>

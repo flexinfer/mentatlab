@@ -1,10 +1,13 @@
-from typing import List
+from typing import List, Dict, Any
 from graphlib import TopologicalSorter
 import asyncio
 from datetime import datetime
+from fastapi import FastAPI, HTTPException
 
 from services.gateway.app.models import Flow, Node, Edge, Meta, Graph, Position
-from services.orchestrator.app.execution import AgentRunner
+from services.orchestrator.app.execution import ExecutionEngine, ExecutionResult
+from services.orchestrator.app.scheduling import SchedulingService
+from services.orchestrator.app.resources import ResourceManager
 
 def create_execution_plan(flow: Flow) -> List[str]:
     """
@@ -48,11 +51,105 @@ def create_execution_plan(flow: Flow) -> List[str]:
         # graphlib.TopologicalSorter raises ValueError for cycles
         raise ValueError(f"Flow graph contains a cycle or is invalid: {e}")
 
+app = FastAPI(
+    title="Orchestrator Service",
+    description="Service for managing and executing AI workflows.",
+    version="0.1.0",
+)
+
+# Initialize services
+execution_engine = ExecutionEngine()
+scheduling_service = SchedulingService()
+resource_manager = ResourceManager()
+
+@app.post("/execute/{workflow_id}", response_model=ExecutionResult)
+async def execute_workflow_endpoint(workflow_id: str, inputs: Dict[str, Any]):
+    """
+    Executes a workflow with the given ID and inputs.
+    """
+    result = execution_engine.executeWorkflow(workflow_id, inputs)
+    return result
+
+@app.post("/pause/{execution_id}", response_model=ExecutionResult)
+async def pause_execution_endpoint(execution_id: str):
+    """
+    Pauses a running workflow execution.
+    """
+    result = execution_engine.pauseExecution(execution_id)
+    return result
+
+@app.post("/resume/{execution_id}", response_model=ExecutionResult)
+async def resume_execution_endpoint(execution_id: str):
+    """
+    Resumes a paused workflow execution.
+    """
+    result = execution_engine.resumeExecution(execution_id)
+    return result
+
+@app.post("/abort/{execution_id}", response_model=ExecutionResult)
+async def abort_execution_endpoint(execution_id: str):
+    """
+    Aborts a running workflow execution.
+    """
+    result = execution_engine.abortExecution(execution_id)
+    return result
+
+@app.get("/status/{execution_id}", response_model=ExecutionResult)
+async def get_execution_status_endpoint(execution_id: str):
+    """
+    Gets the current status of a workflow execution.
+    """
+    result = execution_engine.getExecutionStatus(execution_id)
+    return result
+
+@app.post("/schedule/{workflow_id}")
+async def schedule_workflow_endpoint(workflow_id: str, cron_schedule: str):
+    """
+    Schedules a workflow to run periodically using a cron schedule.
+    """
+    job_id = scheduling_service.scheduleWorkflow(workflow_id, cron_schedule)
+    return {"scheduled_job_id": job_id}
+
+@app.post("/resources/allocate/{workflow_id}")
+async def allocate_resources_endpoint(workflow_id: str, requirements: Dict[str, Any]):
+    """
+    Allocates resources for a workflow.
+    """
+    result = resource_manager.allocateResources(workflow_id, requirements)
+    return result
+
+@app.get("/resources/monitor/{resource_id}")
+async def monitor_usage_endpoint(resource_id: str):
+    """
+    Monitors resource usage for a given resource ID.
+    """
+    result = resource_manager.monitorUsage(resource_id)
+    return result
+
+@app.post("/resources/scale/{resource_id}")
+async def scale_resources_endpoint(resource_id: str, scale_factor: float):
+    """
+    Scales resources for a given resource ID.
+    """
+    result = resource_manager.scaleResources(resource_id, scale_factor)
+    return result
+
+@app.post("/resources/quotas/{user_id}")
+async def enforce_quotas_endpoint(user_id: str):
+    """
+    Enforces resource quotas for a given user ID.
+    """
+    result = resource_manager.enforceQuotas(user_id)
+    return result
+
 if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
     async def main():
         # Example usage for testing AgentRunner
-        runner = AgentRunner()
-        await runner.connect()
+        # runner = AgentRunner() # AgentRunner is no longer directly used in main.py for this phase
+        # await runner.connect()
 
         # A dummy flow plan for testing with the EchoAgent
         dummy_flow_plan = {
