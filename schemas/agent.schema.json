@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MentatLab Agent Manifest",
+  "description": "Defines the structure for an agent's manifest.yaml file.",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "image",
+    "description",
+    "inputs",
+    "outputs"
+  ],
+  "properties": {
+    "id": {
+      "description": "Globally unique, reverse-DNS style identifier for the agent.",
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_.-]+$"
+    },
+    "version": {
+      "description": "Semantic Version 2.0 of the agent.",
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "image": {
+      "description": "OCI container image reference with an explicit tag or digest.",
+      "type": "string"
+    },
+    "runtime": {
+      "description": "The runtime environment for the agent, e.g., 'python3.12'.",
+      "type": "string"
+    },
+    "description": {
+      "description": "A brief description of the agent's purpose.",
+      "type": "string"
+    },
+    "inputs": {
+      "description": "A list of input pins for the agent.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/pin"
+      }
+    },
+    "outputs": {
+      "description": "A list of output pins for the agent.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/pin"
+      }
+    },
+    "longRunning": {
+      "description": "If true, the agent runs as a long-lived K8s Deployment; otherwise, it runs as a short-lived Job.",
+      "type": "boolean",
+      "default": false
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "remoteEntry": {
+          "description": "URL to a UMD/Module Federation bundle exposing a React component named NodePanel.",
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "resources": {
+        "type": "object",
+        "properties": {
+            "gpu": {
+                "type": "boolean"
+            }
+        }
+    },
+    "env": {
+        "type": "array",
+        "items": {
+            "type": "string"
+        }
+    }
+  },
+  "definitions": {
+    "pin": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "boolean",
+            "json",
+            "binary"
+          ]
+        }
+      }
+    }
+  }
+}
