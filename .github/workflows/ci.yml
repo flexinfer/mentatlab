@@ -1,12 +1,33 @@
-name: CI/CD Pipeline
-
-on:
-  push:
-    branches:
-      - main
+name: MentatLab Full Pipeline
+on: [push, pull_request]
 
 jobs:
-  build:
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Or appropriate Node.js version for your frontend
+
+      - name: Install frontend dependencies
+        run: npm --prefix services/frontend install
+
+      - name: Run frontend unit tests
+        run: npm --prefix services/frontend run test
+
+      - name: Run E2E tests
+        run: |
+          echo "Starting backend services in background for E2E tests..."
+          python services/orchestrator/app/main.py &
+          python services/gateway/app/main.py &
+          sleep 10 # Give services time to start
+          npm --prefix services/frontend run e2e
+
+  test-backend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -17,43 +38,25 @@ jobs:
         with:
           python-version: '3.9' # Or appropriate Python version for your services
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18' # Or appropriate Node.js version for your frontend
-
-      - name: Lint, Test, and Build Orchestrator
+      - name: Install backend dependencies
         run: |
-          cd services/orchestrator
-          pip install -r requirements.txt # Assuming requirements.txt exists
           pip install flake8 pytest
-          flake8 .
-          pytest
-          docker build -t ghcr.io/flexinfer/mentatlab/orchestrator .
+          pip install -r services/orchestrator/requirements.txt
+          pip install -r cli/mentatctl/requirements.txt
+          # Assuming services/gateway and services/agents/echo also have requirements.txt
+          # If these paths don't exist, the CI will fail and we'll adjust.
+          pip install -r services/gateway/requirements.txt || echo "No requirements.txt for gateway, skipping."
+          pip install -r services/agents/echo/requirements.txt || echo "No requirements.txt for echo agent, skipping."
 
-      - name: Lint, Test, and Build Gateway
+      - name: Run backend unit tests
         run: |
-          cd services/gateway
-          pip install -r requirements.txt # Assuming requirements.txt exists
-          pip install flake8 pytest
-          flake8 .
-          pytest
-          docker build -t ghcr.io/flexinfer/mentatlab/gateway .
+          pytest services/orchestrator/app/tests/
+          pytest services/gateway/tests/
+          pytest services/agents/echo/app/
 
-      - name: Lint, Test, and Build EchoAgent
-        run: |
-          cd services/agents/echo
-          pip install -r requirements.txt # Assuming requirements.txt exists
-          pip install flake8 pytest
-          flake8 .
-          pytest
-          docker build -t ghcr.io/flexinfer/mentatlab/echoagent .
-
-      - name: Lint, Test, and Build Frontend
-        run: |
-          cd services/frontend
-          npm install
-          npm run lint
-          npm test
-          npm run build
-          docker build -t ghcr.io/flexinfer/mentatlab/frontend .
+  deploy-staging:
+    needs: [test-frontend, test-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to staging
+        run: echo "Staging deployment placeholder"

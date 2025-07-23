@@ -1,20 +1,23 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import AgentPalette from './components/AgentPalette';
 import FlowCanvas from './components/FlowCanvas';
-import ConfigurationPanel from './components/ConfigurationPanel';
+import PropertyInspector from './components/PropertyInspector';
+import CommandPalette from './components/CommandPalette'; // Import CommandPalette
 import { ReactFlowProvider } from 'reactflow';
 import './globals.css';
 import 'reactflow/dist/style.css';
 import { Button } from './components/ui/button';
-import { useFlowStore, IFlow, IFlowNode, IFlowEdge, IFlowMeta, IFlowGraph, IFlowPosition } from './stores/flowStore';
+import useStore from './store';
+import { Flow, Node as GraphNode, Edge as GraphEdge, FlowMeta, FlowGraph, Position } from './types/graph';
 import { v4 as uuidv4 } from 'uuid';
 
 function App() {
-  const { nodes, edges } = useFlowStore();
+  const { nodes, edges } = useStore();
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   const handleRunFlow = async () => {
-    const flowNodes: IFlowNode[] = nodes.map(node => ({
+    const flowNodes: GraphNode[] = nodes.map(node => ({
       id: node.id,
       type: node.type || 'default',
       position: node.position,
@@ -22,12 +25,12 @@ function App() {
       params: node.data?.params,
     }));
 
-    const flowEdges: IFlowEdge[] = edges.map(edge => ({
+    const flowEdges: GraphEdge[] = edges.map(edge => ({
       from: edge.source + '.' + edge.sourceHandle,
       to: edge.target + '.' + edge.targetHandle,
     }));
 
-    const flowMeta: IFlowMeta = {
+    const flowMeta: FlowMeta = {
       id: uuidv4(),
       name: "My Workflow",
       version: "1.0.0",
@@ -35,12 +38,12 @@ function App() {
       description: "A workflow created from the UI",
     };
 
-    const flowGraph: IFlowGraph = {
+    const flowGraph: FlowGraph = {
       nodes: flowNodes,
       edges: flowEdges,
     };
 
-    const flowPayload: IFlow = {
+    const flowPayload: Flow = {
       apiVersion: "v1",
       kind: "Flow",
       meta: flowMeta,
@@ -69,6 +72,24 @@ function App() {
     }
   };
 
+  const toggleCommandPalette = useCallback(() => {
+    setIsCommandPaletteOpen((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        toggleCommandPalette();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [toggleCommandPalette]);
+
   return (
     <div className="h-screen w-screen flex flex-col">
       <header className="flex items-center justify-between p-4 border-b">
@@ -87,11 +108,12 @@ function App() {
             </Panel>
             <PanelResizeHandle className="w-2 bg-gray-200 hover:bg-gray-300 transition-colors duration-200" />
             <Panel defaultSize={20} minSize={15}>
-              <ConfigurationPanel />
+              <PropertyInspector />
             </Panel>
           </PanelGroup>
         </ReactFlowProvider>
       </div>
+      <CommandPalette isOpen={isCommandPaletteOpen} onClose={toggleCommandPalette} />
     </div>
   );
 }
