@@ -23,6 +23,5 @@
     /* Vitest */
     "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "vitest.config.ts"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src", "vitest.config.ts"]
 }

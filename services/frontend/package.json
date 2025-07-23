@@ -2,6 +2,7 @@
   "name": "mentatlab-frontend",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "echo build",
     "test": "vitest",
@@ -32,6 +33,7 @@
     "vitest": "^3.2.4"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",

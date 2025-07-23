@@ -40,13 +40,10 @@ jobs:
 
       - name: Install backend dependencies
         run: |
-          pip install flake8 pytest
-          if [ -f services/orchestrator/requirements.txt ]; then pip install -r services/orchestrator/requirements.txt; fi
-          if [ -f cli/mentatctl/requirements.txt ]; then pip install -r cli/mentatctl/requirements.txt; fi
-          # Assuming services/gateway and services/agents/echo also have requirements.txt
-          # If these paths don't exist, the CI will fail and we'll adjust.
-          if [ -f services/gateway/requirements.txt ]; then pip install -r services/gateway/requirements.txt; fi
-          if [ -f services/agents/echo/requirements.txt ]; then pip install -r services/agents/echo/requirements.txt; fi
+          pip install -r services/orchestrator/requirements.txt
+          pip install -r cli/mentatctl/requirements.txt
+          pip install -r services/gateway/requirements.txt
+          pip install -r services/agents/echo/requirements.txt
 
       - name: Run backend unit tests
         run: |
