@@ -20,6 +20,7 @@ export type RFState = {
   onConnect: (connection: Connection) => void;
   setNodes: (nodes: Node[]) => void;
   setEdges: (edges: Edge[]) => void;
+  updateNodes: (updater: (nodes: Node[]) => Node[]) => void;
   addNode: (node: Node) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
   updateNodeConfig: (nodeId: string, data: object) => void;
@@ -46,6 +47,11 @@ const useStore = create<RFState>((set, get) => ({
   },
   setNodes: (nodes: Node[]) => set({ nodes }),
   setEdges: (edges: Edge[]) => set({ edges }),
+  updateNodes: (updater: (nodes: Node[]) => Node[]) => {
+    set((state) => ({
+      nodes: updater(state.nodes),
+    }));
+  },
   addNode: (node: Node) => {
     set((state) => ({
       nodes: [...state.nodes, node],
