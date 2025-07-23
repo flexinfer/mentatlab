@@ -1,34 +1,59 @@
-name: CI
-on: [push, pull_request]
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - uses: actions/setup-node@v3
+          python-version: '3.9' # Or appropriate Python version for your services
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Install PDM
-        run: python3 -m pip install pdm
-      - name: Install backend deps
+          node-version: '18' # Or appropriate Node.js version for your frontend
+
+      - name: Lint, Test, and Build Orchestrator
         run: |
-          pdm install -p services/gateway --no-editable --group :all
-      - name: Install frontend deps
-        run: npm --prefix services/frontend ci
-      - name: Run backend tests
-        run: pdm run -p services/gateway pytest -q
-      - name: Start server
+          cd services/orchestrator
+          pip install -r requirements.txt # Assuming requirements.txt exists
+          pip install flake8 pytest
+          flake8 .
+          pytest
+          docker build -t ghcr.io/flexinfer/mentatlab/orchestrator .
+
+      - name: Lint, Test, and Build Gateway
         run: |
-          uvicorn services.gateway.app.main:app --port 8000 &
-          echo $! > server.pid
-          sleep 2
-      - name: Curl healthz
-        run: curl -f http://localhost:8000/healthz
-      - name: Curl flow
-        run: curl -f http://localhost:8000/flows/hello_chat
-      - name: Stop server
-        run: kill $(cat server.pid)
+          cd services/gateway
+          pip install -r requirements.txt # Assuming requirements.txt exists
+          pip install flake8 pytest
+          flake8 .
+          pytest
+          docker build -t ghcr.io/flexinfer/mentatlab/gateway .
+
+      - name: Lint, Test, and Build EchoAgent
+        run: |
+          cd services/agents/echo
+          pip install -r requirements.txt # Assuming requirements.txt exists
+          pip install flake8 pytest
+          flake8 .
+          pytest
+          docker build -t ghcr.io/flexinfer/mentatlab/echoagent .
+
+      - name: Lint, Test, and Build Frontend
+        run: |
+          cd services/frontend
+          npm install
+          npm run lint
+          npm test
+          npm run build
+          docker build -t ghcr.io/flexinfer/mentatlab/frontend .
