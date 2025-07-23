@@ -9,8 +9,11 @@ import ReactFlow, {
   useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
+import DOMPurify from 'dompurify';
 import { loadFlow } from '../loadFlow';
 import { Node as GraphNode, Edge as GraphEdge } from '../types/graph';
+import { getWebSocketService, WebSocketMessage } from '../services/websocketService';
+import { logInfo, logError, logUserAction, logWebSocketEvent, logger } from '../utils/logger';
 import useStore from '../store'; // Import the Zustand store
 
 interface CustomNodeData {
@@ -28,11 +31,22 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => 
     backgroundColor = 'red';
   }
 
+  // Sanitize user input to prevent XSS attacks
+  const sanitizedLabel = data.label ? DOMPurify.sanitize(data.label) : '';
+  const sanitizedId = DOMPurify.sanitize(id);
+  const sanitizedType = DOMPurify.sanitize(type);
+
   return (
     <div style={{ border: '1px solid black', padding: 10, background: backgroundColor }}>
-      <div>ID: {id}</div>
-      <div>Type: {type}</div>
-      {data.label && <div>Label: {data.label}</div>}
+      <div>ID: {sanitizedId}</div>
+      <div>Type: {sanitizedType}</div>
+      {sanitizedLabel && (
+        <div
+          dangerouslySetInnerHTML={{
+            __html: `Label: ${sanitizedLabel}`
+          }}
+        />
+      )}
       {data.status && <div>Status: {data.status}</div>}
     </div>
   );
@@ -59,11 +73,14 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
   const setSelectedNodeId = useStore((state) => state.setSelectedNodeId);
   const setNodes = useStore((state) => state.setNodes); // Get setNodes from store
   const setEdges = useStore((state) => state.setEdges); // Get setEdges from store
+  const updateNodes = useStore((state) => state.updateNodes); // Get updateNodes from store
 
 
   useEffect(() => {
     const fetchFlow = async () => {
       try {
+        logInfo('Loading flow data', { component: 'FlowCanvas', action: 'loadFlow' });
+        
         const flowData = await loadFlow("example-flow");
         const reactFlowNodes: Node<CustomNodeData>[] = flowData.graph.nodes.map((node: GraphNode) => ({
           id: node.id,
@@ -78,29 +95,40 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
           target: edge.to,
         }));
 
-        setNodes(reactFlowNodes); // Use setNodes from store
-        setEdges(reactFlowEdges); // Use setEdges from store
+        setNodes(reactFlowNodes);
+        setEdges(reactFlowEdges);
+        
+        logInfo('Flow data loaded successfully', {
+          component: 'FlowCanvas',
+          action: 'loadFlow',
+          nodeCount: reactFlowNodes.length,
+          edgeCount: reactFlowEdges.length
+        });
       } catch (error) {
-        console.error("Failed to load flow:", error);
+        logError('Failed to load flow data', error instanceof Error ? error : new Error(String(error)), {
+          component: 'FlowCanvas',
+          action: 'loadFlow'
+        });
       }
     };
 
     fetchFlow();
-  }, [setNodes, setEdges]); // Add setNodes and setEdges to dependency array
+  }, [setNodes, setEdges]);
 
   useEffect(() => {
-    const websocket = new WebSocket("ws://localhost:8000/ws/orchestrator-events");
+    const wsService = getWebSocketService();
+    
+    // Handle WebSocket messages
+    const unsubscribeMessages = wsService.onMessage((message: WebSocketMessage) => {
+      logWebSocketEvent('message received', {
+        component: 'FlowCanvas',
+        eventType: message.event_type,
+        nodeId: message.payload.node_id
+      });
 
-    websocket.onopen = () => {
-      console.log("WebSocket connection established.");
-    };
-
-    websocket.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      console.log("Received WebSocket message:", message);
-
-      setNodes(
-        nodes.map((node) => {
+      // Update node status based on WebSocket message
+      updateNodes((currentNodes) =>
+        currentNodes.map((node) => {
           if (node.id === message.payload.node_id) {
             return {
               ...node,
@@ -113,31 +141,47 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
           return node;
         })
       );
-    };
+    });
 
-    websocket.onclose = (event) => {
-      console.log("WebSocket connection closed:", event);
-    };
+    // Handle connection state changes
+    const unsubscribeState = wsService.onStateChange((state) => {
+      logWebSocketEvent(`connection ${state}`, {
+        component: 'FlowCanvas',
+        connectionState: state
+      });
+    });
 
-    websocket.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
+    // Connect to WebSocket
+    wsService.connect().catch((error) => {
+      logError('Failed to connect to WebSocket', error, {
+        component: 'FlowCanvas',
+        action: 'websocket-connect'
+      });
+    });
 
+    // Cleanup on unmount
     return () => {
-      websocket.close();
+      unsubscribeMessages();
+      unsubscribeState();
     };
-  }, [setNodes]); // Add setNodes to dependency array
+  }, [updateNodes]);
 
   const onSelectionChange = useCallback(
     ({ nodes }: { nodes: Node[] }) => {
       if (nodes.length > 0) {
         const selectedNode = nodes[0];
-        setSelectedNodeId(selectedNode.id); // Use setSelectedNodeId from store
+        setSelectedNodeId(selectedNode.id);
+        logUserAction('node selected', {
+          component: 'FlowCanvas',
+          nodeId: selectedNode.id,
+          nodeType: selectedNode.type
+        });
       } else {
-        setSelectedNodeId(null); // Use setSelectedNodeId from store
+        setSelectedNodeId(null);
+        logUserAction('node deselected', { component: 'FlowCanvas' });
       }
     },
-    [setSelectedNodeId] // Add setSelectedNodeId to dependency array
+    [setSelectedNodeId]
   );
 
   const onDragOver = useCallback((event: React.DragEvent) => {

@@ -46,8 +46,8 @@ export interface Agent {
 }
 
 export interface Position {
-  x?: number;
-  y?: number;
+  x: number;
+  y: number;
 }
 
 export interface Node {
@@ -59,8 +59,16 @@ export interface Node {
 }
 
 export interface Edge {
-  from: string;
-  to: string;
+  from: string;      // Frontend representation
+  to: string;        // Frontend representation
+  sourceHandle?: string;
+  targetHandle?: string;
+}
+
+// Backend API representation
+export interface ApiEdge {
+  from_node: string;  // Backend expects this format (nodeId.pinName)
+  to_node: string;    // Backend expects this format (nodeId.pinName)
 }
 
 export interface FlowMeta {
