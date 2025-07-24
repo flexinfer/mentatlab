@@ -70,10 +70,7 @@ jobs:
           pdm install -p services/gateway
 
       - name: Run backend unit tests
-        run: |
-          pytest services/orchestrator/app/tests/
-          pytest services/gateway/tests/
-          pytest services/agents/echo/app/
+        run: python -m pytest -c pytest.ini
 
   deploy-staging:
     needs: [test-frontend, test-backend]

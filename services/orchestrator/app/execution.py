@@ -1,14 +1,14 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+from pydantic import BaseModel
 from services.orchestrator.app.plugin_manager import PluginManager
 
 logger = logging.getLogger(__name__)
 
-class ExecutionResult:
-    def __init__(self, success: bool, message: str, data: Any = None):
-        self.success = success
-        self.message = message
-        self.data = data
+class ExecutionResult(BaseModel):
+    success: bool
+    message: str
+    data: Optional[Any] = None
 
 class ExecutionEngine:
     def __init__(self):
