@@ -71,6 +71,7 @@ jobs:
 
       - name: Run backend unit tests
         run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
           pytest services/orchestrator/app/tests/
           pytest services/gateway/tests/
           pytest services/agents/echo/app/
