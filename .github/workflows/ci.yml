@@ -70,8 +70,6 @@ jobs:
           pdm install -p services/gateway
 
       - name: Run backend unit tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}
         run: |
           pytest services/orchestrator/app/tests/
           pytest services/gateway/tests/
