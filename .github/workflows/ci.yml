@@ -60,13 +60,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Install PDM
+        run: pip install pdm
+
       - name: Install backend dependencies
         run: |
-          pip install \
-            -r services/orchestrator/requirements.txt \
-            -r cli/mentatctl/requirements.txt \
-            -r services/gateway/requirements.txt \
-            -r services/agents/echo/requirements.txt
+          pip install -r services/orchestrator/requirements.txt
+          pip install -r cli/mentatctl/requirements.txt
+          pdm install -p services/gateway
 
       - name: Run backend unit tests
         run: |
