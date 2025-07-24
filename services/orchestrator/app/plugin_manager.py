@@ -2,12 +2,18 @@ import os
 import json
 import importlib.util
 from typing import Dict, Type
+from pathlib import Path
 
 from services.orchestrator.app.plugins.base import Plugin
 
 class PluginManager:
-    def __init__(self, plugin_dir: str = "app/plugins"):
-        self.plugin_dir = plugin_dir
+    def __init__(self, plugin_dir: str = None):
+        if plugin_dir is None:
+            # Get the directory of this file, then go to plugins directory
+            current_dir = Path(__file__).parent
+            self.plugin_dir = str(current_dir / "plugins")
+        else:
+            self.plugin_dir = plugin_dir
         self.plugins: Dict[str, Type[Plugin]] = {}
         self._load_plugins()
 
