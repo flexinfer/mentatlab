@@ -6,7 +6,7 @@ from typing import Dict, Type
 from services.orchestrator.app.plugins.base import Plugin
 
 class PluginManager:
-    def __init__(self, plugin_dir: str = "services/orchestrator/app/plugins"):
+    def __init__(self, plugin_dir: str = "app/plugins"):
         self.plugin_dir = plugin_dir
         self.plugins: Dict[str, Type[Plugin]] = {}
         self._load_plugins()
