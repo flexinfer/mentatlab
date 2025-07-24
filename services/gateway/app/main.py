@@ -59,3 +59,7 @@ async def healthz():
     return {"status": "ok"}
 
 app.include_router(router_flows.router, prefix="/flows")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)

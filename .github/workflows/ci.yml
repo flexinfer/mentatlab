@@ -12,6 +12,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18' # Or appropriate Node.js version for your frontend
+          cache: 'npm'
+          cache-dependency-path: services/frontend/package-lock.json
 
       - name: Install frontend dependencies
         run: npm --prefix services/frontend install
@@ -24,7 +26,19 @@ jobs:
           echo "Starting backend services in background for E2E tests..."
           python services/orchestrator/app/main.py &
           python services/gateway/app/main.py &
-          sleep 10 # Give services time to start
+          
+          echo "Waiting for backend services to be ready..."
+          timeout=60
+          while ! (curl -s http://localhost:8000/healthz > /dev/null && curl -s http://localhost:8001/healthz > /dev/null); do
+            sleep 2
+            timeout=$((timeout-2))
+            if [ $timeout -le 0 ]; then
+              echo "Timed out waiting for backend services."
+              exit 1
+            fi
+          done
+          
+          echo "Backend services are ready. Running E2E tests."
           npm --prefix services/frontend run e2e
 
   test-backend:
@@ -38,12 +52,21 @@ jobs:
         with:
           python-version: '3.9' # Or appropriate Python version for your services
 
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Install backend dependencies
         run: |
-          pip install -r services/orchestrator/requirements.txt
-          pip install -r cli/mentatctl/requirements.txt
-          pip install -r services/gateway/requirements.txt
-          pip install -r services/agents/echo/requirements.txt
+          pip install \
+            -r services/orchestrator/requirements.txt \
+            -r cli/mentatctl/requirements.txt \
+            -r services/gateway/requirements.txt \
+            -r services/agents/echo/requirements.txt
 
       - name: Run backend unit tests
         run: |
