@@ -96,6 +96,16 @@ sequenceDiagram
 
 ⸻
 
+## Execution Modes
+
+Flows can be executed in two primary modes:
+
+- **Redis** (lightweight local development): tasks are published to Redis channels and processed by Redis-based agents. UI clients receive plan and results via WebSocket on `orchestrator_ui_events`.
+- **Kubernetes** (production): each agent runs as a K8s Job scheduled by the orchestrator. Use `mode=k8s` or default.
+
+Specify the execution mode with the HTTP query parameter `mode=redis` or `mode=k8s` on **POST /flows**.
+⸻
+
 3 Edge Types & Semantics
 
 Edge Kind	Icon	Payload	When to Use
@@ -154,8 +164,14 @@ If node A outputs sensitive PII, only downstream nodes owned by an authorised 
 # Dry‑run: validate only, show plan (Terraform‑style)
 mentatctl plan flows/hello.mlab
 
-# Run with live logs to console
+# Run with live logs to console (plan-only)
 mentatctl run flows/hello.mlab --follow
+
+# Run in Redis mode (lightweight execution)
+mentatctl run flows/hello.mlab --mode redis --follow
+
+# Run in K8s mode (production Jobs)
+mentatctl run flows/hello.mlab --mode k8s --follow
 
 # Convert legacy YAML to *.mlab
 mentatctl convert legacy_flow.yaml > flows/legacy.mlab

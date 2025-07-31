@@ -3,8 +3,8 @@ MentatLab is mission control for composable AI—design, launch and monitor inte
 
 The documents below spell out the composable‑frontend contract: how multiple agents, chat panels and runtime tasks are wired together on the canvas, stored in Git, and executed by the backend.  It is tightly cross‑referenced to the Product Vision, Architecture and Road‑map sections you provided, so contributors can see exactly where the “glue” lives.
 
-	•	agents.md → how to create a single Lego brick (a Cog‑Pak).
-	•	flows.md (below) → how to snap many bricks together into a live, observable workspace.
+	•	docs/agents.md → how to create a single Lego brick (a Cog‑Pak).
+	•	docs/flows.md (below) → how to snap many bricks together into a live, observable workspace.
 
 ## Local Development Setup
 
@@ -46,26 +46,37 @@ docker-compose up --build
 
 ### 4. Individual Service Setup (if not using Docker Compose)
 
-#### Frontend
+#### Frontend (UI)
 
 ```bash
 cd services/frontend
 npm install
-npm start
+npm run dev
 ```
 
-#### Orchestrator, Gateway, EchoAgent (Python Services)
-
-For each Python service, navigate to its directory, install dependencies, and run:
+#### Orchestrator
 
 ```bash
-# Example for Orchestrator
 cd services/orchestrator
 pip install -r requirements.txt
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 # Or appropriate run command
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Repeat for `services/gateway` and `services/agents/echo`.
+#### Gateway
+
+```bash
+cd services/gateway
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+
+*(Optional)* **Echo Agent** (Redis-based task runner)
+
+```bash
+cd services/agents/echo
+pip install -r requirements.txt
+python -m services.agents.echo.app.main  # run the EchoAgent listener
+```
 
 ### 5. Running Tests
 
