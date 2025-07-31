@@ -25,22 +25,24 @@ async def get_flow(flow_id: str):
 async def create_flow(
     flow: Flow,
     mode: str = Query("plan", description="Execution mode: plan, redis, or k8s"),
+    cron: str | None = Query(None, description="Cron schedule for k8s mode"),
 ):
-    """Create and execute a flow: plan-only, Redis-based, or K8s-based execution."""
+    """Create and execute a flow: plan-only, Redis-based, or k8s-based execution."""
     execution_plan = create_execution_plan(flow)
-    result = {"execution_plan": execution_plan}
+    result: dict[str, Any] = {"execution_plan": execution_plan}
+
     if mode == "redis":
         # Lightweight execution: publish tasks to Redis and UI events channel
         import redis.asyncio as redis
         from services.gateway.app.websockets import UI_NOTIFICATION_CHANNEL
 
         client = redis.from_url("redis://localhost", decode_responses=True)
-        # Notify UI of the execution plan
+        # 1) Notify UI of the execution plan
         await client.publish(
             UI_NOTIFICATION_CHANNEL,
             json.dumps({"type": "plan", "plan": execution_plan}),
         )
-        # Dispatch tasks for each non-UI node in plan
+        # 2) Dispatch tasks for each non-UI node in plan
         node_map = {node.id: node for node in flow.graph.nodes}
         for node_id in execution_plan:
             node = node_map.get(node_id)
@@ -52,7 +54,14 @@ async def create_flow(
             await client.publish(task_channel, json.dumps(message))
         await client.close()
         return result
+
     if mode == "k8s":
-        # TODO: implement K8s-based execution via orchestrator scheduling service
-        pass
+        # K8s-based scheduling via orchestrator scheduling service
+        from services.orchestrator.app.scheduling import SchedulingService
+
+        scheduler = SchedulingService()
+        job_id = scheduler.scheduleWorkflow(flow.meta.id, cron or "")
+        result["scheduled_job_id"] = job_id
+        return result
+
     return result

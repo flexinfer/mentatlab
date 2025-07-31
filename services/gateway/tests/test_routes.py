@@ -27,3 +27,19 @@ def test_create_flow_plan():
     assert isinstance(plan_data, dict)
     assert "execution_plan" in plan_data
     assert isinstance(plan_data["execution_plan"], list)
+
+def test_create_flow_k8s(tmp_path, monkeypatch):
+    # Stub out SchedulingService to avoid real K8s calls
+    from services.gateway.app.router_flows import SchedulingService as SvcCls
+
+    class DummySched:
+        def scheduleWorkflow(self, workflow_id, cron_schedule):
+            return f"job_{workflow_id}_{cron_schedule or 'none'}"
+
+    monkeypatch.setattr(SvcCls, 'scheduleWorkflow', DummySched().scheduleWorkflow)
+    flow = client.get("/flows/hello_chat").json()
+    resp = client.post("/flows?mode=k8s&cron=0+*+*+*+*", json=flow)
+    assert resp.status_code == 201
+    data = resp.json()
+    assert "scheduled_job_id" in data
+    assert data["scheduled_job_id"].startswith("job_")

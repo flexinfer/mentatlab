@@ -98,12 +98,11 @@ sequenceDiagram
 
 ## Execution Modes
 
-Flows can be executed in two primary modes:
+Flows can be executed in two primary modes via `POST /flows?mode=<mode>&cron=<cron>`:
 
-- **Redis** (lightweight local development): tasks are published to Redis channels and processed by Redis-based agents. UI clients receive plan and results via WebSocket on `orchestrator_ui_events`.
-- **Kubernetes** (production): each agent runs as a K8s Job scheduled by the orchestrator. Use `mode=k8s` or default.
-
-Specify the execution mode with the HTTP query parameter `mode=redis` or `mode=k8s` on **POST /flows**.
+- **plan** (default): return the topological execution plan only.
+- **redis** (lightweight dev): tasks are published to Redis (`agent_tasks:<agent_id>`) and processed by Redis-based agents; UI events stream via WebSocket on `orchestrator_ui_events`.
+- **k8s** (production): schedule a Kubernetes Job per agent via the orchestrator’s **SchedulingService**; supply an optional cron schedule, e.g. `?mode=k8s&cron=0+*+*+*+*`.
 ⸻
 
 3 Edge Types & Semantics
