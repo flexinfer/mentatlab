@@ -53,7 +53,7 @@ function App() {
     console.log('Flow Payload:', JSON.stringify(flowPayload, null, 2));
 
     try {
-      const response = await fetch('http://localhost:8000/flows', {
+      const response = await fetch('http://localhost:8001/flows', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
