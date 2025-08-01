@@ -3,6 +3,8 @@ This introduces the core concepts, shows how to scaffold a new agent (aka Cog‑
 # MentatLab Agents (Cog‑Paks)
 *Last updated: 2025‑07‑22*
 
+__Note__: For detailed feature roadmap and upcoming milestone planning, see Section 9 below.
+
 MentatLab agents are **self‑contained, container‑runnable micro‑services** that expose a well‑defined interface to the canvas.  
 Each agent is packaged as a **Cog‑Pak**—a directory (or tarball/OCI image) containing:
 
@@ -162,14 +164,40 @@ mentatctl dev run agents/echo/manifest.yaml \
 
 ⸻
 
-9 Roadmap for Agents (excerpt from PLAN.md)
-	•	Sprint 5 – Plug‑in SDK stabilisation, semver freeze.
-	•	Beta – Support for multi‑modal tensor streams (audio/wav, image/jpeg).
-	•	v1.0 – WebAssembly runtimes, signed attestation on manifest.yaml.
+9 Roadmap for Agents
+	_This section outlines the feature roadmap for MentatLab agents, organized by timeline and theme. Agents and contributors should refer here for planning and prioritization._
 
-⸻
+	| Milestone    | Timeline    | Key Themes & Features                                                                           |
+	|--------------|-------------|-------------------------------------------------------------------------------------------------|
+	| **Sprint 5** | Jul 2025    | • Plugin SDK stabilization and SemVer freeze<br>• Enhanced manifest schema validation           |
+	| **Beta**     | Q3–Q4 2025 | • Multimodal support: audio (wav), image (jpeg/png), video streams<br>• Streaming inference API  |
+	| **v1.0**     | Q1 2026     | • WebAssembly runtime support for sandboxed agents<br>• Signed attestations on manifest.yaml    |
+	| **v1.1**     | Q2 2026     | • Agent marketplace and discovery UI<br>• Improved mentatctl commands and local dev workflow    |
+	| **v2.0**     | Q3 2026     | • Advanced observability: distributed tracing, profiling across agents<br>• Cost metering dashboard |
+	| **Long Term**| Late 2026+  | • Serverless deployment mode<br>• Zero-trust networking integration<br>• Community certification program |
 
-10 FAQ
+	__Next Steps__: Schedule planning reviews each sprint and cross-reference this roadmap when proposing new agents or feature requests.
+
+	⸻
+
+10	High-Level Tasks for Agents
+
+	Agents should pick up the following high-level tasks aligned with the roadmap milestones. Create GitHub issues tagged with the milestone (e.g., #Sprint5, #Beta, #v1.0) and area (e.g., #SDK, #Multimodal, #WASM).
+
+		| Milestone    | High-Level Task Categories                                                                     |
+		|--------------|------------------------------------------------------------------------------------------------|
+		| **Sprint 5** | • Finalize stable SDK API design<br>• Implement manifest schema validation hooks<br>• Update sample agents to SemVer  |
+		| **Beta**     | • Design and build multimodal input pipelines<br>• Extend agents for streaming inference<br>• Create end-to-end multimodal demos |
+		| **v1.0**     | • Integrate WASM runtime into CI/CD<br>• Define and test manifest signing process<br>• Update documentation and examples for attestations |
+		| **v1.1**     | • Develop agent marketplace UI components<br>• Enhance mentatctl for local agent registry<br>• Document marketplace workflows |
+		| **v2.0**     | • Add distributed tracing and profiling instrumentation<br>• Build cost metering and billing dashboard<br>• Standardize observability schema |
+		| **Long Term**| • Prototype serverless agent execution mode<br>• Research zero-trust network integration<br>• Draft community certification guidelines |
+
+	__Note__: Keep this section up-to-date as milestones evolve; agents.md is the source of truth for team planning.
+
+	⸻
+
+11 FAQ
 
 <details>
 <summary>Can I call external APIs from an agent?</summary>
