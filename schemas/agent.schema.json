@@ -96,8 +96,59 @@
             "number",
             "boolean",
             "json",
-            "binary"
+            "binary",
+            "audio",
+            "image",
+            "video",
+            "stream"
           ]
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Metadata for multimodal pin types",
+          "properties": {
+            "mimeType": {
+              "type": "string",
+              "description": "MIME type of the content (e.g., 'audio/wav', 'image/jpeg', 'video/mp4')"
+            },
+            "encoding": {
+              "type": "string",
+              "description": "Encoding format for the content"
+            },
+            "sampleRate": {
+              "type": "integer",
+              "description": "Sample rate for audio content (Hz)"
+            },
+            "channels": {
+              "type": "integer",
+              "description": "Number of audio channels"
+            },
+            "width": {
+              "type": "integer",
+              "description": "Width in pixels for image/video content"
+            },
+            "height": {
+              "type": "integer",
+              "description": "Height in pixels for image/video content"
+            },
+            "fps": {
+              "type": "number",
+              "description": "Frames per second for video content"
+            },
+            "duration": {
+              "type": "number",
+              "description": "Duration in seconds for audio/video content"
+            },
+            "maxSize": {
+              "type": "string",
+              "description": "Maximum file size (e.g., '100MB', '1GB')"
+            },
+            "streaming": {
+              "type": "boolean",
+              "description": "Whether this pin supports streaming data",
+              "default": false
+            }
+          }
         }
       }
     }

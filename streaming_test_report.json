@@ -1,0 +1,40 @@
+{
+  "timestamp": "2025-08-02T12:47:19.669861",
+  "summary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0
+  },
+  "results": [
+    {
+      "test": "Gateway Health Check",
+      "passed": true,
+      "details": "Status: 200, Response: {\"status\":\"ok\",\"streaming_enabled\":true}..."
+    },
+    {
+      "test": "Frontend Main App",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "test": "GET /api/v1/streams",
+      "passed": true,
+      "details": "Found 0 active streams"
+    },
+    {
+      "test": "POST /api/v1/streams/init",
+      "passed": true,
+      "details": "Created stream: stream_92d1164ea6724814b5307846c92d0785"
+    },
+    {
+      "test": "GET /api/v1/streams/stream_92d1164ea6724814b5307846c92d0785",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "test": "WebSocket Connection Test",
+      "passed": true,
+      "details": "Connected to ws://localhost:8000/ws/streams/test-stream-1754153239 and received response"
+    }
+  ]
+}

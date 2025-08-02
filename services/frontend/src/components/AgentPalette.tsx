@@ -1,3 +1,14 @@
+/**
+ * @deprecated This component is deprecated. The new streaming UI provides
+ * integrated agent management through StreamingControls and StreamingPage.
+ * This component will be removed in a future version.
+ *
+ * Migration Guide:
+ * - Use StreamingPage for the complete streaming workflow experience
+ * - Agent management is now handled through the streaming interface
+ * - StreamingControls provides better agent interaction capabilities
+ */
+
 import React, { useEffect, useState } from 'react';
 // import { Card, CardContent, CardHeader, CardTitle } from './ui/card'; // Temporarily commented out due to import error
 
@@ -7,7 +18,17 @@ interface Agent {
   type: string; // e.g., flexinfer.echo
 }
 
+/**
+ * @deprecated Use StreamingPage and StreamingControls instead
+ */
 const AgentPalette: React.FC = () => {
+  // Add deprecation warning
+  React.useEffect(() => {
+    console.warn(
+      'AgentPalette is deprecated. Use StreamingPage and StreamingControls instead. ' +
+      'This component will be removed in a future version.'
+    );
+  }, []);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [error, setError] = useState<string | null>(null);
 

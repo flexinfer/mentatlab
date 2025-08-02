@@ -1,6 +1,25 @@
+/**
+ * @deprecated This function is deprecated. Flow loading is now handled through
+ * the streaming service and real-time data flow in the new streaming UI.
+ * This function will be removed in a future version.
+ *
+ * Migration Guide:
+ * - Use streamingService for real-time flow data
+ * - StreamingPage handles flow loading automatically
+ * - The streaming interface provides better real-time flow management
+ */
+
 import { Flow } from './types/graph';
 
+/**
+ * @deprecated Use streamingService and StreamingPage instead
+ */
 export async function loadFlow(id: string): Promise<Flow> {
+  // Add deprecation warning
+  console.warn(
+    'loadFlow function is deprecated. Use streamingService and StreamingPage instead. ' +
+    'This function will be removed in a future version.'
+  );
   // For now, return a hardcoded example flow
   const exampleFlow: Flow = {
     apiVersion: "v1",

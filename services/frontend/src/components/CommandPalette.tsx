@@ -1,3 +1,14 @@
+/**
+ * @deprecated This component is deprecated. Command functionality is now integrated
+ * into the streaming UI through StreamingControls and StreamingPage.
+ * This component will be removed in a future version.
+ *
+ * Migration Guide:
+ * - Use StreamingControls for command and control operations
+ * - StreamingPage provides integrated command functionality
+ * - The streaming interface offers better real-time command execution
+ */
+
 import React, { useState, useEffect, useCallback } from 'react';
 import useStore from '../store';
 import { Node } from 'reactflow';
@@ -15,7 +26,17 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
+/**
+ * @deprecated Use StreamingControls and StreamingPage instead
+ */
 const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
+  // Add deprecation warning
+  React.useEffect(() => {
+    console.warn(
+      'CommandPalette is deprecated. Use StreamingControls and StreamingPage instead. ' +
+      'This component will be removed in a future version.'
+    );
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredCommands, setFilteredCommands] = useState<Command[]>([]);
 

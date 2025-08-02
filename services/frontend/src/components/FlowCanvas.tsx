@@ -1,3 +1,14 @@
+/**
+ * @deprecated This component is deprecated. Use StreamingCanvas from
+ * './StreamingCanvas.tsx' for real-time flow visualization instead.
+ * This component will be removed in a future version.
+ *
+ * Migration Guide:
+ * - Replace FlowCanvas with StreamingCanvas for real-time flow visualization
+ * - Use StreamingPage for the complete streaming experience
+ * - Streaming components provide better performance and real-time updates
+ */
+
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactFlow, {
   Controls,
@@ -62,7 +73,17 @@ const nodeTypes = {
   output: CustomNode,
 };
 
+/**
+ * @deprecated Use StreamingCanvas instead for real-time flow visualization
+ */
 const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
+  // Add deprecation warning in development
+  React.useEffect(() => {
+    console.warn(
+      'FlowCanvas is deprecated. Use StreamingCanvas from ./StreamingCanvas.tsx instead. ' +
+      'This component will be removed in a future version.'
+    );
+  }, []);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
 

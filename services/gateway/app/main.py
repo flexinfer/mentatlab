@@ -4,9 +4,10 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from . import router_flows
 from . import websockets
 from . import router_agents
+from . import streaming
 import os
 
-app = FastAPI(title="MentatLab Gateway")
+app = FastAPI(title="MentatLab Gateway with Streaming Support", version="0.2.0")
 
 # Security: CORS Configuration
 origins = [
@@ -25,7 +26,7 @@ app.add_middleware(
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["*", "Cache-Control", "Connection"],  # Add streaming headers
     expose_headers=["*"],
 )
 
@@ -53,10 +54,31 @@ async def add_security_headers(request, call_next):
 
 app.include_router(websockets.router)
 app.include_router(router_agents.router, prefix="/api/v1")
+app.include_router(streaming.router, tags=["streaming"])  # Include streaming router without prefix so WebSocket endpoints work
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    # Initialize streaming manager
+    await streaming.streaming_manager.initialize()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup services on shutdown."""
+    # Cleanup streaming manager
+    await streaming.streaming_manager.shutdown()
 
 @app.get("/healthz")
 async def healthz():
-    return {"status": "ok"}
+    return {"status": "ok", "streaming_enabled": True}
+
+@app.get("/")
+async def root():
+    return {
+        "message": "MentatLab Gateway API with Streaming Support",
+        "version": "0.2.0",
+        "features": ["flows", "agents", "websockets", "streaming", "sse"]
+    }
 
 app.include_router(router_flows.router, prefix="/flows")
 

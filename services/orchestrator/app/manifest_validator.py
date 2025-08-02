@@ -162,6 +162,12 @@ class ManifestValidator:
         if len(output_names) != len(set(output_names)):
             issues.append("Output pin names must be unique")
         
+        # Validate multimodal pin metadata
+        all_pins = inputs + outputs
+        for pin in all_pins:
+            pin_issues = self._validate_multimodal_pin(pin)
+            issues.extend(pin_issues)
+        
         # Validate environment variables format
         env_vars = manifest.get("env", [])
         for env_var in env_vars:
@@ -169,6 +175,73 @@ class ManifestValidator:
                 issues.append(f"Environment variable '{env_var}' must be in format 'KEY=VALUE'")
         
         return issues
+    
+    def _validate_multimodal_pin(self, pin: Dict[str, Any]) -> List[str]:
+        """
+        Validate multimodal pin configuration.
+        
+        Args:
+            pin: Pin definition to validate
+            
+        Returns:
+            List of validation error messages
+        """
+        issues = []
+        pin_type = pin.get("type", "string")
+        pin_name = pin.get("name", "unknown")
+        
+        # Validate multimodal pin types have appropriate metadata
+        if pin_type in ["audio", "image", "video", "stream"]:
+            metadata = pin.get("metadata", {})
+            
+            # Check for recommended MIME type (warning, not error for flexibility)
+            if not metadata.get("mimeType") and self.validation_mode == ValidationMode.STRICT:
+                issues.append(f"Pin '{pin_name}' of type '{pin_type}' should specify mimeType in metadata")
+            elif metadata.get("mimeType"):
+                mime_type = metadata["mimeType"]
+                if not self._is_valid_mime_type(pin_type, mime_type):
+                    issues.append(f"Pin '{pin_name}' has unsupported MIME type '{mime_type}' for type '{pin_type}'")
+            
+            # Type-specific validations
+            if pin_type == "audio":
+                if "sampleRate" in metadata and not isinstance(metadata["sampleRate"], int):
+                    issues.append(f"Pin '{pin_name}' sampleRate must be an integer")
+                if "channels" in metadata and not isinstance(metadata["channels"], int):
+                    issues.append(f"Pin '{pin_name}' channels must be an integer")
+                    
+            elif pin_type in ["image", "video"]:
+                if "width" in metadata and not isinstance(metadata["width"], int):
+                    issues.append(f"Pin '{pin_name}' width must be an integer")
+                if "height" in metadata and not isinstance(metadata["height"], int):
+                    issues.append(f"Pin '{pin_name}' height must be an integer")
+                    
+                if pin_type == "video":
+                    if "fps" in metadata and not isinstance(metadata["fps"], (int, float)):
+                        issues.append(f"Pin '{pin_name}' fps must be a number")
+                    if "duration" in metadata and not isinstance(metadata["duration"], (int, float)):
+                        issues.append(f"Pin '{pin_name}' duration must be a number")
+        
+        return issues
+    
+    def _is_valid_mime_type(self, pin_type: str, mime_type: str) -> bool:
+        """
+        Validate MIME type for a given pin type.
+        
+        Args:
+            pin_type: The pin type (audio, image, video, etc.)
+            mime_type: The MIME type to validate
+            
+        Returns:
+            True if MIME type is valid for the pin type
+        """
+        valid_mime_types = {
+            "audio": ["audio/wav", "audio/mp3", "audio/mpeg", "audio/ogg", "audio/flac", "audio/aac"],
+            "image": ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp"],
+            "video": ["video/mp4", "video/webm", "video/avi", "video/mov", "video/mkv", "video/quicktime"],
+            "stream": ["application/octet-stream", "text/plain"]  # Streams can be flexible
+        }
+        
+        return mime_type in valid_mime_types.get(pin_type, [])
     
     def _is_valid_image_reference(self, image: str) -> bool:
         """
@@ -206,49 +279,42 @@ class ManifestValidator:
             config: Configuration dictionary with validation settings
             
         Returns:
-            Configured ManifestValidator instance
+            ManifestValidator instance configured from settings
         """
         if not config:
-            # Try to get from environment variable
-            mode_str = os.getenv("MENTATLAB_VALIDATION_MODE", "strict").lower()
-        else:
-            mode_str = config.get("validation_mode", "strict").lower()
+            config = {}
         
+        mode_str = config.get("validation_mode", "strict")
         try:
             mode = ValidationMode(mode_str)
         except ValueError:
-            logger.warning(f"Invalid validation mode '{mode_str}', defaulting to strict")
+            logger.warning(f"Invalid validation mode '{mode_str}', defaulting to STRICT")
             mode = ValidationMode.STRICT
         
         return cls(validation_mode=mode)
 
-# Global validator instance - initialized on first import
+
+# Global validator instance for convenience
 _validator_instance: Optional[ManifestValidator] = None
 
+
 def get_validator() -> ManifestValidator:
-    """Get the global validator instance, creating it if necessary."""
+    """Get global validator instance."""
     global _validator_instance
     if _validator_instance is None:
-        _validator_instance = ManifestValidator.from_config()
+        _validator_instance = ManifestValidator()
     return _validator_instance
 
-def validate_agent_manifest(manifest: Dict[str, Any], 
-                          validation_mode: Optional[ValidationMode] = None) -> ValidationResult:
+
+def validate_agent_manifest(manifest: Dict[str, Any]) -> ValidationResult:
     """
     Convenience function to validate an agent manifest.
     
     Args:
         manifest: Agent manifest to validate
-        validation_mode: Optional validation mode override
         
     Returns:
         ValidationResult with validation outcome
     """
     validator = get_validator()
-    
-    if validation_mode and validation_mode != validator.validation_mode:
-        # Create temporary validator with specified mode
-        temp_validator = ManifestValidator(validation_mode)
-        return temp_validator.validate_manifest(manifest)
-    
     return validator.validate_manifest(manifest)

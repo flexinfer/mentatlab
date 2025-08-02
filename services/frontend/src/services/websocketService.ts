@@ -1,3 +1,14 @@
+/**
+ * @deprecated This WebSocket service is deprecated. Use streamingService from
+ * './streamingService.ts' for real-time communication instead.
+ * This service will be removed in a future version.
+ *
+ * Migration Guide:
+ * - Replace getWebSocketService() with streamingService for real-time communication
+ * - Use StreamingCanvas, StreamingConsole, and StreamingControls for UI components
+ * - The new streaming service provides better performance and more reliable connections
+ */
+
 import { CursorPosition, WorkflowChange, CollaborationEvent } from '../types/collaboration';
 
 export interface WebSocketMessage {
@@ -21,6 +32,9 @@ export type ConnectionStateHandler = (state: 'connecting' | 'connected' | 'disco
 export type CursorUpdateHandler = (position: CursorPosition) => void;
 export type WorkflowStateChangeHandler = (changes: WorkflowChange[]) => void;
 
+/**
+ * @deprecated Use streamingService instead for real-time communication
+ */
 export class WebSocketService {
   private ws: WebSocket | null = null;
   private config: Required<WebSocketConfig>;
@@ -349,12 +363,22 @@ export class WebSocketService {
 // Singleton instance for global use
 let globalWebSocketService: WebSocketService | null = null;
 
+/**
+ * @deprecated Use streamingService instead for real-time communication
+ */
 export const getWebSocketService = (): WebSocketService => {
   if (!globalWebSocketService) {
     globalWebSocketService = new WebSocketService({
       url: 'ws://localhost:8000/ws/orchestrator-events',
     });
   }
+  
+  // Add deprecation warning
+  console.warn(
+    'getWebSocketService is deprecated. Use streamingService from ./streamingService.ts instead. ' +
+    'This service will be removed in a future version.'
+  );
+  
   return globalWebSocketService;
 };
 

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import AgentPalette from './components/AgentPalette';
 import FlowCanvas from './components/FlowCanvas';
 import PropertyInspector from './components/PropertyInspector';
-import CommandPalette from './components/CommandPalette'; // Import CommandPalette
+import CommandPalette from './components/CommandPalette';
+import StreamingPage from './components/StreamingPage';
 import { ReactFlowProvider } from 'reactflow';
 import './globals.css';
 import 'reactflow/dist/style.css';
@@ -12,9 +14,21 @@ import useStore from './store';
 import { Flow, Node as GraphNode, Edge as GraphEdge, FlowMeta, FlowGraph, Position } from './types/graph';
 import { v4 as uuidv4 } from 'uuid';
 
-function App() {
+/**
+ * @deprecated The FlowBuilder interface is deprecated. Use StreamingPage for the new
+ * streaming workflow experience instead. This interface will be removed in a future version.
+ */
+const FlowBuilder = () => {
   const { nodes, edges } = useStore();
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  
+  // Add deprecation warning
+  React.useEffect(() => {
+    console.warn(
+      'FlowBuilder interface is deprecated. Use the Streaming View (/streaming) for the new workflow experience. ' +
+      'This interface will be removed in a future version.'
+    );
+  }, []);
 
   const handleRunFlow = async () => {
     const flowNodes: GraphNode[] = nodes.map(node => ({
@@ -92,9 +106,29 @@ function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col">
+      {/* Deprecation Notice */}
+      <div className="bg-orange-100 border-l-4 border-orange-500 text-orange-700 p-3 text-sm">
+        <div className="flex items-center">
+          <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <strong>Deprecated Interface:</strong> This workflow builder is deprecated.
+          <Link to="/streaming" className="text-orange-800 underline ml-1">
+            Switch to the new Streaming View
+          </Link> for better performance and real-time features.
+        </div>
+      </div>
       <header className="flex items-center justify-between p-4 border-b">
-        <h1 className="text-xl font-bold">Workflow Builder</h1>
-        <Button onClick={handleRunFlow}>Run</Button>
+        <h1 className="text-xl font-bold">Workflow Builder (Deprecated)</h1>
+        <div>
+          <Link to="/streaming">
+            <Button variant="outline" className="mr-2">Streaming View</Button>
+          </Link>
+          <Button onClick={handleRunFlow}>Run</Button>
+          <Link to="/streaming">
+            <Button onClick={handleRunFlow} className="ml-2">Run in Streaming Mode</Button>
+          </Link>
+        </div>
       </header>
       <div className="flex-grow">
         <ReactFlowProvider>
@@ -115,6 +149,17 @@ function App() {
       </div>
       <CommandPalette isOpen={isCommandPaletteOpen} onClose={toggleCommandPalette} />
     </div>
+  );
+};
+
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<FlowBuilder />} />
+        <Route path="/streaming" element={<StreamingPage />} />
+      </Routes>
+    </Router>
   );
 }
 
