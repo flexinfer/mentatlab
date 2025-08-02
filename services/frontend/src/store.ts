@@ -14,10 +14,16 @@ import { NodeOperations, NodeType } from './types/NodeOperations';
 import { WorkflowChange } from './types/collaboration';
 import { v4 as uuidv4 } from 'uuid';
 
+import { StreamSession } from './types/streaming';
+
+// Re-export streaming store for compatibility
+export { useStreamingStore } from './store/streamingStore';
+
 export type RFState = NodeOperations & {
   nodes: Node[];
   edges: Edge[];
   selectedNodeId: string | null;
+  streamingSessions: Map<string, StreamSession>;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
@@ -28,12 +34,32 @@ export type RFState = NodeOperations & {
   setSelectedNodeId: (nodeId: string | null) => void;
   updateNodeConfig: (nodeId: string, data: object) => void;
   applyWorkflowChanges: (changes: WorkflowChange[]) => void;
+  addStreamingSession: (session: StreamSession) => void;
+  updateStreamingSession: (streamId: string, status: StreamSession['status']) => void;
+  removeStreamingSession: (streamId: string) => void;
+  
+  // Streaming state
+  activeStreamId: string | null;
+  streams: Record<string, any>;
+  connectionStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+  setActiveStreamId: (id: string | null) => void;
+  addStream: (stream: any) => void;
+  updateStreamStatus: (status: any) => void;
+  addDataPoint: (data: any) => void;
+  addConsoleMessage: (message: any) => void;
+  setConnectionStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
 };
 
 const useStore = create<RFState>((set, get) => ({
   nodes: [],
   edges: [],
   selectedNodeId: null,
+  streamingSessions: new Map(),
+  
+  // Streaming state
+  activeStreamId: null,
+  streams: {},
+  connectionStatus: 'disconnected',
   onNodesChange: (changes: NodeChange[]) => {
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes),
@@ -149,6 +175,132 @@ const useStore = create<RFState>((set, get) => ({
 
       return { nodes: newNodes, edges: newEdges };
     });
+  },
+  addStreamingSession: (session) => {
+    set((state) => {
+      const newSessions = new Map(state.streamingSessions);
+      newSessions.set(session.stream_id, session);
+      return { streamingSessions: newSessions };
+    });
+  },
+  updateStreamingSession: (streamId, status) => {
+    set((state) => {
+      const newSessions = new Map(state.streamingSessions);
+      const session = newSessions.get(streamId);
+      if (session) {
+        newSessions.set(streamId, { ...session, status });
+      }
+      return { streamingSessions: newSessions };
+    });
+  },
+  removeStreamingSession: (streamId) => {
+    set((state) => {
+      const newSessions = new Map(state.streamingSessions);
+      newSessions.delete(streamId);
+      return { streamingSessions: newSessions };
+    });
+  },
+  
+  // Streaming state implementations
+  setActiveStreamId: (id) => {
+    console.log('[Store] Setting active stream ID:', id);
+    set({ activeStreamId: id });
+  },
+  addStream: (stream) => {
+    console.log('[Store] Adding stream:', stream);
+    set((state) => ({
+      streams: { ...state.streams, [stream.id]: stream }
+    }));
+  },
+  updateStreamStatus: (status) => set((state) => {
+    console.log('[Store] Updating stream status:', status, 'for stream:', state.activeStreamId);
+    if (!state.activeStreamId) {
+      console.warn('[Store] No active stream ID to update status');
+      return state;
+    }
+    return {
+      streams: {
+        ...state.streams,
+        [state.activeStreamId]: {
+          ...state.streams[state.activeStreamId],
+          status
+        }
+      }
+    };
+  }),
+  addDataPoint: (data) => set((state) => {
+    console.log('[Store] Adding data point:', data, 'to stream:', state.activeStreamId);
+    if (!state.activeStreamId) {
+      console.warn('[Store] No active stream ID to add data point');
+      return state;
+    }
+    const stream = state.streams[state.activeStreamId];
+    if (!stream) {
+      console.warn('[Store] Stream not found:', state.activeStreamId);
+      // Create stream if it doesn't exist
+      const newStream = {
+        id: state.activeStreamId,
+        name: `Stream ${state.activeStreamId}`,
+        status: 'active',
+        data: [data],
+        console: []
+      };
+      return {
+        streams: {
+          ...state.streams,
+          [state.activeStreamId]: newStream
+        }
+      };
+    }
+    
+    return {
+      streams: {
+        ...state.streams,
+        [state.activeStreamId]: {
+          ...stream,
+          data: [...(stream.data || []), data].slice(-100) // Keep last 100 points
+        }
+      }
+    };
+  }),
+  addConsoleMessage: (message) => set((state) => {
+    console.log('[Store] Adding console message:', message, 'to stream:', state.activeStreamId);
+    if (!state.activeStreamId) {
+      console.warn('[Store] No active stream ID to add console message');
+      return state;
+    }
+    const stream = state.streams[state.activeStreamId];
+    if (!stream) {
+      console.warn('[Store] Stream not found:', state.activeStreamId);
+      // Create stream if it doesn't exist
+      const newStream = {
+        id: state.activeStreamId,
+        name: `Stream ${state.activeStreamId}`,
+        status: 'active',
+        data: [],
+        console: [message]
+      };
+      return {
+        streams: {
+          ...state.streams,
+          [state.activeStreamId]: newStream
+        }
+      };
+    }
+    
+    return {
+      streams: {
+        ...state.streams,
+        [state.activeStreamId]: {
+          ...stream,
+          console: [...(stream.console || []), message].slice(-500) // Keep last 500 messages
+        }
+      }
+    };
+  }),
+  setConnectionStatus: (status) => {
+    console.log('[Store] Setting connection status:', status);
+    set({ connectionStatus: status });
   },
 }));
 

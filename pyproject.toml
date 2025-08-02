@@ -1,0 +1,15 @@
+[project]
+name = "mentatlab"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Cody Blevins", email = "cody@example.com"},
+]
+dependencies = ["aiohttp>=3.12.15", "websockets>=15.0.1"]
+requires-python = "==3.13.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pdm]
+distribution = false

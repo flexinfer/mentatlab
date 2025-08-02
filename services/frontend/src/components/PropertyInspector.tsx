@@ -1,8 +1,29 @@
+/**
+ * @deprecated This component is deprecated. Property inspection is now handled
+ * through the streaming UI components (StreamingConsole and StreamingControls).
+ * This component will be removed in a future version.
+ *
+ * Migration Guide:
+ * - Use StreamingConsole for real-time property monitoring
+ * - Use StreamingControls for property configuration
+ * - The streaming interface provides better real-time property inspection
+ */
+
 import React from 'react';
 import useStore from '../store';
 import { Node } from 'reactflow';
 
+/**
+ * @deprecated Use StreamingConsole and StreamingControls instead
+ */
 const PropertyInspector: React.FC = () => {
+  // Add deprecation warning
+  React.useEffect(() => {
+    console.warn(
+      'PropertyInspector is deprecated. Use StreamingConsole and StreamingControls instead. ' +
+      'This component will be removed in a future version.'
+    );
+  }, []);
   const selectedNodeId = useStore((state) => state.selectedNodeId);
   const nodes = useStore((state) => state.nodes);
   const updateNodeConfig = useStore((state) => state.updateNodeConfig);

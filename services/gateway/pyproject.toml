@@ -7,7 +7,10 @@ dependencies = [
     "uvicorn",
     "pydantic>=2.0",
     "httpx",
-    "jsonschema>=4.0.0",
+    "jsonschema>=4.25.0",
+    "redis>=6.2.0",
+    "aiohttp>=3.12.15",
+    "websockets>=15.0.1",
 ]
 
 [project.optional-dependencies]
