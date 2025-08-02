@@ -1,13 +1,41 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from graphlib import TopologicalSorter
 import asyncio
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel
 
 from services.gateway.app.models import Flow, Node, Edge, Meta, Graph, Position
 from services.orchestrator.app.execution import ExecutionEngine, ExecutionResult
 from services.orchestrator.app.scheduling import SchedulingService
 from services.orchestrator.app.resources import ResourceManager
+from services.orchestrator.app.manifest_validator import (
+    validate_agent_manifest,
+    ManifestValidator,
+    ValidationMode,
+    ValidationResult
+)
+
+# Request/Response models for new endpoints
+class AgentScheduleRequest(BaseModel):
+    agent_manifest: Dict[str, Any]
+    inputs: Dict[str, Any] = {}
+    execution_id: Optional[str] = None
+    skip_validation: bool = False
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    status: Dict[str, Any]
+
+class ValidationRequest(BaseModel):
+    agent_manifest: Dict[str, Any]
+    validation_mode: Optional[str] = None
+
+class ValidationResponse(BaseModel):
+    valid: bool
+    errors: List[str] = []
+    warnings: List[str] = []
+    validation_mode: str
 
 def create_execution_plan(flow: Flow) -> List[str]:
     """
@@ -141,6 +169,131 @@ async def enforce_quotas_endpoint(user_id: str):
     """
     result = resource_manager.enforceQuotas(user_id)
     return result
+
+# New Kubernetes scheduling endpoints
+@app.post("/agents/schedule")
+async def schedule_agent_endpoint(request: AgentScheduleRequest):
+    """
+    Schedule an individual agent as a Kubernetes Job or Deployment.
+    """
+    try:
+        resource_id = scheduling_service.scheduleAgent(
+            request.agent_manifest,
+            request.inputs,
+            request.execution_id,
+            request.skip_validation
+        )
+        return {"resource_id": resource_id, "status": "scheduled"}
+    except ValueError as e:
+        # Validation errors
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to schedule agent: {str(e)}")
+
+@app.get("/jobs/{job_id}/status", response_model=JobStatusResponse)
+async def get_job_status_endpoint(job_id: str):
+    """
+    Get the status of a scheduled job or deployment.
+    """
+    try:
+        status = scheduling_service.getJobStatus(job_id)
+        return JobStatusResponse(job_id=job_id, status=status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get job status: {str(e)}")
+
+@app.delete("/jobs/{job_id}")
+async def cleanup_job_endpoint(job_id: str):
+    """
+    Clean up a completed or failed job.
+    """
+    try:
+        success = scheduling_service.cleanupJob(job_id)
+        if success:
+            return {"message": f"Job {job_id} cleaned up successfully"}
+        else:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup job: {str(e)}")
+
+# Manifest validation endpoints
+@app.post("/agents/validate", response_model=ValidationResponse)
+async def validate_agent_manifest_endpoint(request: ValidationRequest):
+    """
+    Validate an agent manifest against the schema.
+    """
+    try:
+        # Parse validation mode if provided
+        validation_mode = None
+        if request.validation_mode:
+            try:
+                validation_mode = ValidationMode(request.validation_mode.lower())
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid validation mode. Must be one of: {[m.value for m in ValidationMode]}"
+                )
+        
+        # Perform validation
+        result = validate_agent_manifest(request.agent_manifest, validation_mode)
+        
+        # Determine which mode was actually used
+        validator = ManifestValidator.from_config()
+        actual_mode = validation_mode.value if validation_mode else validator.validation_mode.value
+        
+        return ValidationResponse(
+            valid=result.is_valid,
+            errors=result.errors,
+            warnings=result.warnings,
+            validation_mode=actual_mode
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
+
+@app.get("/agents/validation/config")
+async def get_validation_config():
+    """
+    Get current validation configuration.
+    """
+    try:
+        validator = ManifestValidator.from_config()
+        return {
+            "validation_mode": validator.validation_mode.value,
+            "available_modes": [mode.value for mode in ValidationMode],
+            "schema_loaded": validator.schema is not None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get validation config: {str(e)}")
+
+@app.put("/agents/validation/config")
+async def update_validation_config(
+    validation_mode: str = Query(..., description="Validation mode to set")
+):
+    """
+    Update validation configuration.
+    """
+    try:
+        # Validate the mode
+        try:
+            mode = ValidationMode(validation_mode.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid validation mode. Must be one of: {[m.value for m in ValidationMode]}"
+            )
+        
+        # Update global validator
+        from services.orchestrator.app.manifest_validator import get_validator
+        validator = get_validator()
+        validator.set_validation_mode(mode)
+        
+        return {
+            "message": f"Validation mode updated to {mode.value}",
+            "validation_mode": mode.value
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update validation config: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
