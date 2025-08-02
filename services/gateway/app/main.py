@@ -1,10 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from . import router_flows
-from . import websockets
-from . import router_agents
-from . import streaming
+from services.gateway.app import router_flows
+from services.gateway.app import websockets
+from services.gateway.app import router_agents
+from services.gateway.app import streaming
 import os
 
 app = FastAPI(title="MentatLab Gateway with Streaming Support", version="0.2.0")

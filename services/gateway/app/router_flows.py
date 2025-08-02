@@ -3,9 +3,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.models import Flow
+from services.gateway.app.models import Flow
 # from app.validation import validation_middleware, ValidationMode
-from app.streaming import streaming_manager, StreamEventType, StreamMessage
+from services.gateway.app.streaming import streaming_manager, StreamEventType, StreamMessage
 
 # Temporary mock for validation
 class ValidationMode:

@@ -6,7 +6,7 @@ import redis.asyncio as redis
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 # Import streaming capabilities
-from app.streaming import streaming_manager, StreamEventType, StreamMessage
+from services.gateway.app.streaming import streaming_manager, StreamEventType, StreamMessage
 
 logger = logging.getLogger(__name__)
 
