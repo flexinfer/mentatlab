@@ -1,0 +1,17 @@
+id: {{AGENT_ID}}
+version: {{VERSION}}
+image: {{AGENT_ID}}:{{VERSION}}
+runtime: python3.12
+description: "{{DESCRIPTION}}"
+inputs:
+  - name: text
+    type: string
+outputs:
+  - name: result
+    type: string
+longRunning: false
+resources:
+  cpu: "100m"
+  memory: "128Mi"
+env:
+  - "PYTHONPATH=/app"

@@ -1,0 +1,12 @@
+id: flexinfer.echo
+version: 0.1.0
+image: flexinfer/echo:0.1.0
+runtime: python3.12
+description: "Return the input text unchanged."
+inputs:
+  - name: text
+    type: string
+outputs:
+  - name: text
+    type: string
+longRunning: false

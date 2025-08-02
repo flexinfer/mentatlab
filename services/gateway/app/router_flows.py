@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, status, Query
 import json
 from pathlib import Path
+from typing import Any
 
 from services.gateway.app.models import Flow
 from services.orchestrator.app.main import create_execution_plan
+from services.gateway.app.validation import validation_middleware, ValidationMode
 
 router = APIRouter()
 
@@ -26,10 +28,39 @@ async def create_flow(
     flow: Flow,
     mode: str = Query("plan", description="Execution mode: plan, redis, or k8s"),
     cron: str | None = Query(None, description="Cron schedule for k8s mode"),
+    validation_mode: str = Query("strict", description="Validation mode: strict, permissive, or disabled"),
 ):
     """Create and execute a flow: plan-only, Redis-based, or k8s-based execution."""
+    
+    # Parse validation mode
+    try:
+        val_mode = ValidationMode(validation_mode.lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid validation mode. Must be one of: {[m.value for m in ValidationMode]}"
+        )
+    
+    # Validate flow before processing
+    flow_dict = flow.model_dump()
+    is_valid, validation_info = await validation_middleware(flow_dict, val_mode)
+    
+    # Handle validation results based on mode
+    if not is_valid and val_mode == ValidationMode.STRICT:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Flow validation failed",
+                "validation_errors": validation_info["errors"],
+                "validation_warnings": validation_info["warnings"]
+            }
+        )
+    
     execution_plan = create_execution_plan(flow)
-    result: dict[str, Any] = {"execution_plan": execution_plan}
+    result: dict[str, Any] = {
+        "execution_plan": execution_plan,
+        "validation": validation_info
+    }
 
     if mode == "redis":
         # Lightweight execution: publish tasks to Redis and UI events channel
@@ -65,3 +96,30 @@ async def create_flow(
         return result
 
     return result
+
+# Validation endpoints for the gateway
+@router.post("/validate", status_code=status.HTTP_200_OK)
+async def validate_flow(
+    flow: Flow,
+    validation_mode: str = Query("strict", description="Validation mode: strict, permissive, or disabled"),
+):
+    """Validate a flow without executing it."""
+    
+    # Parse validation mode
+    try:
+        val_mode = ValidationMode(validation_mode.lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid validation mode. Must be one of: {[m.value for m in ValidationMode]}"
+        )
+    
+    # Validate flow
+    flow_dict = flow.model_dump()
+    is_valid, validation_info = await validation_middleware(flow_dict, val_mode)
+    
+    return {
+        "valid": is_valid,
+        "validation_mode": validation_mode,
+        "validation_info": validation_info
+    }
