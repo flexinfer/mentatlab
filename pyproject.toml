@@ -5,7 +5,7 @@ description = "Default template for PDM package"
 authors = [
     {name = "Cody Blevins", email = "cody@example.com"},
 ]
-dependencies = ["aiohttp>=3.12.15", "websockets>=15.0.1"]
+dependencies = ["aiohttp>=3.12.15", "websockets>=15.0.1", "pytest>=6.0"]
 requires-python = "==3.13.*"
 readme = "README.md"
 license = {text = "MIT"}
