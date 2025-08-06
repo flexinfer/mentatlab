@@ -23,6 +23,12 @@ class SchedulingService:
         self.batch_v1_api = None
         self.core_v1_api = None
         self.data_flow_service = get_data_flow_service()
+        self._initialized = False
+    
+    def _ensure_initialized(self):
+        """Lazy initialization of Kubernetes clients."""
+        if self._initialized:
+            return
         
         try:
             # Try to load in-cluster config first (for production)
@@ -44,12 +50,14 @@ class SchedulingService:
         self.core_v1_api = client.CoreV1Api()
         
         logger.info(f"SchedulingService initialized for namespace: {self.namespace}")
+        self._initialized = True
     
     def scheduleWorkflow(self, workflow_id: str, cron_schedule: str) -> str:
         """
         Schedule a workflow (maintains backward compatibility).
         For now, this creates a simple Job. In the future, this could create CronJobs.
         """
+        self._ensure_initialized()
         logger.info(f"Scheduling workflow {workflow_id} with cron schedule: {cron_schedule}")
         
         # For backward compatibility, create a simple job
@@ -86,6 +94,7 @@ class SchedulingService:
             ValueError: If manifest validation fails in strict mode
             ApiException: If Kubernetes operations fail
         """
+        self._ensure_initialized()
         agent_id = agent_manifest.get("id", "unknown-agent")
         
         # Validate agent manifest before scheduling (unless explicitly skipped)
@@ -128,6 +137,7 @@ class SchedulingService:
     
     def getJobStatus(self, job_id: str) -> Dict[str, Any]:
         """Get the status of a scheduled job or deployment."""
+        self._ensure_initialized()
         try:
             # Try to get as Job first
             try:
@@ -150,6 +160,7 @@ class SchedulingService:
     
     def cleanupJob(self, job_id: str) -> bool:
         """Clean up a completed or failed job."""
+        self._ensure_initialized()
         try:
             # Try to delete as Job first
             try:

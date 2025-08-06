@@ -1,13 +1,22 @@
 import pytest
-import json
 from unittest.mock import Mock, patch
-from services.orchestrator.app.scheduling import SchedulingService
+from typing import Dict, Any
 
-def test_agent_scheduling_with_validation():
-    """Test that agent scheduling includes validation."""
-    # Create a valid agent manifest based on the echo agent
-    valid_manifest = {
-        "id": "test.agent",
+from services.orchestrator.app.tests.mock_scheduling import MockSchedulingService
+from services.orchestrator.app.manifest_validator import ValidationMode, ValidationResult
+
+
+@pytest.fixture
+def scheduling_service():
+    """Create a MockSchedulingService instance for testing."""
+    return MockSchedulingService()
+
+
+@patch('services.orchestrator.app.tests.mock_scheduling.validate_agent_manifest')
+def test_agent_scheduling_with_validation(mock_validate, scheduling_service):
+    """Test that agent scheduling validates manifest before scheduling."""
+    agent_manifest = {
+        "id": "test-agent",
         "version": "1.0.0",
         "image": "test/agent:1.0.0",
         "description": "Test agent for validation",
@@ -20,69 +29,100 @@ def test_agent_scheduling_with_validation():
         "longRunning": False
     }
     
-    # Mock the Kubernetes client to avoid real K8s calls
-    with patch('services.orchestrator.app.scheduling.config.load_incluster_config'), \
-         patch('services.orchestrator.app.scheduling.config.load_kube_config'), \
-         patch('services.orchestrator.app.scheduling.client.ApiClient'), \
-         patch('services.orchestrator.app.scheduling.client.AppsV1Api'), \
-         patch('services.orchestrator.app.scheduling.client.BatchV1Api') as mock_batch_api, \
-         patch('services.orchestrator.app.scheduling.client.CoreV1Api'):
-        
-        # Mock the batch API create method
-        mock_batch_api.return_value.create_namespaced_job.return_value = Mock()
-        
-        # Create scheduling service
-        scheduler = SchedulingService()
-        
-        # Test valid manifest scheduling
-        try:
-            result = scheduler.scheduleAgent(valid_manifest, {"input1": "test"})
-            assert result is not None
-            print("✓ Valid manifest scheduling succeeded")
-        except Exception as e:
-            # If validation is working, this should succeed
-            print(f"Valid manifest scheduling failed: {e}")
+    inputs = {"input1": "test"}
+    
+    # Mock successful validation
+    mock_validate.return_value = ValidationResult(
+        is_valid=True,
+        errors=[],
+        warnings=[]
+    )
+    
+    # Schedule the agent
+    resource_id = scheduling_service.scheduleAgent(agent_manifest, inputs)
+    
+    # Verify validation was called
+    mock_validate.assert_called_once_with(agent_manifest)
+    
+    # Verify job was created
+    assert resource_id.startswith("test-agent-")
+    assert resource_id in scheduling_service.scheduled_jobs
+    assert scheduling_service.scheduled_jobs[resource_id]["type"] == "agent"
+    assert scheduling_service.scheduled_jobs[resource_id]["agent_id"] == "test-agent"
 
-def test_invalid_agent_scheduling():
-    """Test that invalid agent manifests are rejected."""
-    # Create an invalid agent manifest
+
+@patch('services.orchestrator.app.tests.mock_scheduling.validate_agent_manifest')
+def test_invalid_agent_scheduling(mock_validate, scheduling_service):
+    """Test that invalid manifests are rejected during scheduling."""
     invalid_manifest = {
         "id": "test.invalid",
         # Missing required fields
     }
     
-    # Mock the Kubernetes client to avoid real K8s calls
-    with patch('services.orchestrator.app.scheduling.config.load_incluster_config'), \
-         patch('services.orchestrator.app.scheduling.config.load_kube_config'), \
-         patch('services.orchestrator.app.scheduling.client.ApiClient'), \
-         patch('services.orchestrator.app.scheduling.client.AppsV1Api'), \
-         patch('services.orchestrator.app.scheduling.client.BatchV1Api'), \
-         patch('services.orchestrator.app.scheduling.client.CoreV1Api'):
-        
-        # Create scheduling service
-        scheduler = SchedulingService()
-        
-        # Test invalid manifest scheduling - should raise ValueError
-        try:
-            result = scheduler.scheduleAgent(invalid_manifest, {})
-            print("❌ Invalid manifest was not rejected")
-            assert False, "Invalid manifest should have been rejected"
-        except ValueError as e:
-            # This is expected for validation failure
-            assert "validation failed" in str(e).lower()
-            print("✓ Invalid manifest correctly rejected")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
-            # Could be a different error if dependencies not available
+    # Mock failed validation
+    mock_validate.return_value = ValidationResult(
+        is_valid=False,
+        errors=["Invalid agent manifest: missing required field 'image'"],
+        warnings=[]
+    )
+    
+    # Try to schedule the agent - should raise ValueError
+    with pytest.raises(ValueError) as exc_info:
+        scheduling_service.scheduleAgent(invalid_manifest, {})
+    
+    assert "Agent manifest validation failed" in str(exc_info.value)
+    
+    # Verify job was not created
+    assert len(scheduling_service.scheduled_jobs) == 0
 
-if __name__ == "__main__":
-    """Run tests manually."""
-    try:
-        test_agent_scheduling_with_validation()
-        test_invalid_agent_scheduling()
-        print("\n🎉 Scheduling validation tests completed!")
-    except ImportError as e:
-        print(f"\n⚠️  Dependencies not available: {e}")
-        print("Tests would work with proper environment setup")
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
+
+def test_workflow_scheduling(scheduling_service):
+    """Test workflow scheduling."""
+    workflow_id = "test-workflow"
+    cron_schedule = "0 * * * *"
+    
+    # Schedule workflow
+    job_id = scheduling_service.scheduleWorkflow(workflow_id, cron_schedule)
+    
+    # Verify job was created
+    assert job_id.startswith(f"workflow-{workflow_id}-")
+    assert job_id in scheduling_service.scheduled_jobs
+    assert scheduling_service.scheduled_jobs[job_id]["type"] == "workflow"
+    assert scheduling_service.scheduled_jobs[job_id]["workflow_id"] == workflow_id
+    assert scheduling_service.scheduled_jobs[job_id]["cron_schedule"] == cron_schedule
+
+
+def test_job_status_retrieval(scheduling_service):
+    """Test getting job status."""
+    # Schedule a job first
+    agent_manifest = {"id": "test-agent", "image": "test:latest"}
+    resource_id = scheduling_service.scheduleAgent(agent_manifest, {}, skip_validation=True)
+    
+    # Get status
+    status = scheduling_service.getJobStatus(resource_id)
+    assert status["status"] == "scheduled"
+    
+    # Test non-existent job
+    status = scheduling_service.getJobStatus("non-existent-job")
+    assert status["status"] == "not_found"
+
+
+def test_job_cleanup(scheduling_service):
+    """Test job cleanup."""
+    # Schedule a job first
+    agent_manifest = {"id": "test-agent", "image": "test:latest"}
+    resource_id = scheduling_service.scheduleAgent(agent_manifest, {}, skip_validation=True)
+    
+    # Verify job exists
+    assert resource_id in scheduling_service.scheduled_jobs
+    
+    # Cleanup job
+    success = scheduling_service.cleanupJob(resource_id)
+    assert success is True
+    
+    # Verify job is gone
+    assert resource_id not in scheduling_service.scheduled_jobs
+    
+    # Test cleanup of non-existent job
+    success = scheduling_service.cleanupJob("non-existent-job")
+    assert success is False

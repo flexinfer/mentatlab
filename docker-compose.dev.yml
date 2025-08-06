@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ORCHESTRATOR_URL=http://orchestrator:8081
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8080
+      - UVICORN_RELOAD=true
+    volumes:
+      - ./services/gateway:/app
+    depends_on:
+      - orchestrator
+    networks:
+      - mentat-network
+
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8081
+      - UVICORN_RELOAD=true
+    volumes:
+      - ./services/orchestrator:/app
+    networks:
+      - mentat-network
+
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8080
+    volumes:
+      - ./services/frontend:/app
+      - /app/node_modules
+    depends_on:
+      - gateway
+    networks:
+      - mentat-network
+
+  echo-agent:
+    build:
+      context: ./services/agents/echo
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      - PORT=8082
+    volumes:
+      - ./services/agents/echo:/app
+    networks:
+      - mentat-network
+
+networks:
+  mentat-network:
+    driver: bridge
