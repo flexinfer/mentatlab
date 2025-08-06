@@ -87,8 +87,17 @@ app = FastAPI(
 
 # Initialize services
 execution_engine = ExecutionEngine()
-scheduling_service = SchedulingService()
 resource_manager = ResourceManager()
+
+# Lazy initialization of scheduling service
+_scheduling_service = None
+
+def get_scheduling_service() -> SchedulingService:
+    """Get or create the scheduling service instance."""
+    global _scheduling_service
+    if _scheduling_service is None:
+        _scheduling_service = SchedulingService()
+    return _scheduling_service
 
 @app.post("/execute/{workflow_id}", response_model=ExecutionResult)
 async def execute_workflow_endpoint(workflow_id: str, inputs: Dict[str, Any]):
@@ -135,7 +144,7 @@ async def schedule_workflow_endpoint(workflow_id: str, cron_schedule: str):
     """
     Schedules a workflow to run periodically using a cron schedule.
     """
-    job_id = scheduling_service.scheduleWorkflow(workflow_id, cron_schedule)
+    job_id = get_scheduling_service().scheduleWorkflow(workflow_id, cron_schedule)
     return {"scheduled_job_id": job_id}
 
 @app.post("/resources/allocate/{workflow_id}")
@@ -177,7 +186,7 @@ async def schedule_agent_endpoint(request: AgentScheduleRequest):
     Schedule an individual agent as a Kubernetes Job or Deployment.
     """
     try:
-        resource_id = scheduling_service.scheduleAgent(
+        resource_id = get_scheduling_service().scheduleAgent(
             request.agent_manifest,
             request.inputs,
             request.execution_id,
@@ -196,7 +205,7 @@ async def get_job_status_endpoint(job_id: str):
     Get the status of a scheduled job or deployment.
     """
     try:
-        status = scheduling_service.getJobStatus(job_id)
+        status = get_scheduling_service().getJobStatus(job_id)
         return JobStatusResponse(job_id=job_id, status=status)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get job status: {str(e)}")
@@ -207,7 +216,7 @@ async def cleanup_job_endpoint(job_id: str):
     Clean up a completed or failed job.
     """
     try:
-        success = scheduling_service.cleanupJob(job_id)
+        success = get_scheduling_service().cleanupJob(job_id)
         if success:
             return {"message": f"Job {job_id} cleaned up successfully"}
         else:

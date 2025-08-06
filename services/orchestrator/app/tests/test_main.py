@@ -1,8 +1,15 @@
 import pytest
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from app.main import app
+from app.tests.mock_scheduling import MockSchedulingService
 
-client = TestClient(app)
+# Mock the scheduling service for all tests
+mock_scheduling_service = MockSchedulingService()
+
+# Patch the get_scheduling_service function
+with patch('app.main.get_scheduling_service', return_value=mock_scheduling_service):
+    client = TestClient(app)
 
 def test_execute_workflow_endpoint():
     # Assuming a workflow_id that exists or a mock for the workflow execution
