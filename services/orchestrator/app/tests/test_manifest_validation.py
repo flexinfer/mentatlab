@@ -38,6 +38,8 @@ def test_invalid_manifest():
 
 def test_validation_modes():
     """Test different validation modes."""
+    from services.orchestrator.app.manifest_validator import get_validator
+    
     invalid_manifest = {
         "id": "test.invalid",
         "version": "1.0.0",
@@ -47,28 +49,39 @@ def test_validation_modes():
         "outputs": []
     }
     
+    # Get the validator instance
+    validator = get_validator()
+    
     # Test strict mode
-    strict_result = validate_agent_manifest(invalid_manifest, ValidationMode.STRICT)
+    validator.set_validation_mode(ValidationMode.STRICT)
+    strict_result = validate_agent_manifest(invalid_manifest)
     assert not strict_result.is_valid
     
-    # Test permissive mode  
-    permissive_result = validate_agent_manifest(invalid_manifest, ValidationMode.PERMISSIVE)
+    # Test permissive mode
+    validator.set_validation_mode(ValidationMode.PERMISSIVE)
+    permissive_result = validate_agent_manifest(invalid_manifest)
     assert permissive_result.is_valid  # Should pass but with warnings
     assert len(permissive_result.warnings) > 0
     
     # Test disabled mode
-    disabled_result = validate_agent_manifest(invalid_manifest, ValidationMode.DISABLED)
+    validator.set_validation_mode(ValidationMode.DISABLED)
+    disabled_result = validate_agent_manifest(invalid_manifest)
     assert disabled_result.is_valid
     assert len(disabled_result.errors) == 0
     assert len(disabled_result.warnings) == 0
+    
+    # Reset to strict mode for other tests
+    validator.set_validation_mode(ValidationMode.STRICT)
     
     print(f"✓ All validation modes work correctly")
 
 def test_semantic_validation():
     """Test semantic validation rules."""
+    from services.orchestrator.app.manifest_validator import get_validator
+    
     manifest_with_issues = {
         "id": "test.semantic",
-        "version": "1.0.0", 
+        "version": "1.0.0",
         "image": "myimage:latest",  # Should warn about latest tag
         "description": "Test agent",
         "inputs": [
@@ -84,7 +97,11 @@ def test_semantic_validation():
         ]
     }
     
-    result = validate_agent_manifest(manifest_with_issues, ValidationMode.STRICT)
+    # Ensure we're in strict mode
+    validator = get_validator()
+    validator.set_validation_mode(ValidationMode.STRICT)
+    
+    result = validate_agent_manifest(manifest_with_issues)
     
     assert not result.is_valid
     

@@ -233,12 +233,18 @@ async def validate_agent_manifest_endpoint(request: ValidationRequest):
                     detail=f"Invalid validation mode. Must be one of: {[m.value for m in ValidationMode]}"
                 )
         
-        # Perform validation
-        result = validate_agent_manifest(request.agent_manifest, validation_mode)
+        # Get the validator and set the mode if provided
+        from services.orchestrator.app.manifest_validator import get_validator
+        validator = get_validator()
         
-        # Determine which mode was actually used
-        validator = ManifestValidator.from_config()
-        actual_mode = validation_mode.value if validation_mode else validator.validation_mode.value
+        if validation_mode:
+            validator.set_validation_mode(validation_mode)
+        
+        # Perform validation
+        result = validate_agent_manifest(request.agent_manifest)
+        
+        # Get the actual mode used
+        actual_mode = validator.validation_mode.value
         
         return ValidationResponse(
             valid=result.is_valid,
