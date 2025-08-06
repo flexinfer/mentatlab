@@ -57,13 +57,41 @@ jobs:
           pdm install --dev
           cd ../..
 
-      - name: Run tests
+      - name: Run Gateway tests
         run: |
           # Set PYTHONPATH to project root for absolute imports
           export PYTHONPATH=$PWD
           
-          # Run tests with pytest from project root
-          python -m pytest -c pytest.ini -v
+          # Run gateway tests within its PDM environment
+          cd services/gateway
+          pdm run pytest tests/ -v
+          cd ../..
+      
+      - name: Run Orchestrator tests
+        run: |
+          # Set PYTHONPATH to project root for absolute imports
+          export PYTHONPATH=$PWD
+          
+          # Run orchestrator tests within its PDM environment
+          cd services/orchestrator
+          pdm run pytest app/tests/ -v
+          cd ../..
+      
+      - name: Run Echo Agent tests
+        run: |
+          # Set PYTHONPATH to project root for absolute imports
+          export PYTHONPATH=$PWD
+          
+          # Check if echo agent has tests
+          if [ -d "services/agents/echo/app/tests" ]; then
+            cd services/agents/echo
+            # Install pytest if needed
+            python -m pip install pytest
+            python -m pytest app/tests/ -v
+            cd ../../..
+          else
+            echo "No tests found for echo agent"
+          fi
 
   test-frontend:
     runs-on: ubuntu-latest
