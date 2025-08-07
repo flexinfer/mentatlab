@@ -10,3 +10,4 @@ services/frontend/node_modules/
 .env
 services/gateway/.pdm-python
 logs/frontend.log
+logs/frontend.log
