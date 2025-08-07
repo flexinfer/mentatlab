@@ -310,6 +310,11 @@ async def update_validation_config(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update validation config: {str(e)}")
 
+@app.get("/healthz")
+async def healthz():
+    """Health check endpoint."""
+    return {"status": "healthy"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

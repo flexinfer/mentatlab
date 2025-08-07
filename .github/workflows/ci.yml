@@ -160,6 +160,12 @@ jobs:
           
           # Frontend
           npm --prefix services/frontend install
+          
+      - name: Install Playwright Browsers
+        run: |
+          cd services/frontend
+          npx playwright install --with-deps
+          cd ../..
 
       - name: Start backend services
         run: |
