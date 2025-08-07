@@ -130,38 +130,62 @@ export interface StorageLocation {
  * Media reference for efficient handling of large media assets
  */
 export interface MediaReference {
-  /** Type of media */
-  type: MediaType;
-  /** Reference ID for the media asset */
+  /** Canonical type used by the store and architect spec.
+   * Keep existing MediaType values available, but ensure 'file' is also allowed.
+   */
+  type: MediaType | 'file';
+
+  /** Reference ID for the media asset (required) */
   refId: string;
-  /** Storage location */
-  storageLocation: 'local' | 'remote' | 's3' | 'memory' | 'cache' | 'cdn';
+
+  /** Storage location (retain existing field for backwards compatibility) */
+  storageLocation?: 'local' | 'remote' | 's3' | 'memory' | 'cache' | 'cdn';
+
   /** Detailed storage information */
   storage?: StorageLocation;
-  /** URL or path to the media */
-  url: string;
+
+  /** URL or path to the media (optional per architect minimum) */
+  url?: string;
+
+  /** Thumbnail URL for preview (optional) */
+  thumbnailUrl?: string;
+
   /** Signed URL for temporary access */
   signedUrl?: {
     url: string;
     expiresAt: string;
   };
-  /** Metadata based on media type */
-  metadata: ImageMetadata | AudioMetadata | VideoMetadata | DocumentMetadata | MediaMetadata;
-  /** Processing status */
-  status: 'pending' | 'uploading' | 'processing' | 'ready' | 'error' | 'archived';
+
+  /**
+   * Metadata: preserve the richer typed metadata but also ensure the
+   * canonical minimal shape required by the Architect spec is present.
+   */
+  metadata?: {
+    size?: number;
+    createdAt?: string;
+    mimeType?: string;
+    duration?: number;
+    waveform?: number[];
+    [k: string]: any;
+  } | ImageMetadata | AudioMetadata | VideoMetadata | DocumentMetadata | MediaMetadata;
+
+  /** Processing status (retain existing statuses) */
+  status?: 'pending' | 'uploading' | 'processing' | 'ready' | 'error' | 'archived';
+
   /** Error message if status is error */
   error?: string;
+
   /** Processing progress (0-100) */
   progress?: number;
-  /** Thumbnail URL for preview */
-  thumbnailUrl?: string;
-  /** Multiple thumbnail sizes */
+
+  /** Multiple thumbnail sizes (retain existing structure) */
   thumbnails?: {
     small?: string;
     medium?: string;
     large?: string;
     custom?: Record<string, string>;
   };
+
   /** Alternative representations */
   alternates?: {
     [key: string]: {
@@ -172,6 +196,7 @@ export interface MediaReference {
       dimensions?: { width: number; height: number };
     };
   };
+
   /** Access control */
   access?: {
     /** Whether the media is public */
@@ -183,7 +208,8 @@ export interface MediaReference {
     /** Required authentication */
     requiresAuth?: boolean;
   };
-  /** Related media references */
+
+  /** Related media references (retain existing structure) */
   related?: {
     /** Parent media reference */
     parent?: string;
@@ -196,6 +222,7 @@ export interface MediaReference {
       relationship: string;
     }>;
   };
+
   /** Processing history */
   processingHistory?: Array<{
     timestamp: string;
