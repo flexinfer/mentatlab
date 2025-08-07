@@ -1,0 +1,8 @@
+INFO:     Will watch for changes in these directories: ['/Users/cblevins/workspace/mentatlab/services/orchestrator']
+INFO:     Uvicorn running on http://0.0.0.0:8081 (Press CTRL+C to quit)
+INFO:     Started reloader process [57183] using StatReload
+INFO:     Started server process [57188]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Loaded plugin: echo_plugin (Version: 1.0.0)
+INFO:     127.0.0.1:51035 - "GET /healthz HTTP/1.1" 200 OK
