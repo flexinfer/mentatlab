@@ -9,3 +9,4 @@ services/frontend/node_modules/
 # Misc
 .env
 services/gateway/.pdm-python
+logs/frontend.log
