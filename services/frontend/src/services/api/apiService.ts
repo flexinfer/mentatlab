@@ -1,9 +1,9 @@
 import { httpClient, HttpClient } from './httpClient';
-import { WebSocketClient } from './websocketClient';
 import { isFeatureEnabled } from '@/config/features';
 import { FlowService, getFlowService } from './flowService';
 import { AgentService, getAgentService } from './agentService';
 import { MediaService, getMediaService } from './mediaService';
+import { StreamingService } from './streamingService'; // Only import the class, not the singleton
 
 /**
  * Configuration for the API service
@@ -11,6 +11,7 @@ import { MediaService, getMediaService } from './mediaService';
 export interface ApiServiceConfig {
   baseUrl: string;
   wsUrl: string;
+  sseUrl: string; // Added sseUrl
   apiKey?: string;
   debug?: boolean;
 }
@@ -20,13 +21,13 @@ export interface ApiServiceConfig {
  */
 export class ApiService {
   private http: HttpClient;
-  private ws: WebSocketClient | null = null;
   private config: ApiServiceConfig;
   
   // Service instances
   public flows: FlowService;
   public agents: AgentService;
   public media: MediaService;
+  public streaming: StreamingService; // Added streaming service
 
   constructor(config: ApiServiceConfig) {
     this.config = config;
@@ -40,30 +41,17 @@ export class ApiService {
       this.http.defaults.headers.common['Authorization'] = `Bearer ${config.apiKey}`;
     }
     
-    // Initialize WebSocket client if streaming is enabled
-    if (isFeatureEnabled('NEW_STREAMING')) {
-      this.initializeWebSocket();
-    }
-    
-    // Initialize service instances
-    this.flows = getFlowService(this.http, this.ws);
-    this.agents = getAgentService(this.http, this.ws);
-    this.media = getMediaService(this.http, this.ws);
-  }
+    // Initialize streaming service
+    this.streaming = new StreamingService(
+      'default-api-stream', // A default streamId for API level
+      this.config.wsUrl,
+      this.config.sseUrl
+    );
 
-  /**
-   * Initialize WebSocket client
-   */
-  private initializeWebSocket(): void {
-    this.ws = new WebSocketClient({
-      url: this.config.wsUrl,
-      reconnect: true,
-      reconnectInterval: 5000,
-      maxReconnectAttempts: 10,
-      heartbeatInterval: 30000,
-      enableSSEFallback: true,
-      debug: this.config.debug
-    });
+    // Initialize other service instances, passing null for wsClient as it's now handled by StreamingService
+    this.flows = getFlowService(this.http, null);
+    this.agents = getAgentService(this.http, null);
+    this.media = getMediaService(this.http, null);
   }
 
   /**
@@ -71,32 +59,6 @@ export class ApiService {
    */
   get httpClient(): HttpClient {
     return this.http;
-  }
-
-  /**
-   * Get WebSocket client instance
-   */
-  get wsClient(): WebSocketClient | null {
-    return this.ws;
-  }
-
-  /**
-   * Connect WebSocket client
-   */
-  async connectWebSocket(): Promise<void> {
-    if (!this.ws) {
-      throw new Error('WebSocket client not initialized. Enable streaming feature flag.');
-    }
-    await this.ws.connect();
-  }
-
-  /**
-   * Disconnect WebSocket client
-   */
-  disconnectWebSocket(): void {
-    if (this.ws) {
-      this.ws.disconnect();
-    }
   }
 
   /**
@@ -117,13 +79,14 @@ export class ApiService {
       }
     }
     
-    if (config.wsUrl && this.ws) {
-      // Reconnect with new URL
-      this.ws.disconnect();
-      this.ws = new WebSocketClient({
-        ...this.ws.config,
-        url: config.wsUrl
-      });
+    if (config.wsUrl || config.sseUrl) {
+      // Reconnect streaming service with new URLs
+      this.streaming.disconnect(); // Disconnect current stream
+      this.streaming = new StreamingService(
+        'default-api-stream', // Keep same streamId or update as needed
+        config.wsUrl || this.config.wsUrl,
+        config.sseUrl || this.config.sseUrl
+      );
     }
   }
 
@@ -146,6 +109,7 @@ export class ApiService {
 export const apiService = new ApiService({
   baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
   wsUrl: import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws',
+  sseUrl: import.meta.env.VITE_WS_URL ? (import.meta.env.VITE_WS_URL + '/sse') : 'http://localhost:8000/ws/sse',
   debug: import.meta.env.DEV
 });
 

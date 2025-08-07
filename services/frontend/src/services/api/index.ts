@@ -9,11 +9,13 @@ export * from './baseService';
 export * from './flowService';
 export * from './agentService';
 export * from './mediaService';
+export * from './streamingService'; // Export the new streaming service
 
 // Export default instances
 export { httpClient as defaultHttpClient } from './httpClient';
-export { websocketClient as defaultWebSocketClient } from './websocketClient';
+// Removed websocketClient export as it's now internal to ApiService
 export { apiService as defaultApiService } from './apiService';
+export { streamingService as defaultStreamingService } from './streamingService'; // Export defaultStreamingService
 
 // Export service factories
 export { getFlowService } from './flowService';

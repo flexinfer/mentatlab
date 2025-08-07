@@ -19,21 +19,63 @@ import ReactFlow, {
   NodeProps,
   useReactFlow,
   useStoreApi,
+  Connection, // Import Connection type
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import DOMPurify from 'dompurify';
 import { loadFlow } from '../loadFlow';
-import { Node as GraphNode, Edge as GraphEdge } from '../types/graph';
+import {
+  Node as GraphNode,
+  Edge as GraphEdge,
+  PinType,
+  Pin,
+  NodeCategory, // Imported
+  isPinMediaType,
+  isPinStreamType,
+  isMediaNode,
+  hasMediaCapabilities,
+  isStreamingNode
+} from '../types/graph'; // Import relevant types from graph
+import { MediaType, MediaProcessingOptions, MediaReference } from '../types/media'; // Import MediaType, MediaProcessingOptions, MediaReference from media.ts
 import { getWebSocketService, WebSocketMessage } from '../services/websocketService';
 import { logInfo, logError, logUserAction, logWebSocketEvent, logger } from '../utils/logger';
 import useStore from '../store'; // Import the Zustand store
 import CollaboratorCursor from './CollaboratorCursor';
 import { CursorPosition, WorkflowChange } from '../types/collaboration';
 
+// Define CustomNodeData to hold all custom properties for a ReactFlow node's `data` field
 interface CustomNodeData {
   label: string;
   status?: 'running' | 'completed' | 'failed';
+  // Include all other properties from GraphNode that should be in `data`
+  outputs?: Record<string, Pin>;
+  params?: Record<string, any>;
+  category?: NodeCategory;
+  isMediaNode?: boolean;
+  mediaCapabilities?: {
+    supportedInputTypes?: MediaType[];
+    supportedOutputTypes?: MediaType[];
+    supportsStreaming?: boolean;
+    maxFileSize?: number;
+    processingOptions?: MediaProcessingOptions;
+  };
+  mediaState?: {
+    currentMedia?: MediaReference;
+    progress?: number;
+    status?: 'idle' | 'processing' | 'completed' | 'error';
+    error?: string;
+  };
+  mediaDisplay?: {
+    showPreview?: boolean;
+    previewUrl?: string;
+    previewType?: 'image' | 'video' | 'audio' | 'waveform';
+  };
+  // Explicitly add inputs here as they are part of the node's data for pins
+  inputs?: Record<string, Pin>;
 }
+
+// Define RFNode as a ReactFlow Node with CustomNodeData as its data type
+type RFNode = Node<CustomNodeData>;
 
 const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => {
   let backgroundColor = 'white';
@@ -62,6 +104,21 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => 
         />
       )}
       {data.status && <div>Status: {data.status}</div>}
+      {/* Media Preview Section */}
+      {data.mediaDisplay?.showPreview && data.mediaDisplay.previewUrl && (
+        <div className="media-preview mt-2">
+          {data.mediaDisplay.previewType === 'image' && (
+            <img src={data.mediaDisplay.previewUrl} alt="Preview" className="max-w-full h-auto" />
+          )}
+          {data.mediaDisplay.previewType === 'video' && (
+            <video src={data.mediaDisplay.previewUrl} controls className="max-w-full h-auto" />
+          )}
+          {data.mediaDisplay.previewType === 'audio' && (
+            <audio src={data.mediaDisplay.previewUrl} controls className="w-full" />
+          )}
+          {/* Add more preview types as needed, e.g., 'waveform' for audio, 'document' */}
+        </div>
+      )}
     </div>
   );
 };
@@ -108,11 +165,22 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
         logInfo('Loading flow data', { component: 'FlowCanvas', action: 'loadFlow' });
         
         const flowData = await loadFlow("example-flow");
-        const reactFlowNodes: Node<CustomNodeData>[] = flowData.graph.nodes.map((node: GraphNode) => ({
+        const reactFlowNodes: RFNode[] = flowData.graph.nodes.map((node: GraphNode) => ({
           id: node.id,
           type: node.type,
           position: { x: node.position.x || 0, y: node.position.y || 0 },
-          data: { label: (node.params?.label as string) || node.id, status: undefined },
+          data: {
+            label: (node.params?.label as string) || node.id,
+            status: undefined,
+            outputs: node.outputs,
+            params: node.params as Record<string, any> | undefined,
+            category: node.category,
+            isMediaNode: node.isMediaNode,
+            mediaCapabilities: node.mediaCapabilities,
+            mediaState: node.mediaState,
+            mediaDisplay: node.mediaDisplay,
+            inputs: node.inputs,
+          },
         }));
 
         const reactFlowEdges: Edge[] = flowData.graph.edges.map((edge: GraphEdge) => ({
@@ -210,14 +278,14 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
   }, [updateNodes, store, applyWorkflowChanges]);
 
   const onSelectionChange = useCallback(
-    ({ nodes }: { nodes: Node[] }) => {
+    ({ nodes }: { nodes: RFNode[] }) => {
       if (nodes.length > 0) {
         const selectedNode = nodes[0];
         setSelectedNodeId(selectedNode.id);
         logUserAction('node selected', {
           component: 'FlowCanvas',
           nodeId: selectedNode.id,
-          nodeType: selectedNode.type
+          nodeType: selectedNode.type // Access type from node directly
         });
       } else {
         setSelectedNodeId(null);
@@ -247,12 +315,23 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
         x: event.clientX,
         y: event.clientY,
       });
-
-      const newNode: Node<CustomNodeData> = {
+ 
+      const newNode: RFNode = { // Use RFNode here
         id: `${agentData.id}-${Math.random().toString(36).substring(7)}`, // Unique ID
         type,
         position,
-        data: { label: agentData.name, status: undefined },
+        data: {
+          label: agentData.name,
+          status: undefined,
+          outputs: agentData.outputs as Record<string, Pin> | undefined,
+          params: agentData.params as Record<string, any> | undefined,
+          category: agentData.category,
+          isMediaNode: agentData.isMediaNode,
+          mediaCapabilities: agentData.mediaCapabilities,
+          mediaState: agentData.mediaState,
+          mediaDisplay: agentData.mediaDisplay,
+          inputs: agentData.inputs as Record<string, Pin> | undefined,
+        },
       };
 
       addNode(newNode); // Use addNode from store
@@ -267,6 +346,91 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
     wsService.sendCursorPosition({ x: flowPosition.x, y: flowPosition.y, userId: 'user1', userName: 'User 1' });
   }, [screenToFlowPosition]);
 
+  const isValidConnection = useCallback(
+    (connection: Connection): boolean => {
+      const sourceNode = nodes.find((node) => node.id === connection.source);
+      const targetNode = nodes.find((node) => node.id === connection.target);
+
+      if (!sourceNode || !targetNode) {
+        return false;
+      }
+
+      const sourceHandleId = connection.sourceHandle;
+      const targetHandleId = connection.targetHandle;
+
+      // Basic compatibility: handle IDs must exist
+      if (!sourceHandleId || !targetHandleId) {
+        return false;
+      }
+
+      // Extract pin types from handles (assuming handle IDs map to pin names/types)
+      // This part assumes that the handleId directly corresponds to the Pin.name and Pin.type
+      // In a real application, you might need a more robust way to get pin details
+      // from the node's data/schema. For now, we'll assume a simple direct mapping.
+      // We'll also need to consider the actual `Pin` definition from `types/graph.ts`
+      // to access `supportedMediaTypes` etc.
+
+      // For simplicity, let's assume handleId is "output_pin_name" and "input_pin_name"
+      // and we need to map these to actual Pin objects on the node.
+      // This might require extending the Node data to include pin definitions.
+
+      // Placeholder for actual pin type extraction
+      const getPinType = (node: RFNode, handleId: string, isSource: boolean): PinType | undefined => {
+        // This is a simplified example. In a real app, pins would be defined
+        // as part of the node's schema or capabilities.
+        // For now, let's assume handleId is the pin type for demonstration.
+        // This needs to be refined based on actual node/pin structure.
+        // The `GraphNode` has outputs and inputs defined as `outputs?: Record<string, unknown>;`
+        // and `inputs?: Record<string, unknown>;`
+        // We need to retrieve the specific Pin object from these records.
+        if (isSource) {
+          const outputPins = node.data.outputs;
+          return outputPins?.[handleId]?.type;
+        } else {
+          const inputPins = node.data.inputs;
+          return inputPins?.[handleId]?.type;
+        }
+      };
+
+      const sourcePinType = getPinType(sourceNode, sourceHandleId, true);
+      const targetPinType = getPinType(targetNode, targetHandleId, false);
+
+      if (!sourcePinType || !targetPinType) {
+        return false; // Cannot determine pin types
+      }
+
+      // 1. Exact PinType match
+      if (sourcePinType === targetPinType) {
+        return true;
+      }
+
+      // 2. Media Type Compatibility
+      if (isPinMediaType(sourcePinType) && isPinMediaType(targetPinType)) {
+        // A generic 'media' pin can connect to any specific media type and vice-versa
+        if (sourcePinType === 'media' || targetPinType === 'media') {
+          return true;
+        }
+        // Check if specific media types are compatible
+        // This would require checking sourceNode.data.mediaCapabilities.supportedOutputTypes
+        // and targetNode.data.mediaCapabilities.supportedInputTypes
+        // For now, assume any specific media type can connect to another if both are media
+        return true; // Simplified: any media to any media
+      }
+
+      // 3. Stream Compatibility
+      if (isPinStreamType(sourcePinType) && isPinStreamType(targetPinType)) {
+        // Both are stream types, check if both nodes support streaming
+        return isStreamingNode(sourceNode.data) && isStreamingNode(targetNode.data);
+      }
+
+      // More complex compatibility rules can be added here
+      // E.g., string to number conversion, JSON compatibility etc.
+
+      return false; // Default to false for incompatible connections
+    },
+    [nodes] // Depend on nodes to get updated pin definitions
+  );
+ 
   return (
     <div className="reactflow-wrapper h-full w-full" ref={reactFlowWrapper} data-testid="flow-canvas">
       <ReactFlow
@@ -281,6 +445,7 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
         nodeTypes={nodeTypes}
         fitView
         onMouseMove={onMouseMove}
+        isValidConnection={isValidConnection} // Pass the validation function
       >
         <MiniMap />
         <Controls />

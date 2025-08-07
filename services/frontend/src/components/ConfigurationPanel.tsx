@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, ChangeEvent } from 'react'; // Explicitly import ChangeEvent
 import DOMPurify from 'dompurify';
 import useStore from '../store'; // Import the Zustand store
 // import { Label } from '@/components/ui/label'; // Commented out as Shadcn/ui components not found
@@ -53,7 +53,7 @@ const validateInput = (value: string, type: string): { isValid: boolean; error?:
   return { isValid: true };
 };
 
-const ConfigurationPanel: React.FC = () => {
+const ConfigurationPanel: React.FC = (): React.JSX.Element => { // Explicitly define return type
   const [schema, setSchema] = useState<any>(null);
   const [formData, setFormData] = useState<{ [key: string]: any }>({});
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
@@ -102,11 +102,25 @@ const ConfigurationPanel: React.FC = () => {
     }
   }, [selectedNodeType, selectedNode]); // Add selectedNode to dependency array
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type } = e.target;
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    const type = (e.target as HTMLInputElement).type || (e.target as HTMLSelectElement).type || (e.target as HTMLTextAreaElement).type; // Get type from appropriate element
+    const checked = (e.target as HTMLInputElement).checked; // Only for checkboxes
     
-    // Validate input
-    const validation = validateInput(value, type);
+    let processedValue: any = value;
+    if (type === 'number') {
+      processedValue = parseFloat(value);
+      if (isNaN(processedValue)) {
+        processedValue = undefined; // Or handle as an error
+      }
+    } else if (type === 'checkbox') {
+      processedValue = checked;
+    }
+
+    // Validate input (only for string and number types that are not checkboxes)
+    const validation = (type === 'text' || type === 'email' || type === 'url' || type === 'number')
+      ? validateInput(value, type)
+      : { isValid: true };
     
     // Update validation errors
     setValidationErrors(prev => ({
@@ -114,9 +128,12 @@ const ConfigurationPanel: React.FC = () => {
       [name]: validation.isValid ? '' : validation.error || 'Invalid input'
     }));
     
-    // Only update if validation passes
+    // Only update if validation passes or if it's a non-validated type (like boolean)
     if (validation.isValid) {
-      const sanitizedValue = DOMPurify.sanitize(value);
+      const sanitizedValue = (typeof processedValue === 'string')
+        ? DOMPurify.sanitize(processedValue)
+        : processedValue;
+
       setFormData(prevData => ({
         ...prevData,
         [name]: sanitizedValue,
@@ -143,33 +160,80 @@ const ConfigurationPanel: React.FC = () => {
         <form className="space-y-4">
           {Object.keys(schema.properties).map(key => {
             const property = schema.properties[key];
-            if (property.type === 'string') {
-              return (
-                <div key={key}>
-                  <label htmlFor={key} className="block text-sm font-medium text-gray-700">
-                    {property.title || key}
-                  </label>
-                  <input
-                    id={key}
-                    name={key}
-                    type={property.format || "text"}
-                    value={formData[key] || ''}
-                    onChange={handleInputChange}
-                    className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
-                      validationErrors[key]
-                        ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
-                        : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'
-                    }`}
-                  />
-                  {validationErrors[key] && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {validationErrors[key]}
-                    </p>
-                  )}
-                </div>
+            const commonProps = {
+              id: key,
+              name: key,
+              onChange: handleInputChange,
+              className: `mt-1 block w-full rounded-md shadow-sm sm:text-sm ${
+                validationErrors[key]
+                  ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'
+              }`
+            };
+
+            let inputElement: JSX.Element | null = null;
+
+            if (property.enum) {
+              // Render select dropdown for enum types
+              inputElement = (
+                <select {...commonProps} value={formData[key] || ''}>
+                  {property.enum.map((option: any) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              );
+            } else if (property.type === 'string') {
+              inputElement = (
+                <input
+                  type={property.format || "text"}
+                  value={formData[key] || ''}
+                  {...commonProps}
+                />
+              );
+            } else if (property.type === 'number') {
+              inputElement = (
+                <input
+                  type="number"
+                  value={formData[key] || ''}
+                  {...commonProps}
+                />
+              );
+            } else if (property.type === 'boolean') {
+              inputElement = (
+                <input
+                  type="checkbox"
+                  checked={formData[key] || false}
+                  {...commonProps}
+                  className="mt-1" // Override full width for checkbox
+                />
+              );
+            } else if (property.type === 'array' || property.type === 'object') {
+              // For complex types, display as JSON string for now
+              inputElement = (
+                <textarea
+                  value={JSON.stringify(formData[key] || {}, null, 2)}
+                  {...commonProps}
+                  rows={5}
+                  readOnly // Make it read-only for now
+                />
               );
             }
-            return null;
+
+            return (
+              <div key={key}>
+                <label htmlFor={key} className="block text-sm font-medium text-gray-700">
+                  {property.title || key}
+                </label>
+                {inputElement}
+                {validationErrors[key] && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {validationErrors[key]}
+                  </p>
+                )}
+              </div>
+            );
           })}
         </form>
       ) : (

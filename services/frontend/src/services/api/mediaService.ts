@@ -4,7 +4,9 @@
 
 import { BaseService } from './baseService';
 import { HttpClient } from './httpClient';
-import { WebSocketClient } from './websocketClient';
+import { WebSocketClient } from './websocketClient'; // Keep for now, might be removed later
+import { MediaReference } from '../../types/media'; // Import MediaReference
+import { v4 as uuidv4 } from 'uuid'; // Import uuidv4 for file IDs
 
 export type MediaType = 'image' | 'audio' | 'video' | 'document';
 export type MediaStatus = 'uploading' | 'processing' | 'ready' | 'failed';
@@ -51,6 +53,9 @@ export interface MediaProcessingOptions {
   watermark?: { text: string; position: string };
 }
 
+// Define CHUNK_SIZE as per rearchitecture plan (Section 9.2)
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+
 export class MediaService extends BaseService {
   private uploadAbortControllers = new Map<string, AbortController>();
 
@@ -59,7 +64,7 @@ export class MediaService extends BaseService {
   }
 
   /**
-   * Upload a media file
+   * Upload a media file with presigned URLs and chunking
    */
   async uploadFile(
     file: File,
@@ -67,70 +72,122 @@ export class MediaService extends BaseService {
       onProgress?: (progress: MediaUploadProgress) => void;
       metadata?: Record<string, any>;
     }
-  ): Promise<MediaFile> {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    if (options?.metadata) {
-      formData.append('metadata', JSON.stringify(options.metadata));
-    }
-
-    const abortController = new AbortController();
-    const tempId = `upload-${Date.now()}-${Math.random()}`;
-    this.uploadAbortControllers.set(tempId, abortController);
+  ): Promise<MediaReference> { // Return MediaReference as per plan
+    const fileId = uuidv4(); // Generate a unique ID for this upload
+    this.uploadAbortControllers.set(fileId, new AbortController());
+    const abortSignal = this.uploadAbortControllers.get(fileId)?.signal;
 
     try {
-      // Create XMLHttpRequest for progress tracking
-      const xhr = new XMLHttpRequest();
-      
-      return new Promise((resolve, reject) => {
-        // Progress handler
-        xhr.upload.addEventListener('progress', (event) => {
-          if (event.lengthComputable && options?.onProgress) {
-            options.onProgress({
-              fileId: tempId,
-              loaded: event.loaded,
-              total: event.total,
-              percentage: Math.round((event.loaded / event.total) * 100)
-            });
-          }
-        });
-
-        // Success handler
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            const response = JSON.parse(xhr.responseText);
-            resolve(response);
-          } else {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
-          }
-        });
-
-        // Error handler
-        xhr.addEventListener('error', () => {
-          reject(new Error('Upload failed'));
-        });
-
-        // Abort handler
-        abortController.signal.addEventListener('abort', () => {
-          xhr.abort();
-          reject(new Error('Upload cancelled'));
-        });
-
-        // Send request
-        const url = this.buildPath('/upload');
-        xhr.open('POST', url);
-        
-        // Add auth headers if available
-        const authHeader = this.http.defaults.headers.common['Authorization'];
-        if (authHeader) {
-          xhr.setRequestHeader('Authorization', authHeader);
-        }
-        
-        xhr.send(formData);
+      // 1. Request presigned URL
+      const { uploadUrl, reference } = await this.getPresignedUrl({
+        filename: file.name,
+        mimeType: file.type,
+        size: file.size,
+        fileId: fileId,
+        metadata: options?.metadata,
       });
+
+      // 2. Chunk file if needed and upload
+      const chunks = this.chunkFile(file);
+      await this.uploadChunks(fileId, chunks, uploadUrl, options?.onProgress, abortSignal);
+      
+      // 3. Return reference
+      return reference;
     } finally {
-      this.uploadAbortControllers.delete(tempId);
+      this.uploadAbortControllers.delete(fileId);
+    }
+  }
+
+  /**
+   * Request a presigned URL from the backend
+   */
+  private async getPresignedUrl(params: {
+    filename: string;
+    mimeType: string;
+    size: number;
+    fileId: string;
+    metadata?: Record<string, any>;
+  }): Promise<{ uploadUrl: string; reference: MediaReference }> {
+    const response = await this.http.post<{ uploadUrl: string; reference: MediaReference }>(
+      this.buildPath('/upload-url'),
+      params
+    );
+    return response;
+  }
+
+  /**
+   * Chunk a file into smaller parts
+   */
+  private chunkFile(file: File): Blob[] {
+    const chunks: Blob[] = [];
+    let offset = 0;
+    while (offset < file.size) {
+      chunks.push(file.slice(offset, offset + CHUNK_SIZE));
+      offset += CHUNK_SIZE;
+    }
+    return chunks;
+  }
+
+  /**
+   * Upload file chunks with progress tracking
+   */
+  private async uploadChunks(
+    fileId: string,
+    chunks: Blob[],
+    uploadUrl: string,
+    onProgress?: (progress: MediaUploadProgress) => void,
+    abortSignal?: AbortSignal
+  ): Promise<void> {
+    let loaded = 0;
+    const total = chunks.reduce((sum, chunk) => sum + chunk.size, 0);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      try {
+        const xhr = new XMLHttpRequest();
+        await new Promise<void>((resolve, reject) => {
+          xhr.open('PUT', uploadUrl);
+          xhr.setRequestHeader('Content-Type', chunk.type);
+          
+          // Add auth headers if available
+          const authHeader = this.http.defaults.headers.common['Authorization'];
+          if (authHeader) {
+            xhr.setRequestHeader('Authorization', authHeader);
+          }
+
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && onProgress) {
+              // Calculate progress for the entire file, not just the current chunk
+              const currentLoaded = loaded + event.loaded;
+              onProgress({
+                fileId: fileId,
+                loaded: currentLoaded,
+                total: total,
+                percentage: Math.round((currentLoaded / total) * 100)
+              });
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              loaded += chunk.size; // Update total loaded bytes
+              resolve();
+            } else {
+              reject(new Error(`Upload of chunk ${i + 1} failed with status ${xhr.status}`));
+            }
+          };
+
+          xhr.onerror = () => reject(new Error(`Upload of chunk ${i + 1} failed`));
+          xhr.onabort = () => reject(new Error('Upload cancelled'));
+
+          abortSignal?.addEventListener('abort', () => xhr.abort());
+
+          xhr.send(chunk);
+        });
+      } catch (error) {
+        console.error(`Error uploading chunk ${i + 1}:`, error);
+        throw error; // Re-throw to stop the entire upload
+      }
     }
   }
 
