@@ -1,0 +1,11 @@
+WARNING: The following problems are found in your project:
+  package-type: package-type = "application" has been renamed to distribution = false under [tool.pdm] table
+Run pdm fix to fix all or pdm fix <name> to fix individual problem.
+INFO:     Will watch for changes in these directories: ['/Users/cblevins/workspace/mentatlab/services/gateway']
+INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+INFO:     Started reloader process [57190] using StatReload
+INFO:     Started server process [57192]
+INFO:     Waiting for application startup.
+Error listening to Redis: pubsub connection not set: did you forget to call subscribe() or psubscribe()?
+INFO:     Application startup complete.
+INFO:     127.0.0.1:51037 - "GET /healthz HTTP/1.1" 200 OK

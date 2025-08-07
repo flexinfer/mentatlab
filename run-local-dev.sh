@@ -54,7 +54,7 @@ cleanup() {
     # Kill any remaining services on our ports
     lsof -ti:8080 | xargs -r kill 2>/dev/null || true
     lsof -ti:8081 | xargs -r kill 2>/dev/null || true
-    lsof -ti:3000 | xargs -r kill 2>/dev/null || true
+    lsof -ti:5173 | xargs -r kill 2>/dev/null || true
     lsof -ti:8082 | xargs -r kill 2>/dev/null || true
     
     echo -e "${GREEN}All services stopped${NC}"
@@ -74,14 +74,11 @@ if ! check_port 8081; then
     echo "Orchestrator service requires port 8081"
     PORTS_OK=false
 fi
-if ! check_port 3000; then
-    echo "Frontend service requires port 3000"
+if ! check_port 5173; then
+    echo "Frontend service requires port 5173"
     PORTS_OK=false
 fi
-if ! check_port 8082; then
-    echo "Echo agent service requires port 8082"
-    PORTS_OK=false
-fi
+# Echo agent doesn't need a port (stdin/stdout agent)
 
 if [ "$PORTS_OK" = false ]; then
     echo -e "${RED}Please free up the required ports before running this script${NC}"
@@ -136,29 +133,32 @@ cd ../../..
 echo -e "\n${GREEN}Starting services...${NC}"
 echo "===================="
 
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+# Set PYTHONPATH to project root for absolute imports
+export PYTHONPATH=$PWD
+
 # Start Orchestrator (port 8081)
 echo -e "\n${YELLOW}Starting Orchestrator on port 8081...${NC}"
 cd services/orchestrator
-pdm run uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload > ../../logs/orchestrator.log 2>&1 &
+PYTHONPATH=$PWD/../.. pdm run uvicorn app.main:app --host 0.0.0.0 --port 8081 --reload > ../../logs/orchestrator.log 2>&1 &
 ORCHESTRATOR_PID=$!
 cd ../..
 
 # Start Gateway (port 8080)
 echo -e "\n${YELLOW}Starting Gateway on port 8080...${NC}"
 cd services/gateway
-pdm run uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload > ../../logs/gateway.log 2>&1 &
+PYTHONPATH=$PWD/../.. pdm run uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload > ../../logs/gateway.log 2>&1 &
 GATEWAY_PID=$!
 cd ../..
 
-# Start Echo Agent (port 8082)
-echo -e "\n${YELLOW}Starting Echo Agent on port 8082...${NC}"
-cd services/agents/echo
-python app/main.py > ../../logs/echo-agent.log 2>&1 &
-ECHO_AGENT_PID=$!
-cd ../../..
+# Note: Echo Agent is a stdin/stdout agent, not a web service
+# It doesn't run as a standalone service with health endpoints
+echo -e "\n${YELLOW}Echo Agent is a stdin/stdout agent (not a web service)${NC}"
 
-# Start Frontend (port 3000)
-echo -e "\n${YELLOW}Starting Frontend on port 3000...${NC}"
+# Start Frontend (port 5173)
+echo -e "\n${YELLOW}Starting Frontend on port 5173...${NC}"
 cd services/frontend
 npm run dev > ../../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
@@ -166,10 +166,10 @@ cd ../..
 
 # Wait for services to be ready
 echo -e "\n${GREEN}Waiting for services to start...${NC}"
-wait_for_service "Orchestrator" "http://localhost:8081/health"
+wait_for_service "Orchestrator" "http://localhost:8081/healthz"
 wait_for_service "Gateway" "http://localhost:8080/healthz"
-wait_for_service "Echo Agent" "http://localhost:8082/health"
-wait_for_service "Frontend" "http://localhost:3000"
+# Echo Agent doesn't have a health endpoint, skip checking
+wait_for_service "Frontend" "http://localhost:5173"
 
 # Display service status
 echo -e "\n${GREEN}=====================================${NC}"
@@ -179,8 +179,8 @@ echo ""
 echo "Service URLs:"
 echo "  Gateway:      http://localhost:8080"
 echo "  Orchestrator: http://localhost:8081"
-echo "  Echo Agent:   http://localhost:8082"
-echo "  Frontend:     http://localhost:3000"
+echo "  Echo Agent:   (stdin/stdout agent - not a web service)"
+echo "  Frontend:     http://localhost:5173"
 echo ""
 echo "API Documentation:"
 echo "  Gateway API:      http://localhost:8080/docs"
@@ -189,7 +189,7 @@ echo ""
 echo "Logs are being written to:"
 echo "  Gateway:      logs/gateway.log"
 echo "  Orchestrator: logs/orchestrator.log"
-echo "  Echo Agent:   logs/echo-agent.log"
+echo "  Echo Agent:   (stdin/stdout agent - no logs)"
 echo "  Frontend:     logs/frontend.log"
 echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}"
