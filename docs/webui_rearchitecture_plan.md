@@ -66,6 +66,75 @@ graph TB
 | UI Components | Text-focused | Multimodal with specialized viewers |
 | API Layer | Direct fetch calls | Centralized service layer |
 
+### 1.4 Mission Control UI Paradigm
+
+This UI is “mission control for composable AI,” not a consumer media app. The primary experience is a canvas-first, operations-oriented workspace where agents, chat panels, and runtime tasks are composed, launched, and observed in real time. This section ties the UI choices to the README’s intent of a composable-frontend contract stored in Git and orchestrated by backend services.
+
+Mission-control principles
+- Canvas-first composition: Node-and-edges graph is the home view. Flows are the primary artifact linked to Git history.
+- Dockable panes: Chat console, run queue, logs/metrics, inspector, and file pins are side panels that can be shown/hidden per workspace layout.
+- Operations over artifacts: Controls to start/stop/pause, view timelines, watch metrics, and drill into agent internals are first-class.
+- Live observability: Status bar surfaces health (gateway/orchestrator), active streams, and feature-flag state.
+- Progressive disclosure: Heavy media players exist but are secondary to debugging/observability tasks.
+
+Core UI primitives (aligned to the composable contract)
+- Canvas Workspace (Flows): The graph editor where agents (nodes) connect via typed pins. Stores canonical flow specs in Git.
+- Inspector Panel: Selected node’s configuration, including typed pins (data, media, credentials) and runtime overrides.
+- Console & Runs: Task queue view with per-run logs, metrics, artifacts, and failure drills.
+- Event Timeline: Ordered stream of significant events (start/stop, edge messages, errors, checkpoints).
+- Media Preview: Lightweight in-panel previews for images/audio/video to validate pins and outputs; full viewers exist for deeper inspection.
+- Global Status Bar: Environment, feature flags, connection health (WS/SSE), and recent alerts.
+
+Layout skeleton (React)
+```tsx
+// ui/layout/MissionControlLayout.tsx
+import { StatusBar } from './StatusBar';
+import { Canvas } from '../canvas/Canvas';
+import { RightDock } from './RightDock';
+import { BottomDock } from './BottomDock';
+
+export function MissionControlLayout() {
+  return (
+    <div className="mission-control">
+      <header className="mc-topbar">MentatLab</header>
+      <aside className="mc-leftnav">{/* Workspaces / Flows / Search */}</aside>
+      <main className="mc-canvas"><Canvas /></main>
+      <RightDock>
+        {/* Inspector (pins, config), Media Preview, Properties */}
+      </RightDock>
+      <BottomDock>
+        {/* Console, Runs, Metrics, Timeline */}
+      </BottomDock>
+      <StatusBar />
+    </div>
+  );
+}
+```
+
+File handling in a mission-control UI
+- FileUploader is a pin-level affordance, not a full-screen app surface. Users attach/upload artifacts in the Inspector for a selected node (e.g., “Input Audio” pin), or via a small “Add Artifact” control in the bottom dock.
+- Previews are inline and fast (thumbnails/waveform snippets) to validate data flow; full viewers are available as a drill-down, not as a primary workspace view.
+- Upload progress is routed to the run/task context (Run Queue and Console) with per-file and per-run aggregation, so operations remain anchored in execution, not storage browsing.
+
+Why this choice
+- Keeps the user anchored on building/debugging flows, consistent with “mission control.”
+- Minimizes modal churn and “media app” feel while still providing high-fidelity inspection tools.
+- Aligns with Git-backed flows: the UI emphasizes flow diffs, node config, and run results over ad hoc file management.
+
+Feature-flag mapping to surfaces
+- MULTIMODAL_UPLOAD: Enables pin-level FileUploader controls in the Inspector and bottom-dock quick action. Hides full-page uploader routes.
+- NEW_STREAMING: Enables real-time timeline overlays and stream metrics in BottomDock; falls back to batch polling if disabled.
+- S3_STORAGE: Enables reference-based artifacts on pins and presigned-upload paths; falls back to local/dev storage adapters when disabled.
+
+Non-goals
+- No full-screen media library as the primary navigation.
+- No wizard-first authoring; canvas remains the center of gravity, with helpers optional.
+
+Testing checklist (UI intent)
+- Canvas is the default route; dock/panels remember layout across sessions.
+- Uploads can be initiated from a node’s pin in the Inspector; progress is visible in Run Queue and Status Bar.
+- Media previews render inline and do not steal primary focus from the canvas.
+- Feature flags correctly hide/show pin-level media affordances and timeline overlays.
 ## 2. Component Architecture
 
 ### 2.1 Component Hierarchy
@@ -617,10 +686,10 @@ graph LR
 ```typescript
 // config/features.ts
 export const FeatureFlags = {
-  MULTIMODAL_UPLOAD: process.env.REACT_APP_FF_MULTIMODAL_UPLOAD === 'true',
-  NEW_STREAMING: process.env.REACT_APP_FF_NEW_STREAMING === 'true',
-  S3_STORAGE: process.env.REACT_APP_FF_S3_STORAGE === 'true',
-};
+  MULTIMODAL_UPLOAD: import.meta.env.VITE_FF_MULTIMODAL_UPLOAD === 'true',
+  NEW_STREAMING: import.meta.env.VITE_FF_NEW_STREAMING === 'true',
+  S3_STORAGE: import.meta.env.VITE_FF_S3_STORAGE === 'true',
+} as const;
 ```
 
 #### Step 2: Parallel Implementation
@@ -792,3 +861,178 @@ This rearchitecture plan transforms the MentatLab WebUI from a text-focused appl
 5. Create beta testing program
 
 The successful implementation of this plan will position MentatLab as a leader in multimodal AI development platforms, ready for the demands of modern AI workflows.
+## 13. Differentiators and MVP Roadmap
+
+This section enumerates novel, operator-centric features that make MentatLab a mission-control console for composable AI (see [README.md](README.md:1)). It also defines an MVP roadmap and the UI skeleton to implement them.
+
+### 13.1 Differentiators (Operator-grade capabilities)
+
+1) Flight Recorder + Time‑Travel Debugging
+- Deterministic run capture: step timeline, tool I/O snapshots, media frames, state diffs, “step into/over”.
+- Implementation: extend streaming events with “checkpoints” plus small state deltas; add Replay mode in Runs/Timeline.
+
+2) Visual Contract Checking on the Canvas (Type-Aware Pins)
+- Live schema/type checks, highlight violations, one‑click “adapter” nodes (e.g., resample PCM 16kHz mono).
+- Implementation: pin schemas (Zod/JSON‑Schema), on‑canvas validators, adapter node palette.
+
+3) Pin-Level Data Provenance and Lineage
+- Click any output to see lineage DAG with hashes, versions, timings; audit and reproducibility.
+- Implementation: propagate provenance metadata in MediaReference; render lineage overlay.
+
+4) A/B and Canary Flow Orchestration
+- Define flow variants, split traffic, compare KPIs (quality/cost/latency) with statistical confidence.
+- Implementation: Gateway strategies, Runs comparison dashboards.
+
+5) Runbook Automation (Ops Playbooks)
+- One‑click bundles of preflight checks, flow runs, validations, and rollback steps.
+- Implementation: declarative runbooks persisted with flows; dock widgets to execute and track.
+
+6) Safety/Compliance Guardrails at the Edge
+- Policy nodes (PII scrub, safety, IP filtering) auto‑inserted or enforced at ingress/egress pins.
+- Implementation: policy engine in Gateway; enforcement badges on canvas edges.
+
+7) Cost and Latency Simulator (Preflight Estimates)
+- Predict token/storage/bandwidth/wall‑time pre‑run; warn when crossing budgets.
+- Implementation: per‑node cost/latency envelopes aggregated across the graph; inline estimates.
+
+8) Golden Traces and Synthetic Fixtures
+- Record “golden” runs; generate fixtures; regression tests with diff views (text/media).
+- Implementation: export from Flight Recorder; “Compare to golden” action in Runs; CI hook later.
+
+9) Multi‑Operator Collaboration with Roles and Presence
+- Real‑time cursors, selections, comments on nodes/edges; RBAC for edit vs. ops.
+- Implementation: Yjs presence + auth roles; threaded comments pinned to nodes.
+
+10) Live QoS Heatmap and Stream Diagnostics
+- Canvas heatmap of p95 latency, error bursts, backpressure; drill into logs/frames/chunks.
+- Implementation: PerformanceMonitor + WebSocket telemetry; overlay renderer.
+
+11) Adaptive Mode Runtime Controls
+- Flip streaming/batch; auto‑degrade features under constrained network/CPU; user‑set SLAs.
+- Implementation: runtime flags and toggles; adaptive hints via telemetry.
+
+12) Flow‑Linter with Quick Fixes
+- Rules (n+1 calls, missing retries, no safety node) + quick‑fixes (insert/rewire/param).
+- Implementation: graph analyzer + fixers; Inspector “Issues” tab.
+
+13) Offline Pack/Unpack Bundles
+- Export flow + metadata + minimal media stubs to portable bundle; run offline harness.
+- Implementation: exporter/importer, local harness, “Open pack” UI action.
+
+14) Post‑Run Narrative Reports (Tech + Exec Views)
+- Auto‑summaries with decisions, timings, errors, artifacts; engineer and executive modes.
+- Implementation: templating over Flight Recorder; export to Markdown/PDF.
+
+15) Active‑Learning Loops from Annotations
+- Built‑in annotation tools (image boxes, waveform markers, text edits) feeding training queues.
+- Implementation: Inspector annotators; training queue integration; improvement metrics.
+
+### 13.2 MVP Scope (90‑Day Slice)
+
+- Phase A (Weeks 1–4)
+  - Flight Recorder v1 (timeline + checkpoints)
+  - Visual Contract Checking (basic schemas, 1‑click adapters)
+  - Flow‑Linter (5 high‑signal rules)
+  - Base QoS metrics surfaced in Status Bar
+
+- Phase B (Weeks 5–8)
+  - Provenance/Lineage overlay
+  - A/B & Canary scaffold (variant execution + KPI compare)
+  - Narrative Reports v1 (engineer view)
+
+- Phase C (Weeks 9–12)
+  - Safety/Compliance policy nodes (ingress/egress)
+  - Collaboration: presence + comments
+  - Cost/Latency Simulator v1
+
+Each phase is shippable and builds toward the full mission‑control experience.
+
+### 13.3 UI Skeleton and File Structure
+
+Add the mission‑control shell and dockable panels. Canvas remains the center of gravity; panels are secondary but always available.
+
+- Layout
+  - components/mission-control/layout/MissionControlLayout.tsx
+  - components/mission-control/layout/RightDock.tsx
+  - components/mission-control/layout/BottomDock.tsx
+  - components/mission-control/layout/StatusBar.tsx
+
+- Panels
+  - components/mission-control/panels/InspectorPanel.tsx
+  - components/mission-control/panels/RunQueuePanel.tsx
+  - components/mission-control/panels/ConsolePanel.tsx
+  - components/mission-control/panels/TimelinePanel.tsx
+  - components/mission-control/panels/IssuesPanel.tsx (Flow‑Linter)
+  - components/mission-control/panels/ReportsPanel.tsx (Narrative)
+
+- Canvas overlays
+  - components/mission-control/canvas/LineageOverlay.tsx
+  - components/mission-control/canvas/QoSHeatmapOverlay.tsx
+  - components/mission-control/canvas/ContractHintsOverlay.tsx
+
+- Services (frontend)
+  - services/frontend/src/services/recorder/FlightRecorderService.ts
+  - services/frontend/src/services/lineage/LineageService.ts
+  - services/frontend/src/services/ab/VariantService.ts
+  - services/frontend/src/services/policy/PolicyService.ts
+  - services/frontend/src/services/linter/FlowLinterService.ts
+  - services/frontend/src/services/reports/ReportService.ts
+  - services/frontend/src/services/cost/CostSimulator.ts
+
+- State
+  - Extend Zustand stores for:
+    - recorder (runs/checkpoints)
+    - lineage (provenance graph)
+    - variants (A/B state)
+    - linter (issues/fixes)
+    - collaboration (presence/comments)
+
+Example layout skeleton
+
+```tsx
+// components/mission-control/layout/MissionControlLayout.tsx
+import React from 'react';
+import { Canvas } from '../../canvas/Canvas';
+import { RightDock } from './RightDock';
+import { BottomDock } from './BottomDock';
+import { StatusBar } from './StatusBar';
+
+export function MissionControlLayout() {
+  return (
+    <div className="mission-control">
+      <header className="mc-topbar">MentatLab</header>
+      <aside className="mc-leftnav">{/* Workspaces / Flows / Search */}</aside>
+      <main className="mc-canvas"><Canvas /></main>
+      <RightDock />
+      <BottomDock />
+      <StatusBar />
+    </div>
+  );
+}
+```
+
+### 13.4 Feature Flags Mapping
+
+- MULTIMODAL_UPLOAD
+  - Pin‑level FileUploader in Inspector and quick action in BottomDock.
+- NEW_STREAMING
+  - Enables Flight Recorder streaming checkpoints, Timeline overlay, Status Bar stream metrics.
+- S3_STORAGE
+  - Reference‑based artifacts at pins; presigned uploads; provenance keys.
+
+### 13.5 MVP Deliverables
+
+- Canvas‑first shell with dockable panels (RightDock, BottomDock, StatusBar)
+- Flight Recorder v1 with Timeline panel and basic replay
+- Visual Contract Checking + adapter node insertion
+- Flow‑Linter with Issues panel and at least five quick‑fixes
+- Lineage overlay (v1) and QoS status in Status Bar
+- Narrative Reports v1 (engineer view)
+- End‑to‑end demos using feature flags per [services/frontend/src/config/features.ts](services/frontend/src/config/features.ts:1)
+
+### 13.6 Success Criteria Addendum
+
+- Debuggability: step‑through replay for ≥80% of tool calls in typical runs
+- Safety: policy nodes enforced on 100% ingress/egress edges in guarded flows
+- Productivity: reduce mean time to diagnose failed run by ≥50% vs. baseline
+- Performance: Timeline render <16ms/frame with overlays enabled on typical flows

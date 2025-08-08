@@ -6,6 +6,31 @@ The documents below spell out the composable‑frontend contract: how multiple a
 	•	docs/agents.md → how to create a single Lego brick (a Cog‑Pak).
 	•	docs/flows.md (below) → how to snap many bricks together into a live, observable workspace.
 
+## Mission Control UI
+
+After starting the frontend dev server, the default route loads the new Mission Control UI shell.
+
+- Default: [services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx](services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx)
+- Routes:
+  - Mission Control (default): [/](services/frontend/src/App.tsx:157)
+  - Streaming View: [/streaming](services/frontend/src/App.tsx:160)
+  - Legacy Builder (deprecated): [/legacy](services/frontend/src/App.tsx:161)
+
+Quick start:
+- Start frontend: `npm run dev` in [services/frontend](services/frontend/README.md:1)
+- Open the app at the dev URL (Vite default: http://localhost:5173/)
+- The canvas-first Mission Control layout loads with:
+  - Canvas center (FlowCanvas)
+  - RightDock (Inspector, Media Preview)
+  - BottomDock (Console, Run Queue, Timeline, Issues)
+  - StatusBar (flags and connection state)
+
+Feature flags (Vite):
+- Declared in [services/frontend/src/config/features.ts](services/frontend/src/config/features.ts:1)
+- MULTIMODAL_UPLOAD toggles pin-level upload affordances
+- NEW_STREAMING enables streaming overlays and timeline tab
+- S3_STORAGE enables reference-based media handling
+
 ## Local Development Setup
 
 To set up the MentatLab project locally, follow these steps:
