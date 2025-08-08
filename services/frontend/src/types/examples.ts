@@ -124,7 +124,7 @@ export const createImageReference = (): MediaReference => {
     storageLocation: 's3',
     url: 's3://bucket/images/example.jpg',
     metadata,
-    status: 'ready',
+    status: 'completed',
     thumbnailUrl: 's3://bucket/thumbnails/example-thumb.jpg',
     alternates: {
       small: {

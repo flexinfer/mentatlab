@@ -171,7 +171,7 @@ const ConfigurationPanel: React.FC = (): React.JSX.Element => { // Explicitly de
               }`
             };
 
-            let inputElement: JSX.Element | null = null;
+            let inputElement: React.ReactNode = null;
 
             if (property.enum) {
               // Render select dropdown for enum types

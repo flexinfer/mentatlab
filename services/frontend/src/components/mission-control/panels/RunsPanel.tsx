@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import orchestratorService from '@/services/api/orchestratorService';
+import { orchestratorService } from '@/services/api';
 import OrchestratorSSE from '@/services/api/streaming/orchestratorSSE';
 import type { Run, Checkpoint, RunMode } from '@/types/orchestrator';
 
@@ -15,10 +15,7 @@ import type { Run, Checkpoint, RunMode } from '@/types/orchestrator';
  * This component is intentionally self-contained and uses the orchestratorService + OrchestratorSSE helper.
  */
 
-const DEFAULT_BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:7070';
-
 export default function RunsPanel(): JSX.Element {
-  const [baseUrl] = useState<string>(DEFAULT_BASE_URL);
   const [runIdInput, setRunIdInput] = useState<string>('');
   const [currentRun, setCurrentRun] = useState<Run | null>(null);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
@@ -82,7 +79,7 @@ export default function RunsPanel(): JSX.Element {
   function connectToRun(runId: string) {
     // close existing
     sseRef.current?.close();
-    const client = new OrchestratorSSE({ baseUrl, replay: 10, debug: false });
+    const client = new OrchestratorSSE({ replay: 10, debug: false });
     sseRef.current = client;
 
     client.connect(runId, {
@@ -162,13 +159,16 @@ export default function RunsPanel(): JSX.Element {
       return;
     }
     try {
-      const res = await orchestratorService.httpClient.delete(`/runs/${encodeURIComponent(runIdInput)}`);
-      if (res.data && res.data.status) {
-        setCurrentRun((r) => (r ? { ...r, status: res.data.status } : r));
+      const res = await orchestratorService.cancelRun(runIdInput);
+      if (res && res.status) {
+        setCurrentRun((r) => (r ? { ...r, status: res.status } : r));
       }
     } catch (err: any) {
-      if (err?.response?.status === 409) {
+      const status = err?.status ?? err?.response?.status;
+      if (status === 409) {
         alert('Invalid status transition');
+      } else if (status === 404) {
+        alert('Run not found');
       } else {
         alert('Failed to cancel run');
       }

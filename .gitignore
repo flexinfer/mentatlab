@@ -11,3 +11,12 @@ services/frontend/node_modules/
 services/gateway/.pdm-python
 logs/frontend.log
 logs/frontend.log
+
+# Test/tooling outputs
+/bin/
+/etc/
+/**/bin/
+/**/etc/
+/**/.venv
+/**/node_modules/.bin
+/**/node_modules

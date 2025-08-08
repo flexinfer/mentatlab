@@ -6,6 +6,9 @@ Start here:
 - Flows: [`docs/flows.md`](docs/flows.md:1)
 - Agents (Cog‑Paks): [`docs/agents.md`](docs/agents.md:1)
 - Orchestrator Design: [`docs/orchestrator_design.md`](docs/orchestrator_design.md:1)
+- Orchestrator API reference: [`docs/references/orchestrator-api.md`](docs/references/orchestrator-api.md:1)
+- Frontend Orchestrator integration: [`docs/references/frontend-orchestrator.md`](docs/references/frontend-orchestrator.md:1)
+- Orchestrator local dev guide: [`docs/guides/orchestrator-local-dev.md`](docs/guides/orchestrator-local-dev.md:1)
 
 Status (machine‑readable):
 - Status Spec: [`docs/status/README.md`](docs/status/README.md:1)

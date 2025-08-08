@@ -87,6 +87,12 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+### Orchestrator
+- Service README: [`services/orchestrator/README.md`](services/orchestrator/README.md:1)
+- API reference: [`docs/references/orchestrator-api.md`](docs/references/orchestrator-api.md:1)
+- Frontend integration reference: [`docs/references/frontend-orchestrator.md`](docs/references/frontend-orchestrator.md:1)
+- Local development guide: [`docs/guides/orchestrator-local-dev.md`](docs/guides/orchestrator-local-dev.md:1)
+
 #### Gateway
 
 ```bash

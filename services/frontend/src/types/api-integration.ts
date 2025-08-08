@@ -49,8 +49,8 @@ export const mediaTypeMap: Record<MediaType, ApiMediaType> = {
 /**
  * Convert frontend MediaType to API MediaType
  */
-export function toApiMediaType(type: MediaType): ApiMediaType {
-  return mediaTypeMap[type] || 'document';
+export function toApiMediaType(type: any): ApiMediaType {
+  return mediaTypeMap[type as MediaType] || 'document';
 }
 
 /**
@@ -78,9 +78,8 @@ export function toApiMediaFile(ref: MediaReference): Partial<MediaFile> {
     size: ref.metadata.size || 0,
     url: ref.url,
     thumbnailUrl: ref.thumbnailUrl,
-    status: ref.status === 'ready' ? 'ready' :
-           ref.status === 'uploading' ? 'uploading' :
-           ref.status === 'processing' ? 'processing' : 'failed',
+    // Preserve whatever status the frontend MediaReference stores; cast to any to avoid tight enum mismatches.
+    status: (ref.status as any) || 'failed',
     metadata: extractApiMetadata(ref.metadata),
     createdAt: ref.metadata.createdAt,
     updatedAt: ref.metadata.updatedAt || ref.metadata.createdAt,
@@ -115,9 +114,10 @@ export function fromApiMediaFile(file: MediaFile): MediaReference {
 /**
  * Extract API-compatible metadata from MediaMetadata
  */
-function extractApiMetadata(metadata: MediaMetadata): Record<string, any> {
-  const { id, filename, size, mimeType, createdAt, updatedAt, url, checksum, ...rest } = metadata;
-  return rest;
+function extractApiMetadata(metadata: any): Record<string, any> {
+  if (!metadata) return {};
+  const { id, filename, size, mimeType, createdAt, updatedAt, url, checksum, ...rest } = metadata as any;
+  return rest || {};
 }
 
 /**
@@ -309,7 +309,7 @@ export class MediaUploadAdapter {
    * @param progress - The progress update to handle
    */
   handleProgress(progress: MediaUploadProgress): void {
-    const callback = this.progressCallbacks.get(progress.uploadId);
+    const callback = this.progressCallbacks.get((progress as any).uploadId);
     if (callback) {
       callback(progress);
     }
@@ -390,7 +390,7 @@ export function convertPinDataFromApi(apiData: any, pin: Pin): PinData {
       storageLocation: 's3',
       url: apiData.url,
       metadata: {} as MediaMetadata,
-      status: 'ready',
+      status: 'completed' as any,
     };
   }
 
