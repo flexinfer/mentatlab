@@ -22,7 +22,7 @@ export interface FileUploaderProps {
   // Handlers
   onUpload?: (files: File[]) => void;
   onProgress?: (progress: UploadProgress) => void;
-  onComplete?: (results: UploadResult[]) => void;
+  onComplete?: (results: MediaReference[]) => void;
   onError?: (error: UploadError) => void;
   
   // Customization
@@ -47,12 +47,10 @@ export interface UploadProgress {
   error?: { code: string; message: string; retriable: boolean };
 }
 
-export interface UploadResult {
-  fileId: string;
-  reference: MediaReference;
-  duration: number;     // Upload duration in ms
-  averageSpeed: number; // bytes/second
-}
+/**
+ * Note: UploadResult is defined canonically in services/api/mediaService.ts
+ * (reference, bytesUploaded, durationMs). Use that type instead of redefining here.
+ */
 
 export interface UploadError {
   fileId: string;
@@ -118,7 +116,7 @@ export interface UploadTask {
 export interface UploadConfig {
   chunkSize: number;
   onProgress?: (progress: UploadProgress) => void;
-  onComplete?: (result: UploadResult) => void;
+  onComplete?: (result: MediaReference) => void;
   onError?: (error: UploadError) => void;
 }
 

@@ -169,8 +169,8 @@ export interface MediaReference {
     [k: string]: any;
   } | ImageMetadata | AudioMetadata | VideoMetadata | DocumentMetadata | MediaMetadata;
 
-  /** Processing status (retain existing statuses) */
-  status?: 'pending' | 'uploading' | 'processing' | 'ready' | 'error' | 'archived';
+  /** Processing status (canonical uploader statuses) */
+  status?: 'queued' | 'uploading' | 'processing' | 'completed' | 'error' | 'canceled';
 
   /** Error message if status is error */
   error?: string;
@@ -317,26 +317,11 @@ export interface MediaProcessingOptions {
 }
 
 /**
- * Media upload progress
+ * Media upload progress (alias to canonical UploadProgress)
+ * Use the uploader's UploadProgress to avoid type drift.
  */
-export interface MediaUploadProgress {
-  /** Upload ID */
-  uploadId: string;
-  /** Progress percentage (0-100) */
-  progress: number;
-  /** Bytes uploaded */
-  bytesUploaded: number;
-  /** Total bytes */
-  totalBytes: number;
-  /** Upload speed in bytes/second */
-  speed?: number;
-  /** Estimated time remaining in seconds */
-  estimatedTimeRemaining?: number;
-  /** Current status */
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'error';
-  /** Error message if failed */
-  error?: string;
-}
+export type MediaUploadProgress =
+  import('../components/multimodal/FileUploader/FileUploader.types').UploadProgress;
 
 /**
  * Media chunk for streaming
