@@ -69,7 +69,7 @@ runConfig:                    # execution overrides
 	•	layout persists camera & node positions—ensures WYSIWYG Git diffs.
 	•	runConfig allows per‑run overrides without changing each node’s manifest.
 
-A full JSON Schema lives at schemas/flow.schema.json (added during Sprint 0).
+A full JSON Schema lives at [`schemas/flow.schema.json`](schemas/flow.schema.json:1) (added during Sprint 0).
 
 ⸻
 
@@ -104,6 +104,16 @@ Flows can be executed in two primary modes via `POST /flows?mode=<mode>&cron=<cr
 - **redis** (lightweight dev): tasks are published to Redis (`agent_tasks:<agent_id>`) and processed by Redis-based agents; UI events stream via WebSocket on `orchestrator_ui_events`.
 - **k8s** (production): schedule a Kubernetes Job per agent via the orchestrator’s **SchedulingService**; supply an optional cron schedule, e.g. `?mode=k8s&cron=0+*+*+*+*`.
 ⸻
+
+### Execution Modes (status)
+
+| Mode | Status | Notes | API Reference |
+|------|--------|-------|---------------|
+| plan | done | returns topological execution plan only | POST /runs (mode=plan) |
+| redis | in_progress | lightweight dev via Redis streams / agent tasks | POST /runs; GET /runs/{id}/checkpoints; GET /runs/{id}/events |
+| k8s | planned | production: schedule a Job per agent | POST /runs?mode=k8s; GET /runs/{id}/checkpoints |
+
+See the Orchestrator API surface in [`docs/orchestrator_design.md`](docs/orchestrator_design.md:1) for endpoint details.
 
 3 Edge Types & Semantics
 

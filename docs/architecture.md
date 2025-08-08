@@ -163,3 +163,8 @@ References
 - Store/types/theme: [store/index.ts](services/frontend/src/store/index.ts), [types/index.ts](services/frontend/src/types/index.ts), [index.css](services/frontend/src/index.css)
 - Roadmap: [mvp-roadmap.md](docs/mvp-roadmap.md)
 - Overview: [overview.md](docs/overview.md)
+
+## Post‑Roadmap Deltas
+- MC-01: Refined quick‑fix adapters for json→text; CTA flows updated (anchors: frontend.overlay.contracts)
+- MC-02: Console/timeline correlation improvements and scrubber; recorder supports polling fallback (anchors: frontend.panel.console)
+- MC-03: QoS p95 thresholds configurable via [`services/frontend/src/config/features.ts`](services/frontend/src/config/features.ts:1)

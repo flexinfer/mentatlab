@@ -1,55 +1,22 @@
 # MentatLab Overview
 
-Purpose
-MentatLab is a Mission Control–first AI agent lab. It provides a canvas‑centric UX to design, validate, observe, and iterate on agentic workflows with contract‑aware correctness, a flight recorder timeline for replay, and built‑in policy, experimentation, lineage, and cost/latency overlays.
+MentatLab is a canvas-first experimentation and orchestration environment for composing agent-driven flows, observing runs, and iterating quickly. The repository organizes the user-facing Mission Control experience, backend orchestrator, agent (Cog‑Pak) SDKs, and CI hooks.
 
-Who It’s For
-- Research engineers: Rapidly prototype and compare agent strategies with reproducible runs.
-- Platform teams: Standardize contracts, guardrails, and observability across AI use cases.
-- Application teams: Ship reliable, cost‑aware AI features with workflow‑level safety and KPIs.
+Key docs:
+- Roadmap: [`docs/mvp-roadmap.md`](docs/mvp-roadmap.md:1)
+- Architecture: [`docs/architecture.md`](docs/architecture.md:1)
+- Flows: [`docs/flows.md`](docs/flows.md:1)
+- Agents: [`docs/agents.md`](docs/agents.md:1)
+- Orchestrator: [`docs/orchestrator_design.md`](docs/orchestrator_design.md:1)
+- Status (machine-readable): [`docs/status/project-status.yaml`](docs/status/project-status.yaml:1) and [`docs/status/anchors.json`](docs/status/anchors.json:1)
 
-Differentiators
-- Contract‑aware canvas with quick‑fix adapters for mis‑typed pins and edges.
-- Flight recorder with checkpoints, console, and timeline replay for debugging.
-- Pin‑level provenance/lineage to trace artifacts and reproduce outputs.
-- Built‑in A/B and canary flows with KPI overlays and basic statistical guardrails.
-- Policy guardrails (ingress/egress) with “explain why blocked” and remediation paths.
-- Cost/latency overlays and QoS status bar for operator‑grade visibility.
-- Collaboration foundations: presence, comments, and role‑aware editing.
+Next steps (project structure & agent consumption)
+- Keep [`docs/status/project-status.yaml`](docs/status/project-status.yaml:1) updated after any roadmap-affecting PRs (weekly minimum).
+- Keep [`docs/status/anchors.json`](docs/status/anchors.json:1) in sync when moving/renaming code or doc anchors.
+- CI: Add a linter that verifies feature anchors resolve to keys in [`docs/status/anchors.json`](docs/status/anchors.json:1).
+- Doc edits proposed (ready-to-commit): updates to [`docs/architecture.md`](docs/architecture.md:1), [`docs/flows.md`](docs/flows.md:1), [`docs/agents.md`](docs/agents.md:1), and [`docs/orchestrator_design.md`](docs/orchestrator_design.md:1). These are described in the change plan in [`docs/status/README.md`](docs/status/README.md:1).
 
-Core Features (Phase 1 focus)
-1) Contracts and Quick Fixes
-   - Type‑aware validation of node pins and edges.
-   - Overlay hints and one‑click fixes (adapter insertion/rewire).
-2) Flight Recorder + Console
-   - Checkpoints emitted during runs, correlated to a console and a timeline scrubber.
-3) QoS Status Bar
-   - WebSocket connectivity, feature flags, and p95 latency thresholds with R/Y/G states.
-
-Roadmap Summary
-- Phase 1 (Weeks 1–4): Contracts, Flight Recorder v1, QoS bar.
-- Phase 2 (Weeks 5–8): Lineage v1, Variants/KPI compare, Policy guardrails.
-- Phase 3 (Weeks 9–12): Trace correlation (OTel‑lite) and cost/budget guardrails.
-
-Glossary
-- Contract: A type/shape expectation for data at a pin or edge.
-- Quick‑fix: A suggested automatic change (e.g., adapter insertion) to resolve a contract violation.
-- Checkpoint: A recorded run state or artifact at a point in time.
-- Lineage/Provenance: References that allow tracing how an artifact was produced.
-- KPI: Key performance indicator, e.g., quality score, latency, cost.
-- QoS: Quality of Service; operational health metrics such as p95 latency and WS status.
-
-Links
-- Architecture: [architecture.md](docs/architecture.md)
-- MVP Roadmap: [mvp-roadmap.md](docs/mvp-roadmap.md)
-
-Code Anchors (UI references)
-- Mission Control layout: [MissionControlLayout](services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:1)
-- Contract overlay: [ContractOverlay](services/frontend/src/components/mission-control/overlays/ContractOverlay.tsx:1)
-- Console panel: [ConsolePanel](services/frontend/src/components/mission-control/panels/ConsolePanel.tsx:1)
-- Issues panel: [IssuesPanel](services/frontend/src/components/mission-control/panels/IssuesPanel.tsx:1)
-- Linter service: [services.ts](services/frontend/src/services/mission-control/services.ts:1)
-
-Notes
-- Heavy multimodal upload/viewing is de‑scoped initially and gated behind feature flags.
-- This overview is intentionally concise; see the architecture for system details and the roadmap for acceptance criteria and KPIs.
+How agents should use the repo
+- Read [`docs/status/project-status.yaml`](docs/status/project-status.yaml:1) first for authoritative machine state.
+- Resolve anchors via [`docs/status/anchors.json`](docs/status/anchors.json:1) to find code or doc locations.
+- If discrepancies are detected between status, anchors, and docs, open an issue linking the three files.
