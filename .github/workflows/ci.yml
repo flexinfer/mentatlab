@@ -191,16 +191,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-backend]
     
-    services:
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
 
     steps:
       - name: Checkout repository
@@ -214,7 +204,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Install PDM
         run: |
@@ -238,26 +228,16 @@ jobs:
 
       - name: Start backend services
         run: |
-          export PYTHONPATH=$PWD
-          
-          # Start orchestrator
-          cd services/orchestrator
-          pdm run uvicorn app.main:app --host 0.0.0.0 --port 8001 &
-          cd ../..
-          
-          # Start gateway
-          cd services/gateway  
-          pdm run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          cd ../..
-          
-          # Wait for services to be ready
+          # Start backend services via docker-compose to align ports with the frontend and E2E tests
+          docker-compose up -d orchestrator redis
+
           echo "Waiting for backend services to be ready..."
           timeout=60
-          while ! (curl -s http://localhost:8000/healthz > /dev/null && curl -s http://localhost:8001/healthz > /dev/null); do
+          while ! curl -sS http://localhost:7070/ready >/dev/null; do
             sleep 2
             timeout=$((timeout-2))
             if [ $timeout -le 0 ]; then
-              echo "Timed out waiting for backend services."
+              echo "Timed out waiting for orchestrator."
               exit 1
             fi
           done
