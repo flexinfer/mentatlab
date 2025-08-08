@@ -16,4 +16,6 @@ export const FeatureFlags = {
   CONNECT_WS: (env.VITE_CONNECT_WS ?? 'false') === 'true',
   // Visual contract checking overlay
   CONTRACT_OVERLAY: (env.VITE_FF_CONTRACT_OVERLAY ?? (env.DEV ? 'true' : 'false')) === 'true',
+  // Orchestrator Runs panel (dev/demo only)
+  ORCHESTRATOR_PANEL: (env.VITE_FF_ORCHESTRATOR_PANEL ?? (env.DEV ? 'true' : 'false')) === 'true',
 } as const;

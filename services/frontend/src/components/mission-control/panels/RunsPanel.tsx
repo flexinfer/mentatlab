@@ -25,6 +25,28 @@ export default function RunsPanel(): JSX.Element {
   const [posting, setPosting] = useState<boolean>(false);
   const sseRef = useRef<OrchestratorSSE | null>(null);
 
+  // Plan (when mode=plan) returned by createRun
+  const [planResult, setPlanResult] = useState<any | null>(null);
+
+  // Lightweight in-panel toasts (replace alert())
+  const [toasts, setToasts] = useState<{ id: number; text: string; tone?: 'info' | 'error' | 'success' }[]>([]);
+  const toastSeq = useRef(1);
+  function showToast(text: string, tone: 'info' | 'error' | 'success' = 'info') {
+    const id = toastSeq.current++;
+    setToasts((t) => [...t, { id, text, tone }]);
+    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
+  }
+
+  // Checkpoints container ref for auto-scroll
+  const checkpointsContainerRef = useRef<HTMLDivElement | null>(null);
+  // Auto-scroll when new checkpoints arrive
+  useEffect(() => {
+    if (!checkpointsContainerRef.current) return;
+    const el = checkpointsContainerRef.current;
+    // scroll to bottom smoothly
+    el.scrollTop = el.scrollHeight;
+  }, [checkpoints]);
+
   useEffect(() => {
     // cleanup on unmount
     return () => {
@@ -38,28 +60,27 @@ export default function RunsPanel(): JSX.Element {
       const res = await orchestratorService.createRun(mode);
       if (res.runId) {
         setRunIdInput(res.runId);
+        setPlanResult(null);
         // If plan mode, server returns plan instead of runId
-        // For plan mode we just show the plan in console
         if (mode === 'plan') {
-          // plan returned in res.plan
-          // no run created
-          // keep currentRun null
-        } else {
-          // fetch run and checkpoints
-          const run = await orchestratorService.getRun(res.runId as string);
-          setCurrentRun(run);
-          const cps = await orchestratorService.listCheckpoints(res.runId as string);
-          setCheckpoints(cps);
-          // auto-connect SSE
-          connectToRun(res.runId as string);
+          // Some servers may still return a runId even for plan; tolerate both.
         }
+        // fetch run and checkpoints
+        const run = await orchestratorService.getRun(res.runId as string);
+        setCurrentRun(run);
+        const cps = await orchestratorService.listCheckpoints(res.runId as string);
+        setCheckpoints(cps);
+        // auto-connect SSE
+        connectToRun(res.runId as string);
+        showToast('Run created: ' + String(res.runId), 'success');
       } else if (res.mode === 'plan' && res.plan) {
-        // show plan in console for now
-        console.info('Plan:', res.plan);
+        // show plan inline
+        setPlanResult(res.plan);
+        showToast('Plan generated (mode=plan)', 'info');
       }
     } catch (err) {
       console.error('createRun error', err);
-      alert('Failed to create run: ' + String(err));
+      showToast('Failed to create run: ' + String(err), 'error');
     } finally {
       setCreating(false);
     }
@@ -84,32 +105,39 @@ export default function RunsPanel(): JSX.Element {
 
     client.connect(runId, {
       onOpen: () => {
+        // connection established
         setSseConnected(true);
+        showToast('SSE connected', 'success');
       },
       onHello: (data) => {
         console.debug('SSE hello', data);
+        showToast('SSE hello for ' + data.runId, 'info');
       },
       onCheckpoint: (cp) => {
         setCheckpoints((prev) => {
           // avoid duplicates by id
           if (prev.find((p) => p.id === cp.id)) return prev;
-          return [...prev, cp].sort((a, b) => (a.ts > b.ts ? 1 : -1));
+          const next = [...prev, cp].sort((a, b) => (a.ts > b.ts ? 1 : -1));
+          return next;
         });
       },
       onStatus: (data) => {
         // update run status if matches
         if (currentRun && data.runId === currentRun.id) {
           setCurrentRun((r) => (r ? { ...r, status: data.status as Run['status'] } : r));
+          showToast(`Run ${data.runId} status: ${data.status}`, 'info');
         }
       },
       onError: (err) => {
         console.warn('SSE error', err);
+        showToast('SSE error: ' + String(err), 'error');
       },
       onRaw: () => {
         // noop
       }
     }).catch((err) => {
       console.error('SSE connect failed', err);
+      showToast('SSE connect failed: ' + String(err), 'error');
     });
   }
 
@@ -117,6 +145,7 @@ export default function RunsPanel(): JSX.Element {
     sseRef.current?.close();
     sseRef.current = null;
     setSseConnected(false);
+    showToast('Disconnected SSE', 'info');
   }
 
   async function handleConnectClick() {
@@ -139,18 +168,19 @@ export default function RunsPanel(): JSX.Element {
     }
     setPosting(true);
     try {
-      const payload = { type: 'progress', data: { percent: Math.floor(Math.random() * 100) } };
-      const res = await orchestratorService.postCheckpoint(runIdInput, payload);
-      // refresh checkpoints (SSE will push too)
-      const cps = await orchestratorService.listCheckpoints(runIdInput);
-      setCheckpoints(cps);
-      return res;
-    } catch (err) {
-      console.error('postCheckpoint error', err);
-      alert('Failed to post checkpoint');
-    } finally {
-      setPosting(false);
-    }
+        const payload = { type: 'progress', data: { percent: Math.floor(Math.random() * 100) } };
+        const res = await orchestratorService.postCheckpoint(runIdInput, payload);
+        // refresh checkpoints (SSE will push too)
+        const cps = await orchestratorService.listCheckpoints(runIdInput);
+        setCheckpoints(cps);
+        showToast('Posted checkpoint', 'success');
+        return res;
+      } catch (err) {
+        console.error('postCheckpoint error', err);
+        showToast('Failed to post checkpoint: ' + String(err), 'error');
+      } finally {
+        setPosting(false);
+      }
   }
 
   async function handleCancelRun() {
@@ -162,15 +192,16 @@ export default function RunsPanel(): JSX.Element {
       const res = await orchestratorService.cancelRun(runIdInput);
       if (res && res.status) {
         setCurrentRun((r) => (r ? { ...r, status: res.status } : r));
+        showToast(`Run canceled: ${res.status}`, 'success');
       }
     } catch (err: any) {
       const status = err?.status ?? err?.response?.status;
       if (status === 409) {
-        alert('Invalid status transition');
+        showToast('Invalid status transition', 'error');
       } else if (status === 404) {
-        alert('Run not found');
+        showToast('Run not found', 'error');
       } else {
-        alert('Failed to cancel run');
+        showToast('Failed to cancel run: ' + String(err), 'error');
       }
     }
   }
@@ -201,27 +232,86 @@ export default function RunsPanel(): JSX.Element {
         </button>
       </div>
 
-      <div style={{ marginBottom: 8 }}>
-        <strong>SSE:</strong> {sseConnected ? 'connected' : 'disconnected'}
+      <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <strong>SSE:</strong>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 10,
+              display: 'inline-block',
+              background: sseConnected ? '#10b981' : '#cbd5e1'
+            }}
+            title={sseConnected ? 'connected' : 'disconnected'}
+          />
+          <span>{sseConnected ? 'connected' : 'disconnected'}</span>
+        </span>
       </div>
 
       <div style={{ marginBottom: 8 }}>
         <strong>Run:</strong>{' '}
         {currentRun ? (
-          <span>
-            {currentRun.id} — {currentRun.mode} — <em>{currentRun.status}</em>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span>
+              <strong style={{ fontFamily: 'monospace' }}>{currentRun.id}</strong> — {currentRun.mode} — <em>{currentRun.status}</em>
+            </span>
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(currentRun.id);
+                  showToast('Copied runId to clipboard', 'success');
+                } catch {
+                  showToast('Failed to copy runId', 'error');
+                }
+              }}
+              style={{ padding: '4px 8px', fontSize: 12 }}
+            >
+              Copy runId
+            </button>
           </span>
         ) : (
           <em>no run loaded</em>
         )}
       </div>
 
-      <div style={{ marginBottom: 8 }}>
+      <div style={{ marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
         <button onClick={handlePostCheckpoint} disabled={posting || !runIdInput}>
           {posting ? 'Posting...' : 'Post progress checkpoint'}
         </button>
         <button onClick={handleCancelRun} disabled={!runIdInput}>
           Cancel run
+        </button>
+        <button
+          onClick={() => {
+            // export checkpoints as JSON file
+            try {
+              const blob = new Blob([JSON.stringify(checkpoints, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${runIdInput || currentRun?.id || 'checkpoints'}.json`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+              showToast('Exported checkpoints', 'success');
+            } catch (e) {
+              showToast('Failed to export checkpoints', 'error');
+            }
+          }}
+          disabled={checkpoints.length === 0}
+        >
+          Export checkpoints (JSON)
+        </button>
+        <button
+          onClick={() => {
+            setCheckpoints([]);
+            showToast('Cleared local checkpoint list', 'info');
+          }}
+          disabled={checkpoints.length === 0}
+        >
+          Clear list
         </button>
       </div>
 
