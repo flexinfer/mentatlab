@@ -148,7 +148,36 @@ const nodeTypes = {
 
 /**
  * @deprecated Use StreamingCanvas instead for real-time flow visualization
+ *
+ * NOTE: added local debounced lint triggers on node/edge changes (300ms)
  */
+function useDebouncedCallback<T extends (...args: any[]) => any>(cb: T, wait = 300) {
+  const timer = React.useRef<number | null>(null);
+  return React.useCallback(
+    (...args: any[]) => {
+      if (timer.current) {
+        window.clearTimeout(timer.current);
+      }
+      // window.setTimeout returns number in browsers
+      timer.current = window.setTimeout(() => {
+        try {
+          cb(...args);
+        } finally {
+          // Dispatch lint trigger whenever debounced change fires
+          try {
+            window.dispatchEvent(new CustomEvent('lint:trigger'));
+          } catch {
+            // ignore
+          }
+          timer.current = null;
+        }
+      }, wait) as unknown as number;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cb, wait]
+  );
+}
+
 const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
   // Add deprecation warning in development
   React.useEffect(() => {
@@ -472,13 +501,17 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
     [nodes] // Depend on nodes to get updated pin definitions
   );
  
+  // Create stable debounced wrappers for node/edge change handlers that also emit a lint trigger.
+  const debouncedOnNodesChange = useDebouncedCallback(onNodesChange, 300);
+  const debouncedOnEdgesChange = useDebouncedCallback(onEdgesChange, 300);
+
   return (
     <div className="reactflow-wrapper h-full w-full" style={{ height: '100%', width: '100%' }} ref={reactFlowWrapper} data-testid="flow-canvas">
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
+        onNodesChange={debouncedOnNodesChange}
+        onEdgesChange={debouncedOnEdgesChange}
         onConnect={onConnect}
         onDrop={onDrop}
         onDragOver={onDragOver}
