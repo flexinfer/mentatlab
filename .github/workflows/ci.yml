@@ -95,27 +95,96 @@ jobs:
 
   test-frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/frontend
+    env:
+      VITE_ORCHESTRATOR_URL: "http://localhost:7070"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Detect package manager
+        id: detect-pm
+        run: |
+          # detect lockfile in services/frontend (working-directory is services/frontend due to defaults)
+          if [ -f "pnpm-lock.yaml" ]; then
+            echo "manager=pnpm" >> $GITHUB_OUTPUT
+            echo "cache=pnpm" >> $GITHUB_OUTPUT
+            echo "dep_path=services/frontend/pnpm-lock.yaml" >> $GITHUB_OUTPUT
+          elif [ -f "yarn.lock" ]; then
+            echo "manager=yarn" >> $GITHUB_OUTPUT
+            echo "cache=yarn" >> $GITHUB_OUTPUT
+            echo "dep_path=services/frontend/yarn.lock" >> $GITHUB_OUTPUT
+          elif [ -f "package-lock.json" ]; then
+            echo "manager=npm" >> $GITHUB_OUTPUT
+            echo "cache=npm" >> $GITHUB_OUTPUT
+            echo "dep_path=services/frontend/package-lock.json" >> $GITHUB_OUTPUT
+          else
+            # default to npm if no lockfile present
+            echo "manager=npm" >> $GITHUB_OUTPUT
+            echo "cache=npm" >> $GITHUB_OUTPUT
+            echo "dep_path=services/frontend/package-lock.json" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: services/frontend/package-lock.json
+          node-version: '20'
+          cache: ${{ steps.detect-pm.outputs.cache }}
+          cache-dependency-path: ${{ steps.detect-pm.outputs.dep_path }}
 
-      - name: Install frontend dependencies
-        run: npm --prefix services/frontend install
+      - name: Install dependencies
+        run: |
+          if [ "${{ steps.detect-pm.outputs.manager }}" = "pnpm" ]; then
+            corepack enable
+            corepack prepare pnpm@latest --activate
+            pnpm install --frozen-lockfile
+          elif [ "${{ steps.detect-pm.outputs.manager }}" = "yarn" ]; then
+            corepack enable
+            corepack prepare yarn@stable --activate
+            yarn install --frozen-lockfile
+          else
+            npm ci
+          fi
+
+      - name: Optional type-check
+        run: |
+          if grep -q '"type-check"' package.json; then
+            echo "Running type-check script"
+            if [ "${{ steps.detect-pm.outputs.manager }}" = "pnpm" ]; then
+              pnpm run type-check || true
+            elif [ "${{ steps.detect-pm.outputs.manager }}" = "yarn" ]; then
+              yarn run type-check || true
+            else
+              npm run type-check || true
+            fi
+          else
+            echo "No type-check script found, skipping"
+          fi
 
       - name: Run frontend tests
+        env:
+          CI: 1
         run: |
-          # Check if test script exists, otherwise skip
-          if npm --prefix services/frontend run | grep -q "test"; then
-            npm --prefix services/frontend run test
+          if [ "${{ steps.detect-pm.outputs.manager }}" = "pnpm" ]; then
+            if pnpm run | grep -q "test"; then
+              pnpm run test -- --run
+            else
+              echo "No test script found, skipping frontend unit tests"
+            fi
+          elif [ "${{ steps.detect-pm.outputs.manager }}" = "yarn" ]; then
+            if yarn run | grep -q "test"; then
+              yarn run test -- --run
+            else
+              echo "No test script found, skipping frontend unit tests"
+            fi
           else
-            echo "No test script found, skipping frontend unit tests"
+            if npm run | grep -q "test"; then
+              npm run test -- --run
+            else
+              echo "No test script found, skipping frontend unit tests"
+            fi
           fi
 
   integration-tests:

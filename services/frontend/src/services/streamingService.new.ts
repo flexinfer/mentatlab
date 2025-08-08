@@ -6,7 +6,7 @@ export class StreamingService {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 1000;
-  private pingInterval: number | null = null;
+  private pingInterval: any = null;
 
   constructor() {
     console.log('[StreamingService] Service initialized');

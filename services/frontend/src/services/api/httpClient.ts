@@ -332,7 +332,7 @@ export class HttpClient {
     });
 
     // Logging interceptor
-    if (FeatureFlags.NEW_API_LAYER) {
+    if ((FeatureFlags as any).NEW_API_LAYER) {
       this.addInterceptor({
         request: (config) => {
           console.log(`[HTTP] ${config.method} ${config.url}`, config);

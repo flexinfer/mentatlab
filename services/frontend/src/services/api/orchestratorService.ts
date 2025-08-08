@@ -1,17 +1,19 @@
 import apiService from './apiService';
-import { nanoid } from 'nanoid';
+import { getOrchestratorBaseUrl } from '@/config/orchestrator';
+import type { Run, Checkpoint, RunMode, RunStatus } from '@/types/orchestrator';
 
 /**
  * Orchestrator API client for frontend usage.
- * Uses the existing apiService.httpClient (axios-like) for requests.
+ * Uses the existing apiService.httpClient (axios-like / fetch wrapper) for requests.
  *
- * Exports a small class with the minimal methods needed by the UI:
+ * Exposes:
  * - createRun(mode?: 'plan'|'redis'|'k8s')
  * - getRun(runId)
+ * - listRuns()
  * - listCheckpoints(runId)
  * - postCheckpoint(runId, { type, data })
+ * - cancelRun(runId)
  */
-export type RunMode = 'plan' | 'redis' | 'k8s';
 
 export interface CreateRunResult {
   runId?: string;
@@ -19,50 +21,58 @@ export interface CreateRunResult {
   plan?: unknown;
 }
 
-/** Checkpoint shape returned from the server */
-export interface Checkpoint {
-  id: string;
-  runId: string;
-  ts: string;
-  type: string;
-  data?: unknown;
-}
-
-/** Run object */
-export interface Run {
-  id: string;
-  mode: RunMode;
-  createdAt: string;
-  status: string;
-  owner?: string;
-  metadata?: Record<string, unknown>;
-}
-
 class OrchestratorService {
   private client = apiService.httpClient;
 
+  // helper to be tolerant of different http client response shapes
+  private extract<T = any>(res: any): T {
+    return res && typeof res === 'object' && 'data' in res ? res.data as T : (res as T);
+  }
+
+  private baseUrl(): string {
+    return getOrchestratorBaseUrl().replace(/\/$/, '');
+  }
+
   async createRun(mode?: RunMode): Promise<CreateRunResult> {
-    // plan mode handled server-side via query param
     const params: Record<string, string> = {};
     if (mode) params.mode = mode;
-    const res = await this.client.post('/runs', null, { params });
-    return res.data;
+    const res = await this.client.post(`${this.baseUrl()}/runs`, null, { params });
+    return this.extract<CreateRunResult>(res);
   }
 
   async getRun(runId: string): Promise<Run> {
-    const res = await this.client.get(`/runs/${runId}`);
-    return res.data.run as Run;
+    const res = await this.client.get(`${this.baseUrl()}/runs/${encodeURIComponent(runId)}`);
+    const payload = this.extract<any>(res);
+    // server might return { run: {...} } or the run object directly
+    return (payload.run ?? payload) as Run;
+  }
+
+  async listRuns(): Promise<Run[]> {
+    const res = await this.client.get(`${this.baseUrl()}/runs`);
+    const payload = this.extract<any>(res);
+    // expect { runs: Run[] } or raw array
+    return (payload.runs ?? payload) as Run[];
   }
 
   async listCheckpoints(runId: string): Promise<Checkpoint[]> {
-    const res = await this.client.get(`/runs/${runId}/checkpoints`);
-    return res.data.checkpoints as Checkpoint[];
+    const res = await this.client.get(`${this.baseUrl()}/runs/${encodeURIComponent(runId)}/checkpoints`);
+    const payload = this.extract<any>(res);
+    return (payload.checkpoints ?? payload) as Checkpoint[];
   }
 
   async postCheckpoint(runId: string, payload: { type: string; data?: unknown }): Promise<{ checkpointId: string }> {
-    // The server generates id/ts; client sends semantic payload only
-    const res = await this.client.post(`/runs/${runId}/checkpoints`, payload);
-    return res.data as { checkpointId: string };
+    const res = await this.client.post(`${this.baseUrl()}/runs/${encodeURIComponent(runId)}/checkpoints`, payload);
+    return this.extract<{ checkpointId: string }>(res);
+  }
+
+  /**
+   * Cancel a run.
+   * Calls DELETE /runs/:runId and returns the parsed result { status: RunStatus }.
+   * Errors (404/409/etc) are NOT swallowed and will propagate to the caller.
+   */
+  async cancelRun(runId: string): Promise<{ status: RunStatus }> {
+    const res = await this.client.delete(`${this.baseUrl()}/runs/${encodeURIComponent(runId)}`);
+    return this.extract<{ status: RunStatus }>(res);
   }
 
   // Convenience: create a "plan" locally (not necessary since server supports it);

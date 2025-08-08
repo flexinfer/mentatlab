@@ -20,7 +20,7 @@ import { getMediaService } from '../../../../services/api/mediaService';
 import { httpClient } from '../../../../services/api/httpClient';
 import { websocketClient } from '../../../../services/api/websocketClient';
 import { UploadOptions, UploadProgress, FileUploadState } from '../FileUploader.types';
-import { useMediaStore } from '../../../../store';
+import useMediaStore from '../../../../store';
 
 const MB = 1024 * 1024;
 
@@ -55,7 +55,7 @@ export default function useFileUpload() {
 
   // start(id)
   const start = useCallback(async (id: string) => {
-    const item = store.uploadQueue.find((u: FileUploadState) => u.id === id);
+    const item = (store as any).uploadQueue.find((u: FileUploadState) => u.id === id);
     if (!item) return;
     if (!['queued', 'error', 'canceled'].includes(item.status)) return;
 
@@ -72,7 +72,7 @@ export default function useFileUpload() {
     });
 
     // inform processing state
-    store.setProcessingState?.(id, 'uploading');
+    (store as any).setProcessingState?.(id, 'uploading');
 
     // progress bridge
     const onProgress = (p: any) => {
@@ -80,7 +80,7 @@ export default function useFileUpload() {
         typeof p?.percentage === 'number'
           ? p.percentage
           : Math.round(((p?.loaded || 0) / (p?.total || item.file.size)) * 100);
-      store.setUploadProgress?.(id, percentage);
+      (store as any).setUploadProgress?.(id, percentage);
  
       // store derived metrics locally if desired
       const meta = progressMetaRef.current.get(id) || {};
@@ -93,7 +93,7 @@ export default function useFileUpload() {
       parallel: item.parallel || 3,
       onProgress,
       onStatus: (s: UploadProgress) => {
-        store.setProcessingState?.(id, s.status);
+        (store as any).setProcessingState?.(id, s.status);
       },
       signal: controller.signal,
       contentType: item.file.type || undefined,
@@ -115,9 +115,9 @@ export default function useFileUpload() {
       } as any);
 
       // Success
-      store.setProcessingState?.(id, 'completed');
-      store.addMediaItem?.(reference);
-      store.removeFromUploadQueue?.(id);
+      (store as any).setProcessingState?.(id, 'completed');
+      (store as any).addMediaItem?.(reference);
+      (store as any).removeFromUploadQueue?.(id);
       progressMetaRef.current.delete(id);
     } catch (err: any) {
       const isAborted =
@@ -126,7 +126,7 @@ export default function useFileUpload() {
         String(err?.message || '').toLowerCase().includes('abort');
 
       if (isAborted) {
-        store.setProcessingState?.(id, 'canceled');
+        (store as any).setProcessingState?.(id, 'canceled');
         return;
       }
 

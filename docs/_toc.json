@@ -39,6 +39,24 @@
       "depends_on": ["flows", "architecture"]
     },
     {
+      "id": "orchestrator-api",
+      "title": "Orchestrator API Reference",
+      "path": "docs/references/orchestrator-api.md",
+      "depends_on": ["orchestrator_design"]
+    },
+    {
+      "id": "frontend-orchestrator",
+      "title": "Frontend — Orchestrator",
+      "path": "docs/references/frontend-orchestrator.md",
+      "depends_on": ["architecture", "orchestrator-api"]
+    },
+    {
+      "id": "orchestrator-local-dev",
+      "title": "Orchestrator — Local Development",
+      "path": "docs/guides/orchestrator-local-dev.md",
+      "depends_on": ["orchestrator-api"]
+    },
+    {
       "id": "status-spec",
       "title": "Project Status Spec",
       "path": "docs/status/README.md",

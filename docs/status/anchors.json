@@ -101,5 +101,54 @@
     "tags": ["backend", "orchestrator", "api", "sse"],
     "status": "done",
     "exists": true
+  },
+  "orchestrator.api.rest": {
+    "doc": "docs/references/orchestrator-api.md#rest-endpoints",
+    "code": "[services/orchestrator/src/routes/runs.ts](services/orchestrator/src/routes/runs.ts:1)",
+    "tags": ["orchestrator","api","rest"],
+    "status": "done",
+    "exists": true
+  },
+  "orchestrator.api.sse": {
+    "doc": "docs/references/orchestrator-api.md#sse-endpoint",
+    "code": "[services/orchestrator/src/routes/runs.ts](services/orchestrator/src/routes/runs.ts:141)",
+    "tags": ["orchestrator","api","sse"],
+    "status": "done",
+    "exists": true
+  },
+  "frontend.api.orchestratorService": {
+    "doc": "docs/references/frontend-orchestrator.md#http-client-orchestratorservice",
+    "code": "[services/frontend/src/services/api/orchestratorService.ts](services/frontend/src/services/api/orchestratorService.ts:1)",
+    "tags": ["frontend","api","client"],
+    "status": "done",
+    "exists": true
+  },
+  "frontend.api.orchestratorSSE": {
+    "doc": "docs/references/frontend-orchestrator.md#sse-client-orchestratorsse",
+    "code": "[services/frontend/src/services/api/streaming/orchestratorSSE.ts](services/frontend/src/services/api/streaming/orchestratorSSE.ts:42)",
+    "tags": ["frontend","api","sse"],
+    "status": "done",
+    "exists": true
+  },
+  "frontend.panel.runs": {
+    "doc": "docs/references/frontend-orchestrator.md#example-surface-in-ui",
+    "code": "[services/frontend/src/components/mission-control/panels/RunsPanel.tsx](services/frontend/src/components/mission-control/panels/RunsPanel.tsx:18)",
+    "tags": ["frontend","ui","panel"],
+    "status": "done",
+    "exists": true
+  },
+  "config.orchestrator.base_url": {
+    "doc": "docs/references/frontend-orchestrator.md#config",
+    "code": "[services/frontend/src/config/orchestrator.ts](services/frontend/src/config/orchestrator.ts:7)",
+    "tags": ["config","orchestrator"],
+    "status": "done",
+    "exists": true
+  },
+  "compose.orchestrator": {
+    "doc": "docs/guides/orchestrator-local-dev.md#start-services",
+    "code": "[docker-compose.yml](docker-compose.yml:1)",
+    "tags": ["dev","compose","orchestrator"],
+    "status": "done",
+    "exists": true
   }
 }

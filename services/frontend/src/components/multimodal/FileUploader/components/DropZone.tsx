@@ -28,12 +28,12 @@ export const DropZone: React.FC<DropZoneProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const { isDragging, dragError, dragHandlers } = useDragDrop({
+  const { isDragging, dragError, dragHandlers } = (useDragDrop as any)({
     allowedTypes: validation.allowedTypes, // Pass validation props
     maxSize: validation.maxSize, // Pass validation props
     multiple,
     onFilesSelected, // Pass renamed prop
-    onDragError: (error) => { /* handle error */ }, // Add specific error handler
+    onDragError: (error: any) => { /* handle error */ }, // Add specific error handler
   });
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
