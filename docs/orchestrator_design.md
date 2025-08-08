@@ -6,7 +6,7 @@
 
 This document outlines the core architectural design for the MentatLab Orchestrator service. The Orchestrator is a critical component responsible for interpreting a `flow.mlab` file, understanding its dependency graph, and generating a concrete execution plan.
 
-The design is based on the specifications laid out in the [`FLOWS.md`](../FLOWS.md) document, specifically the `graph` data structure and the runtime lifecycle.
+The design is based on the specifications laid out in the [`docs/flows.md`](docs/flows.md:1) document, specifically the `graph` data structure and the runtime lifecycle.
 
 ## 2. Core Components
 
@@ -99,3 +99,22 @@ graph TD
     style B fill:#f9f,stroke:#333,stroke-width:2px
     style C fill:#f9f,stroke:#333,stroke-width:2px
     style D fill:#f9f,stroke:#333,stroke-width:2px
+
+## 4. Execution Plan API Surface
+
+Endpoints (examples):
+- POST /runs
+  - Query param: mode=plan|redis|k8s
+  - If mode=plan: returns execution plan JSON (topologically grouped steps)
+  - If mode=redis or k8s: enqueues run and returns runId; events stream via WS/SSE
+- GET /runs/{runId}/checkpoints
+  - Returns list of checkpoints for run
+- GET /runs/{runId}/events
+  - Stream of Recorder/Orchestrator events (SSE or WS)
+
+Notes:
+- plan mode is intended for dry-run planning & preflight validation
+- redis mode publishes tasks to Redis stream `agent_tasks:<agent_id>`
+- k8s mode schedules Jobs / Deployments (production)
+
+Status: If code stubs exist, add anchor(s) to [`docs/status/anchors.json`](docs/status/anchors.json:1) (current status: planned; see `schemas.flow` and orchestrator stubs in [`docs/status/project-status.yaml`](docs/status/project-status.yaml:1))

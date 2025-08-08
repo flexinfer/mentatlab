@@ -1,0 +1,54 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-08-08T14:18:00Z",
+  "docs": [
+    {
+      "id": "overview",
+      "title": "Overview",
+      "path": "docs/overview.md",
+      "depends_on": []
+    },
+    {
+      "id": "mvp-roadmap",
+      "title": "MVP Roadmap",
+      "path": "docs/mvp-roadmap.md",
+      "depends_on": ["overview"]
+    },
+    {
+      "id": "architecture",
+      "title": "Architecture",
+      "path": "docs/architecture.md",
+      "depends_on": ["overview", "mvp-roadmap"]
+    },
+    {
+      "id": "flows",
+      "title": "Flows & Canvas",
+      "path": "docs/flows.md",
+      "depends_on": ["architecture"]
+    },
+    {
+      "id": "agents",
+      "title": "Agents (Cog-Paks)",
+      "path": "docs/agents.md",
+      "depends_on": ["flows"]
+    },
+    {
+      "id": "orchestrator_design",
+      "title": "Orchestrator Design",
+      "path": "docs/orchestrator_design.md",
+      "depends_on": ["flows", "architecture"]
+    },
+    {
+      "id": "status-spec",
+      "title": "Project Status Spec",
+      "path": "docs/status/README.md",
+      "depends_on": ["mvp-roadmap"]
+    },
+    {
+      "id": "status-data",
+      "title": "Project Status Data",
+      "path": "docs/status/project-status.yaml",
+      "depends_on": ["status-spec"]
+    }
+  ]
+}

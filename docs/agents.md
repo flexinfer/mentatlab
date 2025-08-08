@@ -78,7 +78,8 @@ Key fields:
 	•	longRunning true → K8s Deployment; false → Job.
 	•	ui.remoteEntry Optional URL to a UMD/Module Federation bundle exposing a React component named NodePanel.
 
-A complete JSON Schema lives at schemas/manifest.schema.json.
+Schema: [`schemas/agent.schema.json`](schemas/agent.schema.json:1).
+Planned alias: [`schemas/manifest.schema.json`](schemas/manifest.schema.json:1) (tracked in status under schemas.agent_manifest).
 
 ⸻
 
@@ -143,6 +144,11 @@ When you push to any branch:
 	4.	publish‑cog‑pak – Attach .mlab & image digest as release asset on tag push.
 
 Workflows live in .github/workflows/agents‑*.yml.
+
+## CI Cross‑References & Status
+- Manifest schema validation: tracked as `schemas.agent_manifest` (planned) — current schema: [`schemas/agent.schema.json`](schemas/agent.schema.json:1)
+- Build & publish: `lint-agents`, `build-agent-images`, `kind-e2e`, `publish-cog-pak` — status recorded in [`docs/status/project-status.yaml`](docs/status/project-status.yaml:1)
+- SDK stabilization: roadmap milestone tracked in feature AB-01 and Sprint5 (see [`docs/status/project-status.yaml`](docs/status/project-status.yaml:1))
 
 ⸻
 

@@ -1,0 +1,295 @@
+# Project Status Spec + Instance (x-spec is machine-readable)
+x-spec:
+  version: 1.0.0
+  description: Machine-readable project status for autonomous agents. Keys are stable.
+  type: object
+  required: [meta, phases, features, flags, surfaces, kpis, risks]
+  properties:
+    meta:
+      type: object
+      required: [version, generatedAt, sourceDocs]
+      properties:
+        version: { type: string }              # Status doc version (semver)
+        generatedAt: { type: string }          # ISO-8601 timestamp
+        sourceDocs:                            # Docs used to derive status
+          type: array
+          items: { type: string }
+    phases:
+      type: array
+      items:
+        type: object
+        required: [id, name, window, status]
+        properties:
+          id: { type: string }                 # P1, P2, ...
+          name: { type: string }
+          window: { type: string }             # Free-form: "Weeks 1–4"
+          status: { enum: [planned, in_progress, done, blocked] }
+          notes: { type: string }
+    features:
+      type: array
+      items:
+        type: object
+        required: [id, title, area, phase, status, anchors]
+        properties:
+          id: { type: string }                 # e.g., MC-01
+          title: { type: string }
+          area: { enum: [frontend, backend, sdk, docs] }
+          phase: { type: string }              # e.g., P1
+          status: { enum: [planned, in_progress, done, blocked] }
+          flags:
+            type: array
+            items: { type: string }
+          owners:
+            type: array
+            items: { type: string }            # GitHub handles or teams
+          anchors:
+            type: array
+            items: { type: string }            # Keys into anchors.json
+          kpis:
+            type: array
+            items: { type: string }
+          acceptance:
+            type: array
+            items: { type: string }
+          notes: { type: string }
+    flags:
+      type: object
+      properties:
+        CONTRACT_OVERLAY: { enum: [on, off] }
+        CONNECT_WS: { enum: [on, off] }
+        EXPERIMENTS: { enum: [off, staged, on] }
+        LINEAGE: { enum: [off, staged, on] }
+        POLICY_GUARDRAILS: { enum: [off, staged, on] }
+    surfaces:
+      type: object
+      additionalProperties:
+        type: array
+        items: { type: string }                # anchor keys
+    kpis:
+      type: array
+      items:
+        type: object
+        required: [id, title, target]
+        properties:
+          id: { type: string }
+          title: { type: string }
+          target: { type: string }
+          current: { type: string }
+          source: { type: string }
+          notes: { type: string }
+    risks:
+      type: array
+      items:
+        type: object
+        required: [id, title, status]
+        properties:
+          id: { type: string }
+          title: { type: string }
+          status: { enum: [open, in_progress, mitigated, closed] }
+          mitigation: { type: string }
+          owners:
+            type: array
+            items: { type: string }
+
+---
+# Instance populated from the MVP roadmap and current repo state
+meta:
+  version: 1.0.0
+  generatedAt: "2025-08-08T14:06:00Z"
+  sourceDocs:
+    - docs/mvp-roadmap.md
+    - docs/architecture.md
+    - docs/flows.md
+    - docs/agents.md
+    - docs/orchestrator_design.md
+
+phases:
+  - id: P1
+    name: "Phase 1 – Mission Control core + Contracts"
+    window: "Weeks 1–4"
+    status: in_progress
+    notes: "Overlay + recorder/console + QoS bar"
+  - id: P2
+    name: "Phase 2 – Lineage + A/B + Policy"
+    window: "Weeks 5–8"
+    status: planned
+  - id: P3
+    name: "Phase 3 – Observability & Cost"
+    window: "Weeks 9–12"
+    status: planned
+
+features:
+  - id: MC-01
+    title: "Contract Overlay + Quick Fix stubs"
+    area: frontend
+    phase: P1
+    status: in_progress
+    flags: [CONTRACT_OVERLAY]
+    owners: ["@ui-team", "@platform"]
+    anchors:
+      - "frontend.overlay.contracts"
+      - "services.linter"
+      - "frontend.mission_control.layout"
+    kpis:
+      - "Contract violations surface within 100ms of edit"
+    acceptance:
+      - "Editing an incompatible edge shows red contract hint with explanation"
+      - "Apply fix inserts adapter or re-wires; warning clears"
+    notes: "Mounted behind feature flag with basic fixes"
+
+  - id: MC-02
+    title: "Flight Recorder v1 + Console"
+    area: backend
+    phase: P1
+    status: in_progress
+    flags: [CONNECT_WS]
+    owners: ["@backend", "@ui-team"]
+    anchors:
+      - "frontend.panel.console"
+      - "frontend.mission_control.layout"
+    kpis:
+      - "≥80% of tool calls produce checkpoints/spans correlated on timeline"
+    acceptance:
+      - "Runs produce checkpoints; timeline lists them"
+      - "Selecting checkpoint scrolls/focuses Console"
+    notes: "In-memory recorder with WS streaming or polling fallback"
+
+  - id: MC-03
+    title: "QoS Status Bar"
+    area: frontend
+    phase: P1
+    status: planned
+    flags: [CONNECT_WS]
+    owners: ["@ui-team"]
+    anchors:
+      - "frontend.flags"
+      - "frontend.mission_control.layout"
+    kpis:
+      - "QoS p95 latency stays green under threshold"
+    acceptance:
+      - "Status bar shows WS Connected and QoS green when p95 < threshold"
+
+  - id: LN-01
+    title: "Provenance/Lineage v1"
+    area: backend
+    phase: P2
+    status: planned
+    flags: [LINEAGE]
+    owners: ["@backend"]
+    anchors:
+      - "schemas.flow"
+    acceptance:
+      - "Outputs emit provenance ids; lineage overlay for selected pins"
+
+  - id: AB-01
+    title: "Variants & KPI Compare"
+    area: frontend
+    phase: P2
+    status: planned
+    flags: [EXPERIMENTS]
+    owners: ["@ui-team", "@backend"]
+    anchors:
+      - "frontend.mission_control.layout"
+    acceptance:
+      - "Fixed split / time-sliced strategies; KPI compare in panel"
+
+  - id: PL-01
+    title: "Policy Guardrails"
+    area: backend
+    phase: P2
+    status: planned
+    flags: [POLICY_GUARDRAILS]
+    owners: ["@platform"]
+    anchors:
+      - "services.linter"
+    acceptance:
+      - "Ingress/egress safety nodes; badges; explainers"
+
+  - id: OBS-01
+    title: "Trace correlation (OTel-lite)"
+    area: backend
+    phase: P3
+    status: planned
+    owners: ["@platform"]
+    anchors:
+      - "frontend.panel.console"
+    acceptance:
+      - "Correlate spans with checkpoints via flow/run/node ids"
+
+  - id: COST-01
+    title: "Pre‑flight envelopes & budgets"
+    area: backend
+    phase: P3
+    status: planned
+    owners: ["@platform"]
+    anchors:
+      - "frontend.mission_control.layout"
+    acceptance:
+      - "Budget guardrails warn pre-run; post-run accounting"
+
+# Global flag snapshot
+flags:
+  CONTRACT_OVERLAY: on
+  CONNECT_WS: on
+  EXPERIMENTS: off         # staged later
+  LINEAGE: staged
+  POLICY_GUARDRAILS: off   # planned
+
+# Map doc sections to anchor keys (resolve via anchors.json)
+surfaces:
+  "docs/architecture.md#frontend-architecture":
+    - "frontend.mission_control.layout"
+    - "frontend.flow.canvas"
+    - "frontend.flags"
+  "docs/architecture.md#overlays-panels-phase-1-emphasis":
+    - "frontend.overlay.contracts"
+    - "frontend.panel.issues"
+  "docs/architecture.md#console-panel":
+    - "frontend.panel.console"
+  "docs/architecture.md#contract-linting-and-quick-fixes":
+    - "services.linter"
+  "docs/flows.md#1-flow-file-format-mlab":
+    - "schemas.flow"
+  "docs/agents.md#2-anatomy-of-a-manifestyaml":
+    - "schemas.agent_manifest"
+
+# KPI targets and current snapshot
+kpis:
+  - id: KPI-01
+    title: "Diagnose failed run time reduction"
+    target: "≥50% reduction vs baseline"
+    current: "baseline TBD"
+    source: "User study & timing logs"
+  - id: KPI-02
+    title: "Checkpoints/Spans correlation coverage"
+    target: "≥80% correlated"
+    current: "TBD"
+    source: "Recorder + OTel-lite"
+  - id: KPI-03
+    title: "Canvas render budget (medium graphs)"
+    target: "≤16ms/frame"
+    current: "TBD"
+    source: "RUM + perf counters"
+  - id: KPI-04
+    title: "Budget guardrails effectiveness"
+    target: "Warn before run; block when policy requires"
+    current: "TBD"
+    source: "Policy engine decisions"
+
+# Risks from roadmap with mitigation status
+risks:
+  - id: R-WS
+    title: "Unreliable WebSocket connectivity"
+    status: mitigated
+    mitigation: "Polling fallback for recorder; console buffer caps"
+    owners: ["@backend"]
+  - id: R-VALIDATION
+    title: "Validation false-positives"
+    status: in_progress
+    mitigation: "Add dismiss/override path; feedback capture"
+    owners: ["@ui-team", "@platform"]
+  - id: R-PERF
+    title: "Overlay performance under heavy graphs"
+    status: in_progress
+    mitigation: "Virtualized decorations; debounced re-validate"
+    owners: ["@ui-team"]

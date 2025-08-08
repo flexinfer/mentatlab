@@ -1,0 +1,91 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "generatedAt": "2025-08-08T14:18:00Z",
+    "note": "Every 'code' field uses clickable format [`filename or language.declaration()`](relative/path.ext:line)"
+  },
+  "_schema": {
+    "type": "object",
+    "patternProperties": {
+      "^[a-z0-9_.-]+$": {
+        "type": "object",
+        "required": ["doc", "code"],
+        "properties": {
+          "doc": { "type": "string" },
+          "code": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "status": { "type": "string", "enum": ["planned", "in_progress", "done", "blocked"] },
+          "exists": { "type": "boolean" },
+          "notes": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+
+  "frontend.mission_control.layout": {
+    "doc": "docs/architecture.md#frontend-architecture",
+    "code": "[services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx](services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:1)",
+    "tags": ["ui", "canvas", "layout"],
+    "status": "done",
+    "exists": true
+  },
+  "frontend.overlay.contracts": {
+    "doc": "docs/architecture.md#overlays-panels-phase-1-emphasis",
+    "code": "[services/frontend/src/components/mission-control/overlays/ContractOverlay.tsx](services/frontend/src/components/mission-control/overlays/ContractOverlay.tsx:1)",
+    "tags": ["ui", "overlay", "contracts"],
+    "status": "in_progress",
+    "exists": true
+  },
+  "frontend.panel.console": {
+    "doc": "docs/architecture.md#console-panel",
+    "code": "[services/frontend/src/components/mission-control/panels/ConsolePanel.tsx](services/frontend/src/components/mission-control/panels/ConsolePanel.tsx:1)",
+    "tags": ["ui", "panel", "console"],
+    "status": "in_progress",
+    "exists": true
+  },
+  "frontend.panel.issues": {
+    "doc": "docs/architecture.md#issues-panel",
+    "code": "[services/frontend/src/components/mission-control/panels/IssuesPanel.tsx](services/frontend/src/components/mission-control/panels/IssuesPanel.tsx:1)",
+    "tags": ["ui", "panel", "issues"],
+    "status": "planned",
+    "exists": true
+  },
+  "frontend.flow.canvas": {
+    "doc": "docs/architecture.md#frontend-architecture",
+    "code": "[services/frontend/src/components/FlowCanvas.tsx](services/frontend/src/components/FlowCanvas.tsx:1)",
+    "tags": ["ui", "canvas"],
+    "status": "done",
+    "exists": true
+  },
+  "frontend.flags": {
+    "doc": "docs/architecture.md#feature-flags-initial",
+    "code": "[services/frontend/src/config/features.ts](services/frontend/src/config/features.ts:1)",
+    "tags": ["config", "flags"],
+    "status": "done",
+    "exists": true
+  },
+  "services.linter": {
+    "doc": "docs/architecture.md#contract-linting-and-quick-fixes",
+    "code": "[services/frontend/src/services/mission-control/services.ts](services/frontend/src/services/mission-control/services.ts:1)",
+    "tags": ["service", "linter"],
+    "status": "in_progress",
+    "exists": true
+  },
+  "schemas.flow": {
+    "doc": "docs/flows.md#1-flow-file-format-mlab",
+    "code": "[schemas/flow.schema.json](schemas/flow.schema.json:1)",
+    "tags": ["schema", "flows"],
+    "status": "done",
+    "exists": true
+  },
+  "schemas.agent_manifest": {
+    "doc": "docs/agents.md#2-anatomy-of-a-manifestyaml",
+    "code": "[schemas/manifest.schema.json](schemas/manifest.schema.json:1)",
+    "tags": ["schema", "agents"],
+    "status": "planned",
+    "exists": false,
+    "notes": "Repository contains [schemas/agent.schema.json](schemas/agent.schema.json:1); consider aliasing or adding manifest schema"
+  }
+}
