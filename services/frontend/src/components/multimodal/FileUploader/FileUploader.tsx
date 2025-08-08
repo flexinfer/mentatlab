@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useRef } from 'react';
-import { useMediaStore } from '../../../store';
+import { useMediaStore } from '../../../store/index';
 import { DropZone } from './components/DropZone';
 import { UploadConfig, FileUploadState, FileValidationConfig } from './FileUploader.types';
 
@@ -12,15 +12,15 @@ interface FileUploaderProps {
   /** Configuration for file validation */
   validation?: Partial<FileValidationConfig>;
   /** Upload options */
-  options?: Partial<FileUploadOptions>;
+  options?: Partial<UploadConfig>;
   /** Callback when files are selected */
   onFilesSelected?: (files: File[]) => void;
   /** Callback when upload starts */
-  onUploadStart?: (file: UploadFile) => void;
+  onUploadStart?: (file: FileUploadState) => void;
   /** Callback when upload completes */
-  onUploadComplete?: (file: UploadFile) => void;
+  onUploadComplete?: (file: FileUploadState) => void;
   /** Callback when upload fails */
-  onUploadError?: (file: UploadFile, error: Error) => void;
+  onUploadError?: (file: FileUploadState, error: Error) => void;
   /** Custom CSS classes */
   className?: string;
   /** Whether to show upload queue */
@@ -128,7 +128,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         ref={fileInputRef}
         type="file"
         multiple={multiple}
-        accept={validationConfig.allowedTypes.join(',')}
+        accept={(validationConfig.allowedTypes ?? ['image/*', 'video/*', 'audio/*', 'text/*']).join(',')}
         onChange={handleFileInputChange}
         style={{ display: 'none' }}
         disabled={disabled}
@@ -148,7 +148,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         <div className="upload-queue">
           <h3 className="upload-queue__title">Upload Queue</h3>
           <div className="upload-queue__list">
-            {uploadQueue.map((uploadFile) => (
+            {uploadQueue.map((uploadFile: FileUploadState) => (
               <FileUploadItem
                 key={uploadFile.id}
                 uploadFile={uploadFile}
@@ -182,14 +182,18 @@ const FileUploadItem: React.FC<FileUploadItemProps> = ({
 
   const getStatusColor = () => {
     switch (status) {
+      case 'queued':
+        return '#6b7280'; // gray
       case 'uploading':
         return '#2563eb'; // blue
+      case 'processing':
+        return '#f59e0b'; // amber
       case 'completed':
         return '#16a34a'; // green
-      case 'failed':
+      case 'error':
         return '#dc2626'; // red
-      case 'paused':
-        return '#f59e0b'; // amber
+      case 'canceled':
+        return '#9ca3af'; // light gray
       default:
         return '#6b7280'; // gray
     }
