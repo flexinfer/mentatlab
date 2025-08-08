@@ -34,6 +34,12 @@ export interface RecorderCheckpoint {
   media?: MediaReference[];
 }
 
+// Lightweight console entry shape used by appendConsole
+export type RecorderConsoleEntry = {
+  level?: 'info' | 'warn' | 'error' | 'debug';
+  message?: string;
+} & Record<string, unknown>;
+
 export interface RecorderRunSummary {
   runId: RunId;
   flowId?: string;
@@ -69,10 +75,11 @@ export interface LintIssue {
   rule: string;
   /** human-readable detail */
   message: string;
-  /** optional quick-fix */
+  /** optional quick-fix descriptor (MC1) */
   fix?: {
-    label: string;
-    /** serialized action payload; UI will route to fixer */
+    id: string;
+    title: string;
+    preview?: string;
     action: string;
     params?: Record<string, unknown>;
   };
@@ -109,11 +116,22 @@ export interface CostEstimate {
 //
 
 export class FlightRecorderService {
+  // Capacity caps (in-memory)
+  private readonly MAX_RUNS = 20;
+  private readonly MAX_CHECKPOINTS_PER_RUN = 1000;
+
   private runs = new Map<RunId, RecorderRunSummary>();
   private checkpoints = new Map<RunId, RecorderCheckpoint[]>();
   private listeners = new Map<RunId, Set<(c: RecorderCheckpoint) => void>>();
 
+  // Selection channel for UI (timeline -> console)
+  private currentSelection: { runId: RunId; checkpointId: CheckpointId } | null = null;
+  private selectionListeners = new Set<(payload: { runId: RunId; checkpointId: CheckpointId }) => void>();
+
   startRun(runId: RunId, flowId?: string): RecorderRunSummary {
+    // Enforce run capacity before creating a new run (evict oldest if necessary)
+    this.ensureRunCapacity();
+
     const startedAt = new Date().toISOString();
     const summary: RecorderRunSummary = {
       runId,
@@ -131,17 +149,59 @@ export class FlightRecorderService {
     const at = cp.at ?? new Date().toISOString();
     const checkpoint: RecorderCheckpoint = { ...cp, id, at } as RecorderCheckpoint;
     const list = this.checkpoints.get(checkpoint.runId);
+
     if (!list) {
+      // If run doesn't exist, create an implicit run to remain backwards-compatible
+      this.startRun(checkpoint.runId);
       this.checkpoints.set(checkpoint.runId, [checkpoint]);
     } else {
       list.push(checkpoint);
+      // Enforce per-run checkpoint cap (FIFO eviction of oldest)
+      if (list.length > this.MAX_CHECKPOINTS_PER_RUN) {
+        while (list.length > this.MAX_CHECKPOINTS_PER_RUN) {
+          list.shift();
+        }
+      }
     }
-    // notify listeners
+
+    // notify listeners for this run
     const subs = this.listeners.get(checkpoint.runId);
     subs?.forEach((fn) => {
-      try { fn(checkpoint); } catch { /* ignore */ }
+      try { fn(checkpoint); } catch { /* ignore listener errors */ }
     });
+
     return checkpoint;
+  }
+
+  /**
+   * Append a console-style entry for a run. Creates a checkpoint with
+   * label "console:entry" and data containing the provided entry.
+   */
+  appendConsole(runId: RunId, entry: RecorderConsoleEntry): RecorderCheckpoint {
+    try {
+      if (!this.runs.has(runId)) {
+        this.startRun(runId);
+      }
+      const cp: Omit<RecorderCheckpoint, 'id' | 'at'> = {
+        runId,
+        label: 'console:entry',
+        data: entry,
+      };
+      return this.addCheckpoint(cp);
+    } catch {
+      // Fail-safe: create a minimal checkpoint object if addCheckpoint throws (should be rare)
+      const fallback: RecorderCheckpoint = {
+        id: cryptoRandomId(),
+        runId,
+        at: new Date().toISOString(),
+        label: 'console:entry',
+        data: entry,
+      };
+      const list = this.checkpoints.get(runId) ?? [];
+      list.push(fallback);
+      this.checkpoints.set(runId, list);
+      return fallback;
+    }
   }
 
   endRun(runId: RunId, status: RecorderRunSummary['status'] = 'completed'): void {
@@ -178,6 +238,43 @@ export class FlightRecorderService {
     this.runs.clear();
     this.checkpoints.clear();
     this.listeners.clear();
+    this.selectionListeners.clear();
+    this.currentSelection = null;
+  }
+
+  // Selection API: set selection (from timeline UI) and notify subscribers
+  selectCheckpoint(runId: RunId, checkpointId: CheckpointId): void {
+    const cps = this.checkpoints.get(runId);
+    if (!cps) return;
+    const found = cps.find((c) => c.id === checkpointId);
+    if (!found) return;
+
+    this.currentSelection = { runId, checkpointId };
+    this.selectionListeners.forEach((fn) => {
+      try { fn({ runId, checkpointId }); } catch { /* ignore */ }
+    });
+  }
+
+  onSelect(listener: (payload: { runId: RunId; checkpointId: CheckpointId }) => void): () => void {
+    this.selectionListeners.add(listener);
+    return () => { this.selectionListeners.delete(listener); };
+  }
+
+  // Ensure run capacity (evict oldest runs FIFO) to stay within memory caps
+  private ensureRunCapacity(): void {
+    try {
+      if (this.runs.size < this.MAX_RUNS) return;
+      const sorted = Array.from(this.runs.values()).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+      while (this.runs.size >= this.MAX_RUNS && sorted.length) {
+        const oldest = sorted.shift();
+        if (!oldest) break;
+        this.runs.delete(oldest.runId);
+        this.checkpoints.delete(oldest.runId);
+        this.listeners.delete(oldest.runId);
+      }
+    } catch {
+      // noop on errors
+    }
   }
 }
 
@@ -296,7 +393,7 @@ export class FlowLinterService {
         target: { type: 'node', id: flow.meta.id },
         rule: 'no-edges',
         message: 'Flow has no edges; outputs will not propagate.',
-        fix: { label: 'Open canvas helper', action: 'open-edge-helper' },
+        fix: { id: 'open-edge-helper', title: 'Open canvas helper', action: 'open-edge-helper' },
       });
     }
 
@@ -310,7 +407,7 @@ export class FlowLinterService {
           target: { type: 'node', id: n.id },
           rule: 'isolated-node',
           message: 'Node is not connected; it will neither receive nor send data.',
-          fix: { label: 'Open connector helper', action: 'open-edge-helper', params: { nodeId: n.id } },
+          fix: { id: 'open-connector-helper', title: 'Open connector helper', action: 'open-edge-helper', params: { nodeId: n.id } },
         });
       }
     });
@@ -325,7 +422,7 @@ export class FlowLinterService {
           target: { type: 'node', id: n.id },
           rule: 'no-timeout',
           message: 'No timeout configured for this node (params.timeoutMs). Consider adding one.',
-          fix: { label: 'Set 30s timeout', action: 'suggest-set-timeout', params: { nodeId: n.id, timeoutMs: 30000 } },
+          fix: { id: 'suggest-set-timeout', title: 'Set 30s timeout', action: 'suggest-set-timeout', params: { nodeId: n.id, timeoutMs: 30000 } },
         });
       }
     });
@@ -346,7 +443,7 @@ export class FlowLinterService {
           target: { type: 'node', id: n.id },
           rule: 'untyped-pin',
           message: 'Some pins are missing types; contract checking and adapters may be limited.',
-          fix: { label: 'Open pin schema', action: 'open-pin-schema', params: { nodeId: n.id } },
+          fix: { id: 'open-pin-schema', title: 'Open pin schema', action: 'open-pin-schema', params: { nodeId: n.id } },
         });
       }
     });
@@ -361,7 +458,7 @@ export class FlowLinterService {
           target: { type: 'node', id: n.id },
           rule: 'fanout-high',
           message: `Node has high fan-out (${d.out}). Consider batching or a broker to reduce N+1 effects.`,
-          fix: { label: 'Open edge helper', action: 'open-edge-helper', params: { nodeId: n.id } },
+          fix: { id: 'open-edge-helper', title: 'Open edge helper', action: 'open-edge-helper', params: { nodeId: n.id } },
         });
       }
     });
@@ -369,10 +466,25 @@ export class FlowLinterService {
     return issues;
   }
 
-  applyFix(flow: Flow, _issue: LintIssue): Flow {
-    // Pure function placeholder; mutate a cloned flow with requested fix
-    // For MVP we just return the original flow.
+  applyQuickFix(flow: Flow, issue: LintIssue): Flow {
+    // MC1: stubbed quick-fix applier — do not mutate the flow.
+    // Log the invocation for telemetry/debugging and return the input flow unchanged.
+    try {
+      console.debug('[FlowLinterService] applyQuickFix', {
+        issueId: issue?.id,
+        fixId: issue?.fix?.id,
+        action: issue?.fix?.action,
+        params: issue?.fix?.params,
+      });
+    } catch {
+      // ignore logging failures
+    }
     return flow;
+  }
+
+  applyFix(flow: Flow, issue: LintIssue): Flow {
+    // Backwards-compatible alias that delegates to applyQuickFix (no graph mutation for MC1)
+    return this.applyQuickFix(flow, issue);
   }
 }
 

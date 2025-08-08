@@ -93,9 +93,9 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
                       className="shrink-0 h-6 px-2 text-[11px] rounded border bg-white hover:bg-gray-50"
                       onClick={() => {
                         const f = issue.fix;
-                        if (f) alert(`Quick fix: ${f.label} (placeholder)`);
+                        if (f) alert(`Quick fix: ${f.title} (placeholder)`);
                       }}
-                      title={issue.fix ? issue.fix.label : 'Quick Fix'}
+                      title={issue.fix ? issue.fix.title : 'Quick Fix'}
                     >
                       Quick Fix
                     </button>

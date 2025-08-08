@@ -19,6 +19,11 @@ export default function ConsolePanel({ runId, maxItems = 200 }: ConsolePanelProp
   const [entries, setEntries] = React.useState<Entry[]>([]);
   const [lastUpdated, setLastUpdated] = React.useState<number>(Date.now());
 
+  // Filter state (debounced)
+  const [filterText, setFilterText] = React.useState<string>('');
+  const [debouncedFilter, setDebouncedFilter] = React.useState<string>('');
+  const filterTimer = React.useRef<number | null>(null);
+
   const refresh = React.useCallback(() => {
     try {
       const collectForRun = (id: string) => {
@@ -42,14 +47,42 @@ export default function ConsolePanel({ runId, maxItems = 200 }: ConsolePanelProp
         all = collectForRun(runId);
       }
 
+      // Apply client-side filter (case-insensitive against label + serialized data)
+      const filter = String(debouncedFilter ?? '').trim().toLowerCase();
+      if (filter.length > 0) {
+        all = all.filter((e) => {
+          try {
+            const hay = `${e.label} ${JSON.stringify(e.data ?? {})}`.toLowerCase();
+            return hay.includes(filter);
+          } catch {
+            return String(e.label ?? '').toLowerCase().includes(filter);
+          }
+        });
+      }
+
+      // Sort by time desc
       all.sort((a, b) => (a.at < b.at ? 1 : -1));
+      // Enforce maxItems after filtering
       if (all.length > maxItems) all = all.slice(0, maxItems);
+
       setEntries(all);
       setLastUpdated(Date.now());
     } catch {
       // ignore
     }
-  }, [runId, showAll, maxItems]);
+  }, [runId, showAll, maxItems, debouncedFilter]);
+
+  // Debounce filter input (150ms)
+  React.useEffect(() => {
+    if (filterTimer.current) window.clearTimeout(filterTimer.current);
+    // @ts-ignore - window.setTimeout returns number in browser env
+    filterTimer.current = window.setTimeout(() => {
+      setDebouncedFilter(filterText);
+    }, 150);
+    return () => {
+      if (filterTimer.current) window.clearTimeout(filterTimer.current);
+    };
+  }, [filterText]);
 
   React.useEffect(() => {
     // initial
@@ -78,6 +111,17 @@ export default function ConsolePanel({ runId, maxItems = 200 }: ConsolePanelProp
           <span>Updated: {new Date(lastUpdated).toLocaleTimeString()}</span>
         </div>
         <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Filter (label + data)"
+            value={filterText}
+            onChange={(e) => setFilterText(e.target.value)}
+            className="text-xs px-2 py-1 border rounded bg-white dark:bg-gray-800"
+            style={{ width: 220 }}
+            aria-label="Console filter"
+          />
+        </div>
+        <div className="flex items-center gap-2">
           <label className="inline-flex items-center gap-1 text-[11px]">
             <input
               type="checkbox"
@@ -97,7 +141,7 @@ export default function ConsolePanel({ runId, maxItems = 200 }: ConsolePanelProp
         ) : (
           <ul className="divide-y">
             {entries.map((e) => (
-              <li key={e.id} className="px-3 py-2 text-[11px]">
+              <li key={e.id} id={`console-${e.id}`} className="px-3 py-2 text-[11px]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex h-1.5 w-1.5 rounded-full bg-slate-400" />

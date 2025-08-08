@@ -310,7 +310,12 @@ function StatusBar() {
     bytesReceived: 0,
     uptime: 0,
   });
+  // QoS (p95) state
+  const [p95Ms, setP95Ms] = React.useState<number | undefined>(undefined);
+  const [qosBadge, setQosBadge] = React.useState<{ color: string; text: string } | null>(null);
+
   React.useEffect(() => {
+    if (!FeatureFlags.CONNECT_WS) return;
     let timer: number | null = null;
     let mounted = true;
     (async () => {
@@ -324,6 +329,18 @@ function StatusBar() {
             bytesReceived: Number(s.bytesSent ?? 0) + Number(s.bytesReceived ?? 0),
             uptime: Number(s.uptime ?? 0),
           });
+          // Derive p95 from available fields (be tolerant of naming)
+          const p95 = Number(s.p95Ms ?? s.p95 ?? s.latencyP95Ms ?? s.latencyP95 ?? NaN);
+          if (!Number.isFinite(p95) || Number.isNaN(p95)) {
+            setP95Ms(undefined);
+            setQosBadge(null);
+          } else {
+            setP95Ms(p95);
+            // Compute color/text
+            if (p95 < 250) setQosBadge({ color: 'bg-emerald-500', text: 'QoS good' });
+            else if (p95 < 500) setQosBadge({ color: 'bg-amber-500', text: 'QoS fair' });
+            else setQosBadge({ color: 'bg-red-500', text: 'QoS poor' });
+          }
         };
         // Update immediately and on interval while page is active
         pull();
@@ -378,6 +395,15 @@ function StatusBar() {
         <span>Active Streams: {activeStreamsCount}</span>
         <span className="text-gray-300">|</span>
         <span>Msgs: {stats.messagesReceived} · {throughput}/s</span>
+        {FeatureFlags.CONNECT_WS && qosBadge && (
+          <>
+            <span className="text-gray-300">|</span>
+            <span data-testid="qos-badge" className="inline-flex items-center gap-1">
+              <span className={['w-2 h-2 rounded-full', qosBadge.color].join(' ')} />
+              <span className="text-[11px]">{qosBadge.text}{p95Ms ? ` (${Math.round(p95Ms)}ms)` : ''}</span>
+            </span>
+          </>
+        )}
         <span className="text-gray-300">|</span>
         <span>Env: Dev</span>
       </div>
