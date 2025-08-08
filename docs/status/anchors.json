@@ -84,8 +84,22 @@
     "doc": "docs/agents.md#2-anatomy-of-a-manifestyaml",
     "code": "[schemas/manifest.schema.json](schemas/manifest.schema.json:1)",
     "tags": ["schema", "agents"],
-    "status": "planned",
-    "exists": false,
-    "notes": "Repository contains [schemas/agent.schema.json](schemas/agent.schema.json:1); consider aliasing or adding manifest schema"
+    "status": "done",
+    "exists": true,
+    "notes": "Alias created: [schemas/manifest.schema.json](schemas/manifest.schema.json:1) delegates to [schemas/agent.schema.json](schemas/agent.schema.json:1)"
+  },
+  "orchestrator.server": {
+    "doc": "docs/orchestrator_design.md",
+    "code": "[services/orchestrator/src/server.ts](services/orchestrator/src/server.ts:1)",
+    "tags": ["backend", "orchestrator", "service"],
+    "status": "done",
+    "exists": true
+  },
+  "orchestrator.routes.runs": {
+    "doc": "docs/orchestrator_design.md",
+    "code": "[services/orchestrator/src/routes/runs.ts](services/orchestrator/src/routes/runs.ts:1)",
+    "tags": ["backend", "orchestrator", "api", "sse"],
+    "status": "done",
+    "exists": true
   }
 }
