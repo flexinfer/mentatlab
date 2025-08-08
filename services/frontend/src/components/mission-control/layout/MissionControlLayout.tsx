@@ -4,9 +4,24 @@ import FlowCanvas from '../../FlowCanvas';
 import { Button } from '../../ui/button';
 import TimelinePanel from '../panels/TimelinePanel';
 import { flightRecorder } from '../../../services/mission-control/services';
+import { ReactFlowProvider } from 'reactflow';
+// ADD: import streamingService (EnhancedStream wrapper)
+import streamingService from '../../../services/api/streamingService';
 
 export function MissionControlLayout() {
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
+
+  // Auto-select latest run when streaming recorder starts runs (e.g., EnhancedStream)
+  React.useEffect(() => {
+    if (!FeatureFlags.NEW_STREAMING || activeRunId) return;
+    const interval = setInterval(() => {
+      const runs = flightRecorder.listRuns();
+      if (runs.length && !activeRunId) {
+        setActiveRunId(runs[0].runId);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeRunId]);
 
   const startDemoRun = React.useCallback(() => {
     const id = `demo-${Date.now()}`;
@@ -19,8 +34,31 @@ export function MissionControlLayout() {
     setActiveRunId(id);
   }, []);
 
+  // ADD: Live connection starter (EnhancedStream)
+  const startLive = React.useCallback(async () => {
+    if (!FeatureFlags.CONNECT_WS) return;
+    try {
+      await streamingService.connect();
+      // EnhancedStream will start a FlightRecorder run automatically on connect
+    } catch (e) {
+      console.error('[MissionControl] Live connect failed', e);
+    }
+  }, []);
+
   return (
-    <div className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[56px_1fr] bg-white text-gray-900">
+    <div
+      className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[56px_1fr] bg-white text-gray-900"
+      style={{
+        height: '100vh',
+        width: '100vw',
+        display: 'grid',
+        gridTemplateRows: '48px 1fr 28px',
+        gridTemplateColumns: '56px 1fr',
+        background: '#ffffff',
+        color: '#111827',
+        position: 'relative',
+      }}
+    >
       {/* Top Bar */}
       <header className="row-start-1 col-span-2 flex items-center justify-between px-4 border-b bg-white/70 backdrop-blur">
         <div className="flex items-center gap-3">
@@ -52,10 +90,20 @@ export function MissionControlLayout() {
       </aside>
 
       {/* Canvas */}
-      <main className="row-start-2 col-start-2 relative overflow-hidden">
-        <div className="absolute inset-0">
+      <main
+        className="row-start-2 col-start-2 relative overflow-hidden"
+        style={{ position: 'relative', overflow: 'hidden' }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+        >
           {/* Canvas center of gravity */}
-          <FlowCanvas />
+          <div style={{ height: '100%', width: '100%' }}>
+            <ReactFlowProvider>
+              <FlowCanvas />
+            </ReactFlowProvider>
+          </div>
         </div>
 
         {/* Overlays */}
@@ -70,7 +118,7 @@ export function MissionControlLayout() {
         {/* Right Dock */}
         <RightDock />
         {/* Bottom Dock */}
-        <BottomDock runId={activeRunId} onStartDemo={startDemoRun} />
+        <BottomDock runId={activeRunId} onStartDemo={startDemoRun} onStartLive={startLive} />
       </main>
 
       {/* Status Bar */}
@@ -84,7 +132,23 @@ export function MissionControlLayout() {
  */
 function RightDock() {
   return (
-    <div className="pointer-events-auto absolute top-2 right-2 bottom-32 w-[360px] rounded-lg border bg-white shadow-sm overflow-hidden flex flex-col">
+    <div
+      className="pointer-events-auto absolute top-2 right-2 bottom-32 w-[360px] rounded-lg border bg-white shadow-sm overflow-hidden flex flex-col"
+      style={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        bottom: 128,
+        width: 360,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 8,
+        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+        display: 'flex',
+        flexDirection: 'column',
+        pointerEvents: 'auto',
+      }}
+    >
       <div className="h-9 border-b flex items-center px-3 text-xs font-medium bg-gray-50">Inspector</div>
       <div className="flex-1 overflow-auto p-3 text-xs text-gray-600">
         <p className="mb-2">Select a node to configure pins and parameters.</p>
@@ -102,9 +166,25 @@ function RightDock() {
 /**
  * Bottom Dock: Console, Runs, Timeline (placeholder)
  */
-function BottomDock({ runId, onStartDemo }: { runId: string | null; onStartDemo: () => void }) {
+function BottomDock({ runId, onStartDemo, onStartLive }: { runId: string | null; onStartDemo: () => void; onStartLive?: () => void }) {
   return (
-    <div className="pointer-events-auto absolute left-2 right-[376px] bottom-2 h-56 rounded-lg border bg-white shadow-sm overflow-hidden flex flex-col">
+    <div
+      className="pointer-events-auto absolute left-2 right-[376px] bottom-2 h-56 rounded-lg border bg-white shadow-sm overflow-hidden flex flex-col"
+      style={{
+        position: 'absolute',
+        left: 8,
+        right: 376,
+        bottom: 8,
+        height: 224,
+        background: '#ffffff',
+        border: '1px solid #e5e7eb',
+        borderRadius: 8,
+        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+        display: 'flex',
+        flexDirection: 'column',
+        pointerEvents: 'auto',
+      }}
+    >
       <div className="h-8 border-b bg-gray-50 text-xs">
         <div className="h-full flex items-center justify-between px-3">
           <div className="flex items-center gap-3">
@@ -121,6 +201,15 @@ function BottomDock({ runId, onStartDemo }: { runId: string | null; onStartDemo:
                 onClick={() => console.log('[UI] Add Artifact clicked')}
               >
                 + Add Artifact
+              </Button>
+            )}
+            {FeatureFlags.CONNECT_WS && (
+              <Button
+                variant="outline"
+                className="h-6 px-2 text-[11px]"
+                onClick={onStartLive}
+              >
+                🔌 Connect Live
               </Button>
             )}
             {FeatureFlags.NEW_STREAMING && (
