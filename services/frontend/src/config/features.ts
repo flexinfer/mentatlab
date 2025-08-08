@@ -14,4 +14,6 @@ export const FeatureFlags = {
   S3_STORAGE: (env.VITE_FF_S3_STORAGE ?? 'false') === 'true',
   // Runtime connection control: when false, UI shows streaming surfaces without attempting WS connect
   CONNECT_WS: (env.VITE_CONNECT_WS ?? 'false') === 'true',
+  // Visual contract checking overlay
+  CONTRACT_OVERLAY: (env.VITE_FF_CONTRACT_OVERLAY ?? (env.DEV ? 'true' : 'false')) === 'true',
 } as const;

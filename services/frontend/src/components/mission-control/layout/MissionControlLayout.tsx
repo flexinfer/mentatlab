@@ -3,16 +3,30 @@ import { FeatureFlags } from '../../../config/features';
 import FlowCanvas from '../../FlowCanvas';
 import { Button } from '../../ui/button';
 import TimelinePanel from '../panels/TimelinePanel';
+// ADD: Issues panel import
 import IssuesPanel from '../panels/IssuesPanel';
+// ADD: Console panel import
+import ConsolePanel from '../panels/ConsolePanel';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { ReactFlowProvider } from 'reactflow';
-// ADD: import useStreamingStore to show live connection status
+// ADD: streaming store + enum for status badge and connect state
 import { useStreamingStore } from '../../../store/index';
-// ADD: import StreamConnectionState enum for status mapping
 import { StreamConnectionState } from '../../../types/streaming';
+import ContractOverlay from '../overlays/ContractOverlay';
+import PropertyInspector from '../../PropertyInspector';
 
 export function MissionControlLayout() {
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
+  // THEME: dark mode persisted
+  const [dark, setDark] = React.useState<boolean>(() => {
+    try { return (localStorage.getItem('theme') ?? 'light') === 'dark'; } catch { return false; }
+  });
+  React.useEffect(() => {
+    try {
+      document.documentElement.classList.toggle('dark', dark);
+      localStorage.setItem('theme', dark ? 'dark' : 'light');
+    } catch { /* ignore */ }
+  }, [dark]);
 
   // Auto-select latest run when streaming recorder starts runs (e.g., EnhancedStream)
   React.useEffect(() => {
@@ -37,11 +51,10 @@ export function MissionControlLayout() {
     setActiveRunId(id);
   }, []);
 
-  // ADD: Live connection starter (EnhancedStream)
+  // Live connection starter (EnhancedStream) via dynamic import
   const startLive = React.useCallback(async () => {
     if (!FeatureFlags.CONNECT_WS) return;
     try {
-      // Use dynamic import to avoid duplicate top-level imports and ensure availability
       const mod = await import('../../../services/api/streamingService');
       await mod.default.connect();
       // EnhancedStream will start a FlightRecorder run automatically on connect
@@ -52,23 +65,18 @@ export function MissionControlLayout() {
 
   return (
     <div
-      className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[56px_1fr] bg-white text-gray-900"
+      className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[56px_1fr] bg-background text-foreground"
       style={{
-        height: '100vh',
-        width: '100vw',
-        display: 'grid',
-        gridTemplateRows: '48px 1fr 28px',
-        gridTemplateColumns: '56px 1fr',
-        background: '#ffffff',
-        color: '#111827',
         position: 'relative',
+        height: '100vh', // explicit viewport sizing so React Flow gets a real height
+        width: '100vw',
       }}
     >
       {/* Top Bar */}
-      <header className="row-start-1 col-span-2 flex items-center justify-between px-4 border-b bg-white/70 backdrop-blur">
+      <header className="row-start-1 col-span-2 flex items-center justify-between px-4 border-b bg-white/70 dark:bg-gray-900/60 backdrop-blur">
         <div className="flex items-center gap-3">
           <span className="text-lg font-semibold">MentatLab</span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-900/40">
             Mission Control
           </span>
         </div>
@@ -76,20 +84,28 @@ export function MissionControlLayout() {
           <FlagPill label="MULTIMODAL_UPLOAD" enabled={FeatureFlags.MULTIMODAL_UPLOAD} />
           <FlagPill label="NEW_STREAMING" enabled={FeatureFlags.NEW_STREAMING} />
           <FlagPill label="S3_STORAGE" enabled={FeatureFlags.S3_STORAGE} />
+          {/* Dark Mode Toggle */}
+          <button
+            className="ml-2 h-6 px-2 rounded border bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800 text-[11px]"
+            onClick={() => setDark((d) => !d)}
+            title="Toggle theme"
+          >
+            {dark ? '☾ Dark' : '☀ Light'}
+          </button>
         </div>
       </header>
 
       {/* Left Nav */}
-      <aside className="row-start-2 col-start-1 border-r bg-gray-50">
+      <aside className="row-start-2 col-start-1 border-r bg-gray-50 dark:bg-gray-900/40">
         {/* Placeholder: Workspaces / Flows / Search */}
         <nav className="p-2 text-xs space-y-2">
           <SectionTitle>Workspaces</SectionTitle>
-          <ul className="space-y-1 text-gray-600">
-            <li className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer">Default</li>
+          <ul className="space-y-1 text-gray-600 dark:text-gray-300">
+            <li className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer">Default</li>
           </ul>
           <SectionTitle className="mt-3">Flows</SectionTitle>
-          <ul className="space-y-1 text-gray-600">
-            <li className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer">example-flow</li>
+          <ul className="space-y-1 text-gray-600 dark:text-gray-300">
+            <li className="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer">example-flow</li>
           </ul>
         </nav>
       </aside>
@@ -114,10 +130,11 @@ export function MissionControlLayout() {
         {/* Overlays */}
         <div className="pointer-events-none absolute inset-0">
           {FeatureFlags.NEW_STREAMING && (
-            <div className="absolute top-2 left-2 text-[10px] px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <div className="absolute top-2 left-2 text-[10px] px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-900/50">
               Streaming overlays enabled
             </div>
           )}
+          {FeatureFlags.CONTRACT_OVERLAY && <ContractOverlay />}
         </div>
 
         {/* Right Dock */}
@@ -138,31 +155,21 @@ export function MissionControlLayout() {
 function RightDock() {
   return (
     <div
-      className="pointer-events-auto absolute top-2 right-2 bottom-32 w-[360px] rounded-lg border bg-white shadow-sm overflow-hidden flex flex-col"
+      className="pointer-events-auto absolute top-2 right-2 bottom-32 w-[360px] rounded-lg border bg-card text-foreground shadow-sm overflow-hidden flex flex-col"
       style={{
         position: 'absolute',
         top: 8,
         right: 8,
         bottom: 128,
         width: 360,
-        background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: 8,
-        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
         display: 'flex',
         flexDirection: 'column',
         pointerEvents: 'auto',
       }}
     >
-      <div className="h-9 border-b flex items-center px-3 text-xs font-medium bg-gray-50">Inspector</div>
-      <div className="flex-1 overflow-auto p-3 text-xs text-gray-600">
-        <p className="mb-2">Select a node to configure pins and parameters.</p>
-        <div className="mt-3 rounded border p-2 bg-gray-50">
-          <div className="text-[11px] font-semibold mb-1">Media Preview</div>
-          <div className="h-24 rounded bg-white border flex items-center justify-center text-[11px] text-gray-400">
-            No preview
-          </div>
-        </div>
+      <div className="h-9 border-b flex items-center px-3 text-xs font-medium bg-gray-50 dark:bg-gray-900/40">Inspector</div>
+      <div className="flex-1 overflow-auto p-3 text-xs text-gray-600 dark:text-gray-300">
+        <PropertyInspector />
       </div>
     </div>
   );
@@ -171,32 +178,70 @@ function RightDock() {
 /**
  * Bottom Dock: Console, Runs, Timeline (placeholder)
  */
-function BottomDock({ runId, onStartDemo, onStartLive }: { runId: string | null; onStartDemo: () => void; onStartLive?: () => void }) {
+function BottomDock({
+  runId,
+  onStartDemo,
+  onStartLive
+}: {
+  runId: string | null;
+  onStartDemo: () => void;
+  onStartLive?: () => void;
+}) {
+  // Interactive tabs
+  const [activeTab, setActiveTab] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues'>(
+    FeatureFlags.NEW_STREAMING ? 'Timeline' : 'Console'
+  );
+  // Live connect state (disable button when connecting/connected)
+  const connectionStatus = useStreamingStore((s) => s.connectionStatus);
+  const liveDisabled =
+    connectionStatus === StreamConnectionState.CONNECTING ||
+    connectionStatus === StreamConnectionState.RECONNECTING ||
+    connectionStatus === StreamConnectionState.CONNECTED;
+
+  // NEW: badge counts
+  const [issuesCount, setIssuesCount] = React.useState<number>(0);
+  const [timelineCount, setTimelineCount] = React.useState<number>(0);
+
+  // Subscribe to timeline updates for current run
+  React.useEffect(() => {
+    if (!runId) {
+      setTimelineCount(0);
+      return;
+    }
+    try {
+      setTimelineCount(flightRecorder.listCheckpoints(runId).length);
+      const unsub = flightRecorder.subscribe(runId, () => {
+        setTimelineCount(flightRecorder.listCheckpoints(runId).length);
+      });
+      return () => unsub?.();
+    } catch {
+      // ignore
+    }
+  }, [runId]);
+
   return (
     <div
-      className="pointer-events-auto absolute left-2 right-[376px] bottom-2 h-56 rounded-lg border bg-white shadow-sm overflow-hidden flex flex-col"
+      className="pointer-events-auto absolute left-2 right-[376px] bottom-2 h-56 rounded-lg border bg-card text-foreground shadow-sm overflow-hidden flex flex-col"
       style={{
         position: 'absolute',
         left: 8,
         right: 376,
         bottom: 8,
         height: 224,
-        background: '#ffffff',
-        border: '1px solid #e5e7eb',
-        borderRadius: 8,
-        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
         display: 'flex',
         flexDirection: 'column',
         pointerEvents: 'auto',
       }}
     >
-      <div className="h-8 border-b bg-gray-50 text-xs">
+      <div className="h-8 border-b bg-gray-50 dark:bg-gray-900/40 text-xs">
         <div className="h-full flex items-center justify-between px-3">
-          <div className="flex items-center gap-3">
-            <TabBadge label="Console" active />
-            <TabBadge label="Run Queue" />
-            {FeatureFlags.NEW_STREAMING && <TabBadge label="Timeline" />}
-            <TabBadge label="Issues" />
+          <div className="flex items-center gap-2">
+            <TabBadge label="Console" active={activeTab === 'Console'} onClick={() => setActiveTab('Console')} />
+            <TabBadge label="Run Queue" active={activeTab === 'Run Queue'} onClick={() => setActiveTab('Run Queue')} />
+            {FeatureFlags.NEW_STREAMING && (
+              <TabBadge label="Timeline" active={activeTab === 'Timeline'} onClick={() => setActiveTab('Timeline')} badge={timelineCount} />
+            )}
+            <TabBadge label="Issues" active={activeTab === 'Issues'} onClick={() => setActiveTab('Issues')} badge={issuesCount} />
           </div>
           <div className="flex items-center gap-2">
             {FeatureFlags.MULTIMODAL_UPLOAD && (
@@ -211,32 +256,41 @@ function BottomDock({ runId, onStartDemo, onStartLive }: { runId: string | null;
             {FeatureFlags.CONNECT_WS && (
               <Button
                 variant="outline"
-                className="h-6 px-2 text-[11px]"
+                className="h-6 px-2 text-[11px] disabled:opacity-60"
                 onClick={onStartLive}
+                disabled={liveDisabled}
+                title={liveDisabled ? 'Already connected/connecting' : 'Connect live stream'}
               >
-                🔌 Connect Live
+                {connectionStatus === StreamConnectionState.CONNECTING || connectionStatus === StreamConnectionState.RECONNECTING
+                  ? '🔄 Connecting…'
+                  : connectionStatus === StreamConnectionState.CONNECTED
+                  ? '✅ Live'
+                  : '🔌 Connect Live'}
               </Button>
             )}
             {FeatureFlags.NEW_STREAMING && (
-              <Button
-                variant="outline"
-                className="h-6 px-2 text-[11px]"
-                onClick={onStartDemo}
-              >
+              <Button variant="outline" className="h-6 px-2 text-[11px]" onClick={onStartDemo}>
                 ▶ Start Demo Run
               </Button>
             )}
           </div>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-0 text-xs text-gray-700">
-        {FeatureFlags.NEW_STREAMING ? (
-          <TimelinePanel runId={runId} />
-        ) : (
-          <div className="p-2 font-mono text-[11px] text-gray-600">› Streaming disabled. Enable NEW_STREAMING flag to view Timeline.</div>
+
+      <div className="flex-1 overflow-auto p-0 text-xs text-gray-700 dark:text-gray-300">
+        {activeTab === 'Console' && <ConsolePanel runId={runId} />}
+        {activeTab === 'Run Queue' && (
+          <div className="p-2 font-mono text-[11px] text-gray-600 dark:text-gray-400">
+            › Run Queue placeholder. Queue controls will appear here.
+          </div>
         )}
-        <div className="border-t" />
-        <IssuesPanel />
+        {activeTab === 'Timeline' && FeatureFlags.NEW_STREAMING && <TimelinePanel runId={runId} />}
+        {activeTab === 'Timeline' && !FeatureFlags.NEW_STREAMING && (
+          <div className="p-2 font-mono text-[11px] text-gray-600">
+            › Streaming disabled. Enable NEW_STREAMING flag to view Timeline.
+          </div>
+        )}
+        {activeTab === 'Issues' && <IssuesPanel onCountChange={setIssuesCount} />}
       </div>
     </div>
   );
@@ -249,6 +303,42 @@ function StatusBar() {
   // Read live connection status and active streams from the streaming store
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
   const activeStreamsCount = useStreamingStore((s) => s.activeStreams.size);
+
+  // Live stats polled from the EnhancedStream wrapper
+  const [stats, setStats] = React.useState<{ messagesReceived: number; bytesReceived: number; uptime: number }>({
+    messagesReceived: 0,
+    bytesReceived: 0,
+    uptime: 0,
+  });
+  React.useEffect(() => {
+    let timer: number | null = null;
+    let mounted = true;
+    (async () => {
+      try {
+        const mod = await import('../../../services/api/streamingService');
+        const pull = () => {
+          if (!mounted) return;
+          const s = (mod.default.getStats?.() as any) ?? {};
+          setStats({
+            messagesReceived: Number(s.messagesReceived ?? 0),
+            bytesReceived: Number(s.bytesSent ?? 0) + Number(s.bytesReceived ?? 0),
+            uptime: Number(s.uptime ?? 0),
+          });
+        };
+        // Update immediately and on interval while page is active
+        pull();
+        timer = window.setInterval(pull, 1000);
+      } catch {
+        // ignore polling errors
+      }
+    })();
+    return () => {
+      mounted = false;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [connectionStatus]);
+
+  const throughput = stats.uptime > 0 ? Math.round(stats.messagesReceived / (stats.uptime / 1000)) : 0;
 
   const statusBadge = (() => {
     switch (connectionStatus) {
@@ -263,7 +353,6 @@ function StatusBar() {
       case StreamConnectionState.ERROR:
         return { color: 'bg-red-500', text: 'Error' };
       default:
-        // Fallback for any string statuses (in case of alternate store usage)
         if (typeof connectionStatus === 'string') {
           const mapping: Record<string, { color: string; text: string }> = {
             disconnected: { color: 'bg-gray-400', text: 'Disconnected' },
@@ -279,14 +368,16 @@ function StatusBar() {
   })();
 
   return (
-    <footer className="row-start-3 col-span-2 px-3 flex items-center justify-between text-[11px] border-t bg-white/80 backdrop-blur">
-      <div className="flex items-center gap-3 text-gray-600">
+    <footer className="row-start-3 col-span-2 px-3 flex items-center justify-between text-[11px] border-t bg-white/80 dark:bg-gray-900/60 backdrop-blur">
+      <div className="flex items-center gap-3 text-gray-600 dark:text-gray-300">
         <span className="inline-flex items-center gap-1">
           <span className={['w-1.5 h-1.5 rounded-full', statusBadge.color].join(' ')} />
           {statusBadge.text}
         </span>
         <span className="text-gray-300">|</span>
         <span>Active Streams: {activeStreamsCount}</span>
+        <span className="text-gray-300">|</span>
+        <span>Msgs: {stats.messagesReceived} · {throughput}/s</span>
         <span className="text-gray-300">|</span>
         <span>Env: Dev</span>
       </div>
@@ -300,7 +391,9 @@ function FlagPill({ label, enabled }: { label: string; enabled: boolean }) {
     <span
       className={[
         'px-2 py-0.5 rounded-full border',
-        enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-500 border-gray-200',
+        enabled
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40'
+          : 'bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-900/40 dark:text-gray-400 dark:border-gray-800',
       ].join(' ')}
       title={enabled ? 'Enabled' : 'Disabled'}
     >
@@ -309,16 +402,43 @@ function FlagPill({ label, enabled }: { label: string; enabled: boolean }) {
   );
 }
 
-function TabBadge({ label, active = false }: { label: string; active?: boolean }) {
+function TabBadge({
+  label,
+  active = false,
+  onClick,
+  badge,
+}: {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  badge?: number;
+}) {
   return (
-    <span
+    <button
+      type="button"
+      onClick={onClick}
       className={[
-        'px-2 py-0.5 rounded text-[11px] border',
-        active ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-gray-600 border-gray-200',
+        'px-2 py-0.5 rounded text-[11px] border transition-colors inline-flex items-center gap-1',
+        active
+          ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-900/40'
+          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-800 dark:hover:bg-gray-800',
       ].join(' ')}
     >
       {label}
-    </span>
+      {typeof badge === 'number' && (
+        <span
+          className={[
+            'ml-1 inline-flex items-center justify-center min-w-4 h-4 px-1 rounded-full border',
+            active
+              ? 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-900/50'
+              : 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+          ].join(' ')}
+          title={`${badge} ${label.toLowerCase()}`}
+        >
+          <span className="leading-none text-[10px]">{badge}</span>
+        </span>
+      )}
+    </button>
   );
 }
 

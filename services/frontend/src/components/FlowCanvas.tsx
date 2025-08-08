@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactFlow, {
   Controls,
   Background,
+  BackgroundVariant,
   MiniMap,
   Node,
   Edge,
@@ -35,13 +36,11 @@ import {
   NodeCategory, // Imported
   isPinMediaType,
   isPinStreamType,
-  isMediaNode,
-  hasMediaCapabilities,
   isStreamingNode
 } from '../types/graph'; // Import relevant types from graph
 import { MediaType, MediaProcessingOptions, MediaReference } from '../types/media'; // Import MediaType, MediaProcessingOptions, MediaReference from media.ts
 import { getWebSocketService, WebSocketMessage } from '../services/websocketService';
-import { logInfo, logError, logUserAction, logWebSocketEvent, logger } from '../utils/logger';
+import { logInfo, logError, logUserAction, logWebSocketEvent } from '../utils/logger';
 import useStore from '../store'; // Import the Zustand store
 import CollaboratorCursor from './CollaboratorCursor';
 import { CursorPosition, WorkflowChange } from '../types/collaboration';
@@ -81,13 +80,23 @@ interface CustomNodeData {
 type RFNode = Node<CustomNodeData>;
 
 const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => {
-  let backgroundColor = 'white';
+  // Theme-aware styling
+  const nodeStyle: React.CSSProperties = {
+    border: '1px solid hsl(var(--border))',
+    background: 'hsl(var(--card))',
+    color: 'hsl(var(--foreground))',
+    padding: 10,
+    position: 'relative',
+    borderRadius: 8,
+    boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+  };
+  // Status tint
   if (data.status === 'running') {
-    backgroundColor = 'yellow';
+    nodeStyle.background = '#fff7ed'; // amber-50
   } else if (data.status === 'completed') {
-    backgroundColor = 'lightgreen';
+    nodeStyle.background = '#ecfdf5'; // emerald-50
   } else if (data.status === 'failed') {
-    backgroundColor = 'red';
+    nodeStyle.background = '#fef2f2'; // red-50
   }
 
   // Sanitize user input to prevent XSS attacks
@@ -96,37 +105,37 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => 
   const sanitizedType = DOMPurify.sanitize(type);
 
   return (
-    <div style={{ border: '1px solid black', padding: 10, background: backgroundColor, position: 'relative' }}>
-      {/* Default handles to allow edges without explicit handle ids */}
-      <Handle type="target" position={Position.Left} id="in" style={{ background: '#555' }} />
-      <Handle type="source" position={Position.Right} id="out" style={{ background: '#555' }} />
+    <div style={nodeStyle}>
+       {/* Default handles to allow edges without explicit handle ids */}
+      <Handle type="target" position={Position.Left} id="in" style={{ background: 'hsl(var(--ring))' }} />
+      <Handle type="source" position={Position.Right} id="out" style={{ background: 'hsl(var(--ring))' }} />
 
-      <div>ID: {sanitizedId}</div>
-      <div>Type: {sanitizedType}</div>
-      {sanitizedLabel && (
-        <div
-          dangerouslySetInnerHTML={{
-            __html: `Label: ${sanitizedLabel}`
-          }}
-        />
-      )}
-      {data.status && <div>Status: {data.status}</div>}
-      {/* Media Preview Section */}
-      {data.mediaDisplay?.showPreview && data.mediaDisplay.previewUrl && (
-        <div className="media-preview mt-2">
-          {data.mediaDisplay.previewType === 'image' && (
-            <img src={data.mediaDisplay.previewUrl} alt="Preview" className="max-w-full h-auto" />
-          )}
-          {data.mediaDisplay.previewType === 'video' && (
-            <video src={data.mediaDisplay.previewUrl} controls className="max-w-full h-auto" />
-          )}
-          {data.mediaDisplay.previewType === 'audio' && (
-            <audio src={data.mediaDisplay.previewUrl} controls className="w-full" />
-          )}
-          {/* Add more preview types as needed, e.g., 'waveform' for audio, 'document' */}
-        </div>
-      )}
-    </div>
+       <div>ID: {sanitizedId}</div>
+       <div>Type: {sanitizedType}</div>
+       {sanitizedLabel && (
+         <div
+           dangerouslySetInnerHTML={{
+             __html: `Label: ${sanitizedLabel}`
+           }}
+         />
+       )}
+       {data.status && <div>Status: {data.status}</div>}
+       {/* Media Preview Section */}
+       {data.mediaDisplay?.showPreview && data.mediaDisplay.previewUrl && (
+         <div className="media-preview mt-2">
+           {data.mediaDisplay.previewType === 'image' && (
+             <img src={data.mediaDisplay.previewUrl} alt="Preview" className="max-w-full h-auto" />
+           )}
+           {data.mediaDisplay.previewType === 'video' && (
+             <video src={data.mediaDisplay.previewUrl} controls className="max-w-full h-auto" />
+           )}
+           {data.mediaDisplay.previewType === 'audio' && (
+             <audio src={data.mediaDisplay.previewUrl} controls className="w-full" />
+           )}
+           {/* Add more preview types as needed, e.g., 'waveform' for audio, 'document' */}
+         </div>
+       )}
+     </div>
   );
 };
 
@@ -479,9 +488,29 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
         onMouseMove={onMouseMove}
         isValidConnection={isValidConnection} // Pass the validation function
       >
-        <MiniMap />
-        <Controls />
-        <Background />
+        <MiniMap
+          style={{
+            background: 'hsl(var(--card))',
+            border: '1px solid hsl(var(--border))',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+          }}
+          nodeColor={() => 'hsl(var(--ring))'}
+          nodeStrokeColor={() => 'hsl(var(--border))'}
+          maskColor="rgba(0,0,0,0.15)"
+        />
+        <Controls
+          style={{
+            background: 'hsl(var(--card))',
+            color: 'hsl(var(--foreground))',
+            border: '1px solid hsl(var(--border))',
+          }}
+        />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={16}
+          size={1}
+          color="hsl(var(--border))"
+        />
         {Object.values(collaboratorCursors).map(cursor => (
           <CollaboratorCursor key={cursor.userId} cursor={cursor} />
         ))}
