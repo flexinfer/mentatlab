@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OrchestratorEvent",
+  "type": "object",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "hello" },
+        "data": {
+          "type": "object",
+          "required": ["runId"],
+          "properties": {
+            "runId": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["type", "data"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "checkpoint" },
+        "data": { "$ref": "./checkpoint.schema.json" }
+      },
+      "required": ["type", "data"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "status" },
+        "data": {
+          "type": "object",
+          "required": ["runId", "status"],
+          "properties": {
+            "runId": { "type": "string", "minLength": 1 },
+            "status": { "type": "string", "enum": ["pending", "running", "completed", "failed", "canceled"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["type", "data"],
+      "additionalProperties": false
+    }
+  ]
+}
