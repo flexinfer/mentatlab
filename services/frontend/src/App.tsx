@@ -7,6 +7,7 @@ import PropertyInspector from './components/PropertyInspector';
 import CommandPalette from './components/CommandPalette';
 import StreamingPage from './components/StreamingPage';
 import { ReactFlowProvider } from 'reactflow';
+import MissionControlLayout from './components/mission-control/layout/MissionControlLayout';
 import './globals.css';
 import 'reactflow/dist/style.css';
 import { Button } from './components/ui/button';
@@ -156,8 +157,9 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<FlowBuilder />} />
+        <Route path="/" element={<MissionControlLayout />} />
         <Route path="/streaming" element={<StreamingPage />} />
+        <Route path="/legacy" element={<FlowBuilder />} />
       </Routes>
     </Router>
   );
