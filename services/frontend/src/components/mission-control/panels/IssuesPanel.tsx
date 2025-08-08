@@ -5,9 +5,10 @@ import { loadFlow } from '../../../loadFlow';
 
 type IssuesPanelProps = {
   flow?: Flow;
+  onCountChange?: (count: number) => void;
 };
 
-export default function IssuesPanel({ flow }: IssuesPanelProps) {
+export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
   const [issues, setIssues] = React.useState(() => [] as ReturnType<typeof linter.analyze>);
   const [status, setStatus] = React.useState<'idle' | 'running' | 'done'>('idle');
 
@@ -18,10 +19,12 @@ export default function IssuesPanel({ flow }: IssuesPanelProps) {
       const results = linter.analyze(targetFlow);
       setIssues(results);
       setStatus('done');
+      onCountChange?.(results.length);
     } catch (e) {
       console.error('[IssuesPanel] Lint failed', e);
       setIssues([]);
       setStatus('done');
+      onCountChange?.(0);
     }
   }, [flow]);
 

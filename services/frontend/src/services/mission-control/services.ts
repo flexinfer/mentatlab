@@ -271,9 +271,26 @@ export class PolicyService {
 export class FlowLinterService {
   analyze(flow: Flow): LintIssue[] {
     const issues: LintIssue[] = [];
-    // Example rules
-    if (flow.graph.edges.length === 0) {
-      issues.push({
+    const graph = (flow as any)?.graph ?? {};
+    const nodes: any[] = Array.isArray(graph.nodes) ? graph.nodes : [];
+    const edges: any[] = Array.isArray(graph.edges) ? graph.edges : [];
+
+    // Build quick lookups
+    const degree = new Map<string, { in: number; out: number }>();
+    nodes.forEach((n) => degree.set(n.id, { in: 0, out: 0 }));
+    edges.forEach((e) => {
+      const fromId = typeof e.from === 'string' ? (e.from.split?.('.')?.[0] ?? e.from) : e.from;
+      const toId = typeof e.to === 'string' ? (e.to.split?.('.')?.[0] ?? e.to) : e.to;
+      if (fromId && degree.has(fromId)) degree.get(fromId)!.out++;
+      if (toId && degree.has(toId)) degree.get(toId)!.in++;
+    });
+
+    // Helper to push issues
+    const push = (i: LintIssue) => issues.push(i);
+
+    // 1) no-edges (existing)
+    if ((edges?.length ?? 0) === 0) {
+      push({
         id: cryptoRandomId(),
         kind: 'warning',
         target: { type: 'node', id: flow.meta.id },
@@ -282,11 +299,77 @@ export class FlowLinterService {
         fix: { label: 'Open canvas helper', action: 'open-edge-helper' },
       });
     }
-    // TODO: add: missing-retry, missing-safety-node, n+1-call, untyped-pin, no-timeout
+
+    // 2) isolated-node (no incoming and no outgoing)
+    nodes.forEach((n) => {
+      const d = degree.get(n.id) ?? { in: 0, out: 0 };
+      if ((d.in + d.out) === 0) {
+        push({
+          id: cryptoRandomId(),
+          kind: 'warning',
+          target: { type: 'node', id: n.id },
+          rule: 'isolated-node',
+          message: 'Node is not connected; it will neither receive nor send data.',
+          fix: { label: 'Open connector helper', action: 'open-edge-helper', params: { nodeId: n.id } },
+        });
+      }
+    });
+
+    // 3) missing-timeout (suggest timeouts for reliability)
+    nodes.forEach((n) => {
+      const timeoutMs = (n as any)?.params?.timeoutMs;
+      if (timeoutMs === undefined) {
+        push({
+          id: cryptoRandomId(),
+          kind: 'info',
+          target: { type: 'node', id: n.id },
+          rule: 'no-timeout',
+          message: 'No timeout configured for this node (params.timeoutMs). Consider adding one.',
+          fix: { label: 'Set 30s timeout', action: 'suggest-set-timeout', params: { nodeId: n.id, timeoutMs: 30000 } },
+        });
+      }
+    });
+
+    // 4) untyped-pin (inputs/outputs present but missing pin types)
+    nodes.forEach((n) => {
+      const inputs = (n as any)?.inputs;
+      const outputs = (n as any)?.outputs;
+      const pinList = [
+        ...Object.values(inputs ?? {}),
+        ...Object.values(outputs ?? {}),
+      ] as any[];
+      const hasUntyped = pinList.some((p) => p && typeof p.type === 'undefined');
+      if (hasUntyped) {
+        push({
+          id: cryptoRandomId(),
+          kind: 'info',
+          target: { type: 'node', id: n.id },
+          rule: 'untyped-pin',
+          message: 'Some pins are missing types; contract checking and adapters may be limited.',
+          fix: { label: 'Open pin schema', action: 'open-pin-schema', params: { nodeId: n.id } },
+        });
+      }
+    });
+
+    // 5) fanout-high (many outgoing edges from one node)
+    nodes.forEach((n) => {
+      const d = degree.get(n.id) ?? { in: 0, out: 0 };
+      if (d.out >= 6) {
+        push({
+          id: cryptoRandomId(),
+          kind: 'warning',
+          target: { type: 'node', id: n.id },
+          rule: 'fanout-high',
+          message: `Node has high fan-out (${d.out}). Consider batching or a broker to reduce N+1 effects.`,
+          fix: { label: 'Open edge helper', action: 'open-edge-helper', params: { nodeId: n.id } },
+        });
+      }
+    });
+
     return issues;
   }
 
-  applyFix(flow: Flow, issue: LintIssue): Flow {
+  applyFix(flow: Flow, _issue: LintIssue): Flow {
     // Pure function placeholder; mutate a cloned flow with requested fix
     // For MVP we just return the original flow.
     return flow;
