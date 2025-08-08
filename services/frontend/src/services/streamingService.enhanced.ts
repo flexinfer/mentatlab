@@ -29,9 +29,11 @@ import {
   StreamConnectionState // Added StreamConnectionState import
 } from '../types/streaming';
 import { MediaType, MediaChunk, MediaReference } from '../types/media';
-import { useStreamingStore, StreamingState } from '../store'; // Import useStreamingStore and StreamingState
- 
+import { useStreamingStore, type StreamingState } from '../store/index'; // Use the Map-based streaming store with exported StreamingState
 import { StreamMessageHandler, ConnectionStateHandler } from '../types/streaming'; // Import from types/streaming
+// ADD: Feature flags and Mission Control flight recorder
+import { FeatureFlags } from '../config/features';
+import { flightRecorder } from './mission-control/services';
 
 interface ReconnectionConfig {
   maxAttempts: number;
@@ -71,6 +73,9 @@ class EnhancedStream {
     connectTime: 0,
     lastError: null as Error | null
   };
+// ADD: Flight recorder run state
+  private runStarted = false;
+  private runEnded = false;
 
   constructor(
     public readonly streamId: string,
@@ -131,6 +136,15 @@ class EnhancedStream {
           this.startHeartbeat();
           this.sendNegotiation();
           this.flushMessageBuffer();
+// ADD: Start recorder run on first successful connection
+          if (FeatureFlags.NEW_STREAMING && !this.runStarted) {
+            try {
+              flightRecorder.startRun(this.streamId);
+              this.runStarted = true;
+              this.runEnded = false;
+              this.recordCheckpoint('connection:open', { transport: 'websocket' });
+            } catch {/* noop */}
+          }
           resolve();
         };
 
@@ -144,6 +158,13 @@ class EnhancedStream {
           clearTimeout(connectTimeout);
           console.log('[EnhancedStream] WebSocket closed:', event.code, event.reason);
           this.stopHeartbeat();
+// ADD: Record disconnect; end run if manually disconnected
+          if (FeatureFlags.NEW_STREAMING && this.runStarted && !this.runEnded) {
+            this.recordCheckpoint('connection:close', { transport: 'websocket', code: event.code, reason: event.reason });
+            if (this.isManuallyDisconnected) {
+              this.endRunIfNeeded('canceled');
+            }
+          }
           
           if (!this.isManuallyDisconnected && event.code !== 1000) {
             this.handleReconnection();
@@ -189,6 +210,15 @@ class EnhancedStream {
           this.stats.connectTime = Date.now();
           this.reconnectAttempts = 0;
           this.setConnectionState(StreamConnectionState.CONNECTED);
+// ADD: Start recorder run on first successful SSE connection
+          if (FeatureFlags.NEW_STREAMING && !this.runStarted) {
+            try {
+              flightRecorder.startRun(this.streamId);
+              this.runStarted = true;
+              this.runEnded = false;
+              this.recordCheckpoint('connection:open', { transport: 'sse' });
+            } catch {/* noop */}
+          }
           resolve();
         };
 
@@ -213,6 +243,10 @@ class EnhancedStream {
           console.error('[EnhancedStream] SSE error:', errorMessage.message, errorMessage.context);
           this.stats.lastError = new Error(errorMessage.message);
           (useStreamingStore.getState() as StreamingState).addStreamError(this.streamId, errorMessage);
+// ADD: Record connection error
+          if (FeatureFlags.NEW_STREAMING && this.runStarted && !this.runEnded) {
+            this.recordCheckpoint('connection:error', { transport: 'sse', error: errorEvent.type });
+          }
           if (this.sse?.readyState === EventSource.CLOSED) {
             this.sse = null;
             if (!this.isManuallyDisconnected) {
@@ -279,7 +313,7 @@ class EnhancedStream {
 
     // Handle error messages
     if (isErrorMessage(message)) {
-      this.handleErrorMessage(message);
+      this.handleErrorMessage(message as ErrorMessage); // existing behavior
     }
 
     // Handle heartbeat
@@ -297,6 +331,39 @@ class EnhancedStream {
     // Handle quality adaptation
     if (message.type === 'stream:quality') {
       this.handleQualityAdaptation(message as QualityAdaptationMessage); // Cast to QualityAdaptationMessage
+    }
+
+// ADD: Record checkpoints for core stream lifecycle
+    if (FeatureFlags.NEW_STREAMING && this.runStarted) {
+      switch (message.type) {
+        case 'stream_start': {
+          const anyMsg = message as any;
+          this.recordCheckpoint('stream:start', { agent_id: anyMsg.agent_id, node_id: anyMsg.node_id });
+          break;
+        }
+        case 'stream_data': {
+          const anyMsg = message as any;
+          this.recordCheckpoint('stream:data', {
+            preview: this.safePreview(anyMsg.data),
+            size: typeof anyMsg.data === 'string' ? anyMsg.data.length : JSON.stringify(anyMsg.data ?? '').length
+          });
+          break;
+        }
+        case 'stream_end': {
+          this.recordCheckpoint('stream:end');
+          this.endRunIfNeeded('completed');
+          break;
+        }
+        case 'stream_error': {
+          const anyMsg = message as any;
+          this.recordCheckpoint('stream:error', { code: anyMsg.code, message: anyMsg.message });
+          this.endRunIfNeeded('failed');
+          break;
+        }
+        default:
+          // no-op
+          break;
+      }
     }
 
     // Notify all handlers
@@ -628,6 +695,37 @@ class EnhancedStream {
    */
   getStats() {
     return { ...this.stats, uptime: this.stats.connectTime ? Date.now() - this.stats.connectTime : 0 };
+  }
+
+// ADD: Helper to record checkpoints safely
+  private recordCheckpoint(label: string, data?: Record<string, unknown>): void {
+    if (!FeatureFlags.NEW_STREAMING || !this.runStarted) return;
+    try {
+      flightRecorder.addCheckpoint({
+        runId: this.streamId,
+        label,
+        data
+      });
+    } catch {/* noop */}
+  }
+
+// ADD: Helper to end run once
+  private endRunIfNeeded(status: 'completed' | 'failed' | 'canceled'): void {
+    if (!FeatureFlags.NEW_STREAMING || !this.runStarted || this.runEnded) return;
+    try {
+      flightRecorder.endRun(this.streamId, status);
+      this.runEnded = true;
+    } catch {/* noop */}
+  }
+
+// ADD: Helper to safely preview data payloads
+  private safePreview(value: unknown): string {
+    try {
+      const s = typeof value === 'string' ? value : JSON.stringify(value);
+      return s.length > 200 ? s.slice(0, 200) + '…' : s;
+    } catch {
+      return '[unserializable]';
+    }
   }
 }
 

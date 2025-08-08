@@ -2,9 +2,16 @@
  * Feature flags (Vite-style)
  *
  * Use import.meta.env.VITE_FF_* to control feature toggles at build time.
+ * In dev, defaults enable primary demos if not explicitly set.
  */
+const env = import.meta.env as any;
+
 export const FeatureFlags = {
-  MULTIMODAL_UPLOAD: import.meta.env.VITE_FF_MULTIMODAL_UPLOAD === 'true',
-  NEW_STREAMING: import.meta.env.VITE_FF_NEW_STREAMING === 'true',
-  S3_STORAGE: import.meta.env.VITE_FF_S3_STORAGE === 'true',
+  // Enable in dev by default so demos work without manual .env
+  MULTIMODAL_UPLOAD: (env.VITE_FF_MULTIMODAL_UPLOAD ?? (env.DEV ? 'true' : 'false')) === 'true',
+  NEW_STREAMING: (env.VITE_FF_NEW_STREAMING ?? (env.DEV ? 'true' : 'false')) === 'true',
+  // Storage integrations should stay opt-in by default
+  S3_STORAGE: (env.VITE_FF_S3_STORAGE ?? 'false') === 'true',
+  // Runtime connection control: when false, UI shows streaming surfaces without attempting WS connect
+  CONNECT_WS: (env.VITE_CONNECT_WS ?? 'false') === 'true',
 } as const;

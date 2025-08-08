@@ -8,7 +8,7 @@ import CommandPalette from './components/CommandPalette';
 import StreamingPage from './components/StreamingPage';
 import { ReactFlowProvider } from 'reactflow';
 import MissionControlLayout from './components/mission-control/layout/MissionControlLayout';
-import './globals.css';
+import './index.css';
 import 'reactflow/dist/style.css';
 import { Button } from './components/ui/button';
 import useStore from './store';

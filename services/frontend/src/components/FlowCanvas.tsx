@@ -20,9 +20,12 @@ import ReactFlow, {
   useReactFlow,
   useStoreApi,
   Connection, // Import Connection type
+  Handle,
+  Position,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import DOMPurify from 'dompurify';
+import { FeatureFlags } from '../config/features';
 import { loadFlow } from '../loadFlow';
 import {
   Node as GraphNode,
@@ -93,7 +96,11 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => 
   const sanitizedType = DOMPurify.sanitize(type);
 
   return (
-    <div style={{ border: '1px solid black', padding: 10, background: backgroundColor }}>
+    <div style={{ border: '1px solid black', padding: 10, background: backgroundColor, position: 'relative' }}>
+      {/* Default handles to allow edges without explicit handle ids */}
+      <Handle type="target" position={Position.Left} id="in" style={{ background: '#555' }} />
+      <Handle type="source" position={Position.Right} id="out" style={{ background: '#555' }} />
+
       <div>ID: {sanitizedId}</div>
       <div>Type: {sanitizedType}</div>
       {sanitizedLabel && (
@@ -183,11 +190,30 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
           },
         }));
 
-        const reactFlowEdges: Edge[] = flowData.graph.edges.map((edge: GraphEdge) => ({
-          id: `e-${edge.from}-${edge.to}`,
-          source: edge.from,
-          target: edge.to,
-        }));
+        // React Flow expects node ids and optional handle ids separately.
+        // Our graph edges are "nodeId.handleId" (e.g., "agentA.out" -> "agentB.in").
+        const parseEndpoint = (endpoint: string): { nodeId: string; handleId?: string } => {
+          const [nodeId, handleId] = endpoint.split('.');
+          return { nodeId, handleId };
+        };
+
+        const reactFlowEdges: Edge[] = flowData.graph.edges.map((edge: GraphEdge) => {
+          const from = parseEndpoint(edge.from);
+          const to = parseEndpoint(edge.to);
+
+          const e: Partial<Edge> = {
+            id: `e-${edge.from}-${edge.to}`,
+            source: from.nodeId,
+            target: to.nodeId,
+          };
+
+          // Only set handle ids when they are valid (not literal 'undefined'/'null')
+          const valid = (h?: string) => !!h && h !== 'undefined' && h !== 'null';
+          if (valid(from.handleId)) e.sourceHandle = from.handleId!;
+          if (valid(to.handleId)) e.targetHandle = to.handleId!;
+
+          return e as Edge;
+        });
 
         setNodes(reactFlowNodes);
         setEdges(reactFlowEdges);
@@ -210,6 +236,11 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
   }, [setNodes, setEdges]);
 
   useEffect(() => {
+    // Only wire streaming when enabled and WS connections allowed
+    if (!FeatureFlags.NEW_STREAMING || !FeatureFlags.CONNECT_WS) {
+      return;
+    }
+
     const wsService = getWebSocketService();
     
     // Handle WebSocket messages (original functionality)
@@ -340,6 +371,7 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
   );
 
   const onMouseMove = useCallback((event: React.MouseEvent) => {
+    if (!FeatureFlags.NEW_STREAMING || !FeatureFlags.CONNECT_WS) return;
     const wsService = getWebSocketService();
     const flowPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY });
     // In a real app, you'd get the actual user ID and name
@@ -432,7 +464,7 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
   );
  
   return (
-    <div className="reactflow-wrapper h-full w-full" ref={reactFlowWrapper} data-testid="flow-canvas">
+    <div className="reactflow-wrapper h-full w-full" style={{ height: '100%', width: '100%' }} ref={reactFlowWrapper} data-testid="flow-canvas">
       <ReactFlow
         nodes={nodes}
         edges={edges}
