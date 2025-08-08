@@ -3,10 +3,13 @@ import { FeatureFlags } from '../../../config/features';
 import FlowCanvas from '../../FlowCanvas';
 import { Button } from '../../ui/button';
 import TimelinePanel from '../panels/TimelinePanel';
+import IssuesPanel from '../panels/IssuesPanel';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { ReactFlowProvider } from 'reactflow';
-// ADD: import streamingService (EnhancedStream wrapper)
-import streamingService from '../../../services/api/streamingService';
+// ADD: import useStreamingStore to show live connection status
+import { useStreamingStore } from '../../../store/index';
+// ADD: import StreamConnectionState enum for status mapping
+import { StreamConnectionState } from '../../../types/streaming';
 
 export function MissionControlLayout() {
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
@@ -38,7 +41,9 @@ export function MissionControlLayout() {
   const startLive = React.useCallback(async () => {
     if (!FeatureFlags.CONNECT_WS) return;
     try {
-      await streamingService.connect();
+      // Use dynamic import to avoid duplicate top-level imports and ensure availability
+      const mod = await import('../../../services/api/streamingService');
+      await mod.default.connect();
       // EnhancedStream will start a FlightRecorder run automatically on connect
     } catch (e) {
       console.error('[MissionControl] Live connect failed', e);
@@ -230,6 +235,8 @@ function BottomDock({ runId, onStartDemo, onStartLive }: { runId: string | null;
         ) : (
           <div className="p-2 font-mono text-[11px] text-gray-600">› Streaming disabled. Enable NEW_STREAMING flag to view Timeline.</div>
         )}
+        <div className="border-t" />
+        <IssuesPanel />
       </div>
     </div>
   );
@@ -239,15 +246,47 @@ function BottomDock({ runId, onStartDemo, onStartLive }: { runId: string | null;
  * Status Bar: env/feature/connection health (placeholder)
  */
 function StatusBar() {
+  // Read live connection status and active streams from the streaming store
+  const connectionStatus = useStreamingStore((s) => s.connectionStatus);
+  const activeStreamsCount = useStreamingStore((s) => s.activeStreams.size);
+
+  const statusBadge = (() => {
+    switch (connectionStatus) {
+      case StreamConnectionState.DISCONNECTED:
+        return { color: 'bg-gray-400', text: 'Disconnected' };
+      case StreamConnectionState.CONNECTING:
+        return { color: 'bg-amber-500', text: 'Connecting' };
+      case StreamConnectionState.CONNECTED:
+        return { color: 'bg-emerald-500', text: 'Connected' };
+      case StreamConnectionState.RECONNECTING:
+        return { color: 'bg-blue-500', text: 'Reconnecting' };
+      case StreamConnectionState.ERROR:
+        return { color: 'bg-red-500', text: 'Error' };
+      default:
+        // Fallback for any string statuses (in case of alternate store usage)
+        if (typeof connectionStatus === 'string') {
+          const mapping: Record<string, { color: string; text: string }> = {
+            disconnected: { color: 'bg-gray-400', text: 'Disconnected' },
+            connecting: { color: 'bg-amber-500', text: 'Connecting' },
+            connected: { color: 'bg-emerald-500', text: 'Connected' },
+            reconnecting: { color: 'bg-blue-500', text: 'Reconnecting' },
+            error: { color: 'bg-red-500', text: 'Error' },
+          };
+          return mapping[connectionStatus] ?? { color: 'bg-gray-400', text: String(connectionStatus) };
+        }
+        return { color: 'bg-gray-400', text: String(connectionStatus) };
+    }
+  })();
+
   return (
     <footer className="row-start-3 col-span-2 px-3 flex items-center justify-between text-[11px] border-t bg-white/80 backdrop-blur">
       <div className="flex items-center gap-3 text-gray-600">
         <span className="inline-flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          Connected
+          <span className={['w-1.5 h-1.5 rounded-full', statusBadge.color].join(' ')} />
+          {statusBadge.text}
         </span>
         <span className="text-gray-300">|</span>
-        <span>WS: &lt;100ms target</span>
+        <span>Active Streams: {activeStreamsCount}</span>
         <span className="text-gray-300">|</span>
         <span>Env: Dev</span>
       </div>
