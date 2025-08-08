@@ -3,11 +3,13 @@ import { FeatureFlags } from '../../../config/features';
 import FlowCanvas from '../../FlowCanvas';
 import { Button } from '../../ui/button';
 import TimelinePanel from '../panels/TimelinePanel';
-// ADD: Issues panel import
-import IssuesPanel from '../panels/IssuesPanel';
-// ADD: Console panel import
-import ConsolePanel from '../panels/ConsolePanel';
-import { flightRecorder } from '../../../services/mission-control/services';
+ // ADD: Issues panel import
+ import IssuesPanel from '../panels/IssuesPanel';
+ // ADD: Console panel import
+ import ConsolePanel from '../panels/ConsolePanel';
++// ADD: Runs panel import (dev)
++import RunsPanel from '../panels/RunsPanel';
+ import { flightRecorder } from '../../../services/mission-control/services';
 import { ReactFlowProvider } from 'reactflow';
 // ADD: streaming store + enum for status badge and connect state
 import { useStreamingStore } from '../../../store/index';
@@ -188,7 +190,7 @@ function BottomDock({
   onStartLive?: () => void;
 }) {
   // Interactive tabs
-  const [activeTab, setActiveTab] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues'>(
+  const [activeTab, setActiveTab] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs'>(
     FeatureFlags.NEW_STREAMING ? 'Timeline' : 'Console'
   );
   // Live connect state (disable button when connecting/connected)
@@ -241,6 +243,9 @@ function BottomDock({
             {FeatureFlags.NEW_STREAMING && (
               <TabBadge label="Timeline" active={activeTab === 'Timeline'} onClick={() => setActiveTab('Timeline')} badge={timelineCount} />
             )}
++              {FeatureFlags.ORCHESTRATOR_PANEL && (
++                <TabBadge label="Runs" active={activeTab === 'Runs'} onClick={() => setActiveTab('Runs')} />
++              )}
             <TabBadge label="Issues" active={activeTab === 'Issues'} onClick={() => setActiveTab('Issues')} badge={issuesCount} />
           </div>
           <div className="flex items-center gap-2">
@@ -284,6 +289,7 @@ function BottomDock({
             › Run Queue placeholder. Queue controls will appear here.
           </div>
         )}
++          {activeTab === 'Runs' && FeatureFlags.ORCHESTRATOR_PANEL && <RunsPanel />}
         {activeTab === 'Timeline' && FeatureFlags.NEW_STREAMING && <TimelinePanel runId={runId} />}
         {activeTab === 'Timeline' && !FeatureFlags.NEW_STREAMING && (
           <div className="p-2 font-mono text-[11px] text-gray-600">

@@ -81,11 +81,22 @@ npm run dev
 
 #### Orchestrator
 
+Option A — Recommended (Docker Compose)
+```bash
+# from repository root
+docker-compose up --build orchestrator redis
+```
+
+Option B — Local Node.js (dev)
 ```bash
 cd services/orchestrator
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+npm install
+npm run dev   # starts the orchestrator on http://localhost:7070 by default
 ```
+
+Notes:
+- For local browser-based SSE testing use the Vite frontend dev server (http://localhost:5173) and ensure CORS allows that origin or run without ORCHESTRATOR_API_KEY in dev.
+- Docker Compose is the easiest way to get Redis + Orchestrator running together for end-to-end testing.
 
 ### Orchestrator
 - Service README: [`services/orchestrator/README.md`](services/orchestrator/README.md:1)
