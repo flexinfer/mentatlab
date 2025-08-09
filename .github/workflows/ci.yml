@@ -226,7 +226,7 @@ jobs:
           npx playwright install --with-deps
           cd ../..
 
-      - name: Debug: TypeScript compile & Docker debug build for orchestrator
+      - name: "Debug: TypeScript compile and Docker debug build for orchestrator"
         run: |
           echo "==> Running TypeScript compile check for services/orchestrator (will not fail pipeline)"
           # Run tsc via npx; tolerate failure so logs are visible
