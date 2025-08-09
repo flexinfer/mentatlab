@@ -237,6 +237,20 @@ jobs:
             docker-compose --version || true
           fi
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build orchestrator image with buildx (cache via GitHub Actions)
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: services/orchestrator/Dockerfile
+          push: false
+          load: true
+          tags: orchestrator:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Start backend services
         run: |
           # Start backend services via docker compose (v2) to align ports with the frontend and E2E tests
