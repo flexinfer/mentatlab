@@ -5,12 +5,12 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++ || true
 
 # Copy package files and install dependencies
-COPY package*.json ./
+COPY services/orchestrator/package*.json ./
 RUN npm ci --prefer-offline --no-audit
 
 # Copy tsconfig and source for TypeScript build
-COPY tsconfig.json ./
-COPY src ./src
+COPY services/orchestrator/tsconfig.json ./
+COPY services/orchestrator/src ./src
 
 # Optional: copy repo-level schemas into builder if TypeScript reads them during build
 # (keeps parity with runtime layout — runtime stage will also receive schemas)
@@ -27,7 +27,7 @@ ENV NODE_ENV=production
 RUN apk add --no-cache curl wget
 
 # Copy production package files and install only production deps
-COPY package*.json ./
+COPY services/orchestrator/package*.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit
 
 # Copy built artifacts from the builder stage
