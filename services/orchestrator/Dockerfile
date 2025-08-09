@@ -14,7 +14,7 @@ COPY src ./src
 
 # Optional: copy repo-level schemas into builder if TypeScript reads them during build
 # (keeps parity with runtime layout — runtime stage will also receive schemas)
-COPY ../../schemas ./schemas
+COPY schemas ./schemas
 
 # Build the project into /app/dist
 RUN npm run build
@@ -35,7 +35,7 @@ COPY --from=builder /app/dist ./dist
 
 # Ensure repo-level JSON schemas are available at runtime so compiled JS imports resolve:
 # Place them at /app/schemas so relative imports from dist (../../../schemas/...) resolve correctly.
-COPY ../../schemas /app/schemas
+COPY schemas /app/schemas
 
 EXPOSE 7070
 
