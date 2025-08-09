@@ -226,10 +226,26 @@ jobs:
           npx playwright install --with-deps
           cd ../..
 
+      - name: Docker & Compose versions
+        run: |
+          # Print Docker and Compose versions for debugging CI issues
+          docker --version || true
+          # prefer docker compose (v2), fallback to docker-compose (v1)
+          if docker compose version >/dev/null 2>&1; then
+            docker compose version || true
+          else
+            docker-compose --version || true
+          fi
+
       - name: Start backend services
         run: |
-          # Start backend services via docker-compose to align ports with the frontend and E2E tests
-          docker-compose up -d orchestrator redis
+          # Start backend services via docker compose (v2) to align ports with the frontend and E2E tests
+          # Prefer 'docker compose' (v2). If not available, fall back to 'docker-compose'.
+          if docker compose version >/dev/null 2>&1; then
+            docker compose up -d orchestrator redis
+          else
+            docker-compose up -d orchestrator redis
+          fi
 
           echo "Waiting for backend services to be ready..."
           timeout=60
@@ -252,6 +268,16 @@ jobs:
             echo "No e2e script found, running basic connectivity test"
             curl -f http://localhost:8000/healthz
             curl -f http://localhost:8001/healthz
+          fi
+
+      - name: Cleanup backend services
+        if: always()
+        run: |
+          # Ensure backend services are stopped and volumes removed; support both docker compose v2 and docker-compose v1
+          if docker compose version >/dev/null 2>&1; then
+            docker compose down -v || true
+          else
+            docker-compose down -v || true
           fi
 
   lint:
