@@ -15,6 +15,11 @@ COPY services/orchestrator/src ./src
 # Optional: copy repo-level schemas into builder if TypeScript reads them during build
 # (keeps parity with runtime layout — runtime stage will also receive schemas)
 COPY schemas ./schemas
+# Also copy schemas into the service folder so TypeScript imports that reference service-local schemas resolve
+# e.g. services/orchestrator/src/validation can import ../../schemas/... after this copy.
+COPY schemas /app/services/orchestrator/schemas
+# Also make schemas available at absolute /schemas so relative imports in source (e.g. "../../../../schemas/...") still resolve.
+COPY schemas /schemas
 
 # Build the project into /app/dist
 RUN npm run build
@@ -36,6 +41,8 @@ COPY --from=builder /app/dist ./dist
 # Ensure repo-level JSON schemas are available at runtime so compiled JS imports resolve:
 # Place them at /app/schemas so relative imports from dist (../../../schemas/...) resolve correctly.
 COPY schemas /app/schemas
+# Also provide them at absolute /schemas for any runtime modules that import via filesystem absolute paths
+COPY schemas /schemas
 
 EXPOSE 7070
 

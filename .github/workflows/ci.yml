@@ -226,6 +226,19 @@ jobs:
           npx playwright install --with-deps
           cd ../..
 
+      - name: Debug: TypeScript compile & Docker debug build for orchestrator
+        run: |
+          set -euo pipefail
+          echo "==> Running TypeScript compile check for services/orchestrator"
+          # Use npx to run tsc without requiring a full npm install of devDependencies
+          npx -y typescript tsc -p services/orchestrator/tsconfig.json
+          echo "==> TypeScript compile succeeded"
+
+          echo "==> Running Docker debug build for services/orchestrator (no-cache, plain progress)"
+          # Build from repository root using the orchestrator Dockerfile to surface build issues early.
+          docker build --progress=plain --no-cache -f services/orchestrator/Dockerfile -t orchestrator:debug .
+          echo "==> Docker debug build completed"
+
       - name: Docker & Compose versions
         run: |
           # Print Docker and Compose versions for debugging CI issues

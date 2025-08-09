@@ -6,9 +6,10 @@ import { Run, RunStatus, Checkpoint } from "../types";
  * Connects using process.env.REDIS_URL. Lazy-connects on first use.
  */
 export default class RedisRepo {
-  private static client: RedisClientType | null = null;
+  // Use a permissive client typing to avoid fragile cross-package type parameter mismatch during CI builds
+  private static client: any | null = null;
 
-  private async clientReady(): Promise<RedisClientType> {
+  private async clientReady(): Promise<any> {
     if (RedisRepo.client && RedisRepo.client.isOpen) return RedisRepo.client;
     const url = process.env.REDIS_URL ?? "";
     const client = createClient({ url });

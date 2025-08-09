@@ -1,9 +1,11 @@
 // Validation utilities for orchestrator domain schemas
 // This module compiles JSON Schemas (resolved via resolveJsonModule) with Ajv
 import Ajv, { ErrorObject, ValidateFunction } from "ajv";
-import runSchema from "../../../../schemas/orchestrator/run.schema.json";
-import checkpointSchema from "../../../../schemas/orchestrator/checkpoint.schema.json";
-import eventSchema from "../../../../schemas/orchestrator/event.schema.json";
+// Import schemas from the local service-level schemas directory (populated during Docker build)
+// This avoids importing files outside the TS project root which can cause tsc resolution failures.
+import runSchema from "../../schemas/orchestrator/run.schema.json";
+import checkpointSchema from "../../schemas/orchestrator/checkpoint.schema.json";
+import eventSchema from "../../schemas/orchestrator/event.schema.json";
 
 const ajv = new Ajv({ strict: false, allErrors: true, allowUnionTypes: true });
 
