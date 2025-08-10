@@ -80,3 +80,44 @@
   background-color: hsl(var(--card));
   color: hsl(var(--card-foreground));
 }
+
+/* React Flow theme alignment: ensure nodes don’t default to pure white */
+.react-flow__node {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+  padding: 0 !important;               /* remove default padding that creates a frame */
+  box-shadow: none !important;         /* avoid any light drop shadow */
+}
+
+/* React Flow built-in typed nodes can carry their own default white bg.
+   Normalize them to theme tokens as well. */
+.react-flow__node-input,
+.react-flow__node-output,
+.react-flow__node-default {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+  padding: 0 !important;               /* ensure no inner white rim on typed nodes */
+  box-shadow: none !important;
+}
+
+/* Target nodes we've explicitly marked from our FlowCanvas: make the outer wrapper transparent */
+.react-flow__node.mc-node {
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Handles should use ring color token */
+.react-flow__handle {
+  background-color: hsl(var(--ring)) !important;
+}
+
+/* Minimal selection/hover surfaces aligned with tokens */
+.react-flow__node.selectable:focus,
+.react-flow__node.selectable:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}

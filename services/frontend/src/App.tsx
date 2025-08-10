@@ -9,7 +9,6 @@ import StreamingPage from './components/StreamingPage';
 import { ReactFlowProvider } from 'reactflow';
 import MissionControlLayout from './components/mission-control/layout/MissionControlLayout';
 import './index.css';
-import 'reactflow/dist/style.css';
 import { Button } from './components/ui/button';
 import useStore from './store';
 import { Flow, Node as GraphNode, Edge as GraphEdge, FlowMeta, FlowGraph, Position } from './types/graph';

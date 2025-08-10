@@ -83,7 +83,8 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => 
   // Theme-aware styling
   const nodeStyle: React.CSSProperties = {
     border: '1px solid hsl(var(--border))',
-    background: 'hsl(var(--card))',
+    // Use muted surface by default to avoid stark white in light mode
+    background: 'hsl(var(--muted))',
     color: 'hsl(var(--foreground))',
     padding: 10,
     position: 'relative',
@@ -92,13 +93,13 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => 
   };
   // Status tint with proper dark mode support
   if (data.status === 'running') {
-    nodeStyle.background = 'hsl(var(--amber-50, 39 100% 97%))'; // amber-50 light, dark mode friendly
+    nodeStyle.background = 'hsl(var(--amber-50, 39 100% 97%))'; // amber-50 tint on top of card
     nodeStyle.borderColor = 'hsl(var(--amber-200, 48 97% 77%))';
   } else if (data.status === 'completed') {
-    nodeStyle.background = 'hsl(var(--emerald-50, 152 81% 96%))'; // emerald-50 light
+    nodeStyle.background = 'hsl(var(--emerald-50, 152 81% 96%))'; // emerald-50 tint
     nodeStyle.borderColor = 'hsl(var(--emerald-200, 152 76% 80%))';
   } else if (data.status === 'failed') {
-    nodeStyle.background = 'hsl(var(--red-50, 0 86% 97%))'; // red-50 light
+    nodeStyle.background = 'hsl(var(--red-50, 0 86% 97%))'; // red-50 tint
     nodeStyle.borderColor = 'hsl(var(--red-200, 0 73% 77%))';
   }
 
@@ -223,6 +224,16 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
           id: node.id,
           type: node.type,
           position: { x: node.position.x || 0, y: node.position.y || 0 },
+          // Add a wrapper class so we can reliably override the outer react-flow node background
+          className: 'mc-node',
+          // Inline style on the node object applies to the outer wrapper element created by React Flow.
+          // Use inline style to force transparency and remove border/shadow that causes white rim.
+          style: {
+            background: 'transparent',
+            border: 'none',
+            boxShadow: 'none',
+            padding: 0,
+          },
           data: {
             label: (node.params?.label as string) || node.id,
             status: undefined,
