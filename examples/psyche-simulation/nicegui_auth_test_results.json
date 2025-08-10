@@ -1,0 +1,51 @@
+{
+  "overall_success": false,
+  "total_tests": 6,
+  "passed_tests": 4,
+  "success_rate": "66.7%",
+  "detailed_results": [
+    {
+      "test": "User Creation",
+      "status": "\u2705 PASS",
+      "success": true,
+      "details": "Created user: e78065bc-a8d0-4c30-a5e0-d6aa1bd6e7dc"
+    },
+    {
+      "test": "User Authentication",
+      "status": "\u2705 PASS",
+      "success": true,
+      "details": "Authenticated user: test_user_1753923150"
+    },
+    {
+      "test": "User Manager Functionality",
+      "status": "\u274c FAIL",
+      "success": false,
+      "details": "'str' object has no attribute 'value'"
+    },
+    {
+      "test": "Session Manager Functionality",
+      "status": "\u274c FAIL",
+      "success": false,
+      "details": "No test user available"
+    },
+    {
+      "test": "Role-Based Access Control",
+      "status": "\u2705 PASS",
+      "success": true,
+      "details": "All role assignments working correctly"
+    },
+    {
+      "test": "Registration Component Backend",
+      "status": "\u2705 PASS",
+      "success": true,
+      "details": "Registration validation and duplicate prevention working"
+    }
+  ],
+  "component_status": {
+    "user_manager_functional": false,
+    "session_manager_functional": false,
+    "role_based_access_functional": true,
+    "registration_backend_functional": true,
+    "nicegui_interface_running": true
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "test_time": "2025-07-31T20:41:47.080592",
+  "tests": [
+    {
+      "test": "config_import",
+      "status": "PASS",
+      "message": "Successfully imported STORAGE_SECRET and API settings from config"
+    },
+    {
+      "test": "main_app_config",
+      "status": "PASS",
+      "message": "psyche_simulation.py properly configured with storage_secret"
+    },
+    {
+      "test": "websocket_broadcaster",
+      "status": "PASS",
+      "message": "WebSocket broadcaster properly implemented with all required methods"
+    },
+    {
+      "test": "no_direct_storage_access",
+      "status": "PASS",
+      "message": "No direct app.storage.user access found"
+    },
+    {
+      "test": "websocket_functionality",
+      "status": "PASS",
+      "message": "WebSocket broadcaster works without storage errors"
+    }
+  ],
+  "config_details": {
+    "storage_secret_defined": true,
+    "api_host": "0.0.0.0",
+    "api_port": 8080
+  },
+  "summary": {
+    "total_tests": 5,
+    "passed": 5,
+    "failed": 0,
+    "success_rate": "100.0%"
+  }
+}

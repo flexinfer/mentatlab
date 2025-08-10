@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-cluster
+  namespace: ai
+  annotations:
+    metallb.universe.tf/ip-allocated-from-pool: default-address-pool
+    traefik.ingress.kubernetes.io/affinity: "true"
+    traefik.ingress.kubernetes.io/affinity-cookie-name: ollama-chat
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 11434
+    protocol: TCP
+    targetPort: 11434
+  selector:
+    # More specific selector to only match ollama-7900xtx
+    app.kubernetes.io/instance: ollama-7900xtx
+    app.kubernetes.io/name: ollama
+  sessionAffinity: None

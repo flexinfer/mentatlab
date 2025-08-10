@@ -21,4 +21,8 @@ logs/frontend.log
 /**/node_modules/.bin
 /**/node_modules
 
-examples/psyche-simulation
+examples/psyche-simulation/test*
+examples/psyche-simulation/venv
+examples/psyche-simulation/patches
+examples/psyche-simulation/*.log
+examples/psyche-simulation/logs
