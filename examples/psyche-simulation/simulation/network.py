@@ -1,0 +1,339 @@
+"""
+Inter-agent communication network
+"""
+
+import time
+import logging
+from typing import Dict, List, Optional, Tuple, Any
+from collections import defaultdict, deque
+
+from analysis.sentiment import analyze_sentiment
+from config import ALLOWED_COMMUNICATIONS, EMERGENCY_COMMUNICATIONS, COMMUNICATION_CONFIG
+from utils.websocket_events import broadcast_network_update
+
+class AgentNetwork:
+    """
+    Manages communication channels between agents,
+    allowing them to send messages to each other
+    """
+    
+    def __init__(self, max_queue_size: int = 100):
+        self.logger = logging.getLogger("AgentNetwork")
+        self.max_queue_size = max_queue_size
+        
+        # Initialize message queues for all communication paths (normal + emergency)
+        self.message_queue = {}
+        all_paths = ALLOWED_COMMUNICATIONS + EMERGENCY_COMMUNICATIONS
+        for from_agent, to_agent in all_paths:
+            key = f"{from_agent}->{to_agent}"
+            self.message_queue[key] = deque(maxlen=max_queue_size)
+        
+        # Track communication statistics
+        self.stats = defaultdict(lambda: {
+            'sent': 0,
+            'received': 0,
+            'avg_sentiment': 0.0,
+            'total_sentiment': 0.0
+        })
+        
+        # Emergency communication state
+        self.emergency_mode = False
+        self.current_paths = ALLOWED_COMMUNICATIONS
+        self.emergency_activated_at = None
+        self.stagnation_history = deque(maxlen=5)
+        
+    def send_message(self, from_agent: str, to_agent: str, message: str,
+                    context: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Send a message from one agent to another
+        
+        Returns True if message was sent successfully, False otherwise
+        """
+        key = f"{from_agent}->{to_agent}"
+        
+        # Check if path is allowed in current mode
+        is_normal_path = (from_agent, to_agent) in ALLOWED_COMMUNICATIONS
+        is_emergency_path = (from_agent, to_agent) in EMERGENCY_COMMUNICATIONS
+        
+        # Allow message if it's a normal path OR if we're in emergency mode and it's an emergency path
+        if not (is_normal_path or (self.emergency_mode and is_emergency_path)):
+            self.logger.warning(f"Communication path {key} is not allowed in current mode")
+            return False
+        
+        if key not in self.message_queue:
+            self.logger.warning(f"Communication path {key} queue not initialized")
+            return False
+        
+        # Analyze message sentiment
+        sentiment = analyze_sentiment(message)
+        
+        # Create message packet
+        message_packet = {
+            'timestamp': time.time(),
+            'from': from_agent,
+            'to': to_agent,
+            'content': message,
+            'sentiment': sentiment,
+            'context': context or {},
+            'emergency_path': is_emergency_path and self.emergency_mode
+        }
+        
+        # Add to queue
+        self.message_queue[key].append(message_packet)
+        
+        # Update statistics
+        self._update_stats(from_agent, to_agent, sentiment)
+        
+        path_type = "emergency" if (is_emergency_path and self.emergency_mode) else "normal"
+        self.logger.info(f"Message sent from {from_agent} to {to_agent} via {path_type} path (sentiment: {sentiment:.2f})")
+        
+        # Broadcast network update
+        broadcast_network_update(
+            connections=self.get_connections(),
+            communication_stats=self.get_stats()
+        )
+        
+        return True
+    
+    def get_messages(self, from_agent: str, to_agent: str, 
+                    last_n: Optional[int] = None, 
+                    since_timestamp: Optional[float] = None) -> List[Dict[str, Any]]:
+        """
+        Retrieve messages between agents
+        
+        Args:
+            from_agent: Sender agent name
+            to_agent: Receiver agent name
+            last_n: Return only the last N messages
+            since_timestamp: Return only messages after this timestamp
+        
+        Returns:
+            List of message packets
+        """
+        key = f"{from_agent}->{to_agent}"
+        
+        if key not in self.message_queue:
+            self.logger.warning(f"Communication path {key} is not allowed")
+            return []
+        
+        messages = list(self.message_queue[key])
+        
+        # Filter by timestamp if specified
+        if since_timestamp is not None:
+            messages = [m for m in messages if m['timestamp'] > since_timestamp]
+        
+        # Return last N messages if specified
+        if last_n is not None:
+            messages = messages[-last_n:]
+        
+        return messages
+    
+    def get_all_messages_for_agent(self, agent_name: str, 
+                                  incoming: bool = True, 
+                                  outgoing: bool = True) -> List[Dict[str, Any]]:
+        """
+        Get all messages to/from a specific agent
+        """
+        all_messages = []
+        
+        for key, queue in self.message_queue.items():
+            from_agent, to_agent = key.split('->')
+            
+            if incoming and to_agent == agent_name:
+                all_messages.extend(list(queue))
+            elif outgoing and from_agent == agent_name:
+                all_messages.extend(list(queue))
+        
+        # Sort by timestamp
+        all_messages.sort(key=lambda m: m['timestamp'])
+        
+        return all_messages
+    
+    def get_communication_matrix(self) -> Dict[str, Dict[str, float]]:
+        """
+        Get a matrix of communication strength between agents
+        """
+        matrix = defaultdict(lambda: defaultdict(float))
+        
+        for key, queue in self.message_queue.items():
+            if not queue:
+                continue
+                
+            from_agent, to_agent = key.split('->')
+            
+            # Calculate communication strength based on:
+            # - Number of messages
+            # - Average sentiment intensity
+            # - Recency
+            
+            messages = list(queue)
+            num_messages = len(messages)
+            
+            if num_messages > 0:
+                avg_sentiment = sum(abs(m['sentiment']) for m in messages) / num_messages
+                
+                # Weight recent messages more heavily
+                current_time = time.time()
+                recency_weight = sum(
+                    1.0 / (1.0 + (current_time - m['timestamp']) / 3600)  # Decay over hours
+                    for m in messages
+                ) / num_messages
+                
+                strength = (num_messages / self.max_queue_size) * avg_sentiment * recency_weight
+                matrix[from_agent][to_agent] = min(strength, 1.0)  # Cap at 1.0
+        
+        return dict(matrix)
+    
+    def clear_messages(self, from_agent: Optional[str] = None, 
+                      to_agent: Optional[str] = None):
+        """
+        Clear messages from the network
+        """
+        if from_agent and to_agent:
+            key = f"{from_agent}->{to_agent}"
+            if key in self.message_queue:
+                self.message_queue[key].clear()
+                self.logger.info(f"Cleared messages from {from_agent} to {to_agent}")
+        else:
+            # Clear all messages
+            for queue in self.message_queue.values():
+                queue.clear()
+            self.stats.clear()
+            self.logger.info("Cleared all messages from network")
+    
+    def _update_stats(self, from_agent: str, to_agent: str, sentiment: float):
+        """
+        Update communication statistics
+        """
+        # Update sender stats
+        self.stats[from_agent]['sent'] += 1
+        self.stats[from_agent]['total_sentiment'] += sentiment
+        self.stats[from_agent]['avg_sentiment'] = (
+            self.stats[from_agent]['total_sentiment'] / self.stats[from_agent]['sent']
+        )
+        
+        # Update receiver stats
+        self.stats[to_agent]['received'] += 1
+    
+    def get_stats(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get communication statistics for all agents
+        """
+        return dict(self.stats)
+    
+    def get_allowed_receivers(self, from_agent: str) -> List[str]:
+        """
+        Get list of agents that can receive messages from the given agent
+        """
+        receivers = []
+        for sender, receiver in ALLOWED_COMMUNICATIONS:
+            if sender == from_agent:
+                receivers.append(receiver)
+        return receivers
+    
+    def get_allowed_senders(self, to_agent: str) -> List[str]:
+        """
+        Get list of agents that can send messages to the given agent
+        """
+        senders = []
+        for sender, receiver in ALLOWED_COMMUNICATIONS:
+            if receiver == to_agent:
+                senders.append(sender)
+        return senders
+    
+    def update_conversation_state(self, conversation_state: Dict[str, float]):
+        """
+        Update network state based on conversation dynamics
+        """
+        stagnation = conversation_state.get('stagnation', 0.0)
+        self.stagnation_history.append(stagnation)
+        
+        # Check if we should activate emergency mode
+        if stagnation > COMMUNICATION_CONFIG['emergency_threshold'] and not self.emergency_mode:
+            self.emergency_mode = True
+            self.emergency_activated_at = time.time()
+            self.current_paths = ALLOWED_COMMUNICATIONS + EMERGENCY_COMMUNICATIONS
+            self.logger.info(f"Emergency communication paths activated (stagnation: {stagnation:.2f})")
+            
+            # Broadcast network update for emergency mode activation
+            broadcast_network_update(
+                connections=self.get_connections(),
+                communication_stats=self.get_stats()
+            )
+        
+        # Check if we should deactivate emergency mode
+        elif self.emergency_mode and stagnation < COMMUNICATION_CONFIG['emergency_threshold'] * 0.8:
+            # Use hysteresis to prevent rapid switching
+            if (time.time() - self.emergency_activated_at) > COMMUNICATION_CONFIG['path_switch_delay'] * 60:
+                self.emergency_mode = False
+                self.current_paths = ALLOWED_COMMUNICATIONS
+                self.logger.info(f"Emergency communication paths deactivated (stagnation: {stagnation:.2f})")
+                
+                # Broadcast network update for emergency mode deactivation
+                broadcast_network_update(
+                    connections=self.get_connections(),
+                    communication_stats=self.get_stats()
+                )
+    
+    def is_emergency_mode(self) -> bool:
+        """
+        Check if network is in emergency communication mode
+        """
+        return self.emergency_mode
+    
+    def get_emergency_status(self) -> Dict[str, Any]:
+        """
+        Get emergency mode status information
+        """
+        return {
+            'emergency_mode': self.emergency_mode,
+            'activated_at': self.emergency_activated_at,
+            'stagnation_history': list(self.stagnation_history),
+            'current_stagnation': self.stagnation_history[-1] if self.stagnation_history else 0.0
+        }
+    
+    def is_communication_allowed(self, from_agent: str, to_agent: str) -> bool:
+        """
+        Check if communication is allowed between two agents in current mode
+        """
+        is_normal = (from_agent, to_agent) in ALLOWED_COMMUNICATIONS
+        is_emergency = (from_agent, to_agent) in EMERGENCY_COMMUNICATIONS
+        
+        return is_normal or (self.emergency_mode and is_emergency)
+    
+    def get_connections(self) -> List[Dict[str, Any]]:
+        """
+        Get current network connections for visualization
+        """
+        connections = []
+        
+        # Add all allowed normal connections
+        for from_agent, to_agent in ALLOWED_COMMUNICATIONS:
+            key = f"{from_agent}->{to_agent}"
+            queue_size = len(self.message_queue.get(key, []))
+            
+            connections.append({
+                'from': from_agent,
+                'to': to_agent,
+                'strength': min(queue_size / self.max_queue_size, 1.0),
+                'is_active': queue_size > 0,
+                'type': 'normal',
+                'message_count': queue_size
+            })
+        
+        # Add emergency connections if in emergency mode
+        if self.emergency_mode:
+            for from_agent, to_agent in EMERGENCY_COMMUNICATIONS:
+                key = f"{from_agent}->{to_agent}"
+                queue_size = len(self.message_queue.get(key, []))
+                
+                connections.append({
+                    'from': from_agent,
+                    'to': to_agent,
+                    'strength': min(queue_size / self.max_queue_size, 1.0),
+                    'is_active': queue_size > 0,
+                    'type': 'emergency',
+                    'message_count': queue_size
+                })
+        
+        return connections

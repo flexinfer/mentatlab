@@ -1,0 +1,49 @@
+# Core dependencies
+langchain
+openai
+textblob
+nltk
+
+# UI dependencies
+nicegui
+fastapi
+uvicorn
+
+# Visualization dependencies
+matplotlib
+networkx
+seaborn
+plotly
+
+# Data storage and analysis
+# sqlite3 - built into Python, no installation needed
+pandas
+numpy
+
+# Export functionality
+jinja2
+markdown
+reportlab  # For PDF export
+
+# Utilities
+python-dotenv
+colorama
+tqdm
+
+# Redis for state management
+redis
+
+# Performance monitoring
+psutil
+
+# Authentication and session management
+bcrypt>=4.0.0
+PyJWT>=2.8.0
+cryptography>=41.0.0
+
+# Additional security dependencies
+passlib>=1.7.4
+python-multipart>=0.0.6
+
+# Testing
+pytest

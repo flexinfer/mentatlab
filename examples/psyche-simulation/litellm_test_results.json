@@ -1,0 +1,45 @@
+{
+  "diagnosis_completed": true,
+  "timestamp": "2025-08-01T00:24:00Z",
+  "root_causes_identified": [
+    {
+      "issue": "Model format mismatch",
+      "details": "LiteLLM configured with 'openai/deepseek-r1:8b' instead of 'ollama/deepseek-r1:8b'",
+      "severity": "critical"
+    },
+    {
+      "issue": "API endpoint format",
+      "details": "Using OpenAI-style '/v1' suffix which Ollama doesn't support",
+      "severity": "critical"
+    },
+    {
+      "issue": "Provider type mismatch",
+      "details": "Using 'model_type: openai' instead of 'custom_llm_provider: ollama'",
+      "severity": "critical"
+    }
+  ],
+  "validation_results": {
+    "ollama_status": "healthy",
+    "model_availability": "deepseek-r1:8b present",
+    "service_discovery": "ollama-cluster service exists",
+    "litellm_pod": "restarted with new config"
+  },
+  "fix_applied": {
+    "config_changes": {
+      "model": {
+        "from": "openai/deepseek-r1:8b",
+        "to": "ollama/deepseek-r1:8b"
+      },
+      "api_base": {
+        "from": "http://ollama-cluster.ai.svc.cluster.local:11434/v1",
+        "to": "http://ollama-cluster.ai.svc.cluster.local:11434"
+      },
+      "provider": {
+        "from": "model_type: openai",
+        "to": "custom_llm_provider: ollama"
+      }
+    },
+    "deployment_status": "pod restarted",
+    "expected_outcome": "404 and 429 errors should be resolved"
+  }
+}

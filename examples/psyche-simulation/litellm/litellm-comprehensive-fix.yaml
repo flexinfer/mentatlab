@@ -1,0 +1,76 @@
+# Fix 1: Update ollama-cluster service to only select ollama-7900xtx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-cluster
+  namespace: ai
+  annotations:
+    metallb.universe.tf/ip-allocated-from-pool: default-address-pool
+    traefik.ingress.kubernetes.io/affinity: "true"
+    traefik.ingress.kubernetes.io/affinity-cookie-name: ollama-chat
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 192.168.50.227  # Preserve existing IP
+  ports:
+  - port: 11434
+    protocol: TCP
+    targetPort: 11434
+  selector:
+    # More specific selector to only match ollama-7900xtx
+    app.kubernetes.io/instance: ollama-7900xtx
+    app.kubernetes.io/name: ollama
+  sessionAffinity: None
+
+# Fix 2: Update LiteLLM ConfigMap with correct Ollama configuration
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: litellm-config
+  namespace: litellm
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: litellm
+    meta.helm.sh/release-namespace: litellm
+data:
+  config.yaml: |
+    general_settings:
+      enable_streaming: true
+      global_max_parallel_requests: 10
+      master_key: 90FcWdIeLIT
+      max_parallel_requests: 10
+    litellm_settings:
+      drop_params: true
+      request_timeout: 600
+      set_verbose: false
+    model_list:
+    - litellm_params:
+        api_base: http://ollama-cluster.ai.svc.cluster.local:11434
+        api_key: ""
+        custom_llm_provider: ollama
+        keep_alive: 300
+        model: ollama/deepseek-r1:8b
+        num_batch: 512
+        num_ctx: 8192
+        num_gpu: 999
+        num_thread: 8
+        stream: true
+      model_info:
+        max_input_tokens: 8192
+        max_output_tokens: 2000
+      model_name: deepseek-r1:8b
+    - litellm_params:
+        api_base: http://ollama-cluster.ai.svc.cluster.local:11434
+        api_key: ""
+        drop_params: true
+        keep_alive: "-1"
+        model: ollama/nomic-embed-text:latest
+        custom_llm_provider: ollama
+      model_info:
+        is_embedding_model: true
+      model_name: nomic-embed
+    router_settings:
+      default_max_parallel_requests: 10
+      routing_strategy: least-busy

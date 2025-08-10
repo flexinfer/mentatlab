@@ -1,0 +1,133 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: psyche-simulation-config
+  namespace: psyche-simulation
+  labels:
+    app: psyche-simulation
+    component: config
+data:
+  # Application Configuration
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  PORT: "8080"
+  HOST: "0.0.0.0"
+  
+  # Redis Configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_MAX_CONNECTIONS: "50"
+  REDIS_SOCKET_TIMEOUT: "5"
+  REDIS_RETRY_ON_TIMEOUT: "true"
+  
+  # LLM Configuration
+  LLM_API_URL: "http://litellm.flexinfer.ai/v1/chat/completions"
+  LLM_MODEL: "deepseek-r1-abliterated"
+  LLM_MAX_TOKENS: "500"
+  LLM_TEMPERATURE: "0.7"
+  LLM_TIMEOUT: "180"
+  LLM_REQUEST_DELAY: "4.0"
+  LLM_RETRY_ATTEMPTS: "3"
+  LLM_RETRY_DELAY: "3.0"
+  LLM_MAX_RETRY_DELAY: "60.0"
+  LLM_MAX_CONCURRENT_REQUESTS: "1"
+  
+  # Session Configuration
+  SESSION_AUTO_SAVE_INTERVAL: "300"
+  SESSION_MAX_CONVERSATION_HISTORY: "100"
+  SESSION_THINKING_INTERVAL: "15"
+  
+  # WebSocket Configuration
+  WEBSOCKET_ENABLE_REDIS: "true"
+  WEBSOCKET_REDIS_CHANNEL: "websocket_events"
+  
+  # Health Check Configuration
+  HEALTH_CHECK_INTERVAL: "30"
+  HEALTH_CHECK_TIMEOUT: "10"
+  HEALTH_CHECK_REDIS_TIMEOUT: "5"
+  
+  # Performance Monitoring
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9090"
+  METRICS_PATH: "/metrics"
+  
+  # Security Configuration
+  JWT_EXPIRATION_HOURS: "24"
+  BCRYPT_ROUNDS: "12"
+  
+  # Export Configuration
+  EXPORT_FORMATS: "html,markdown,json,pdf"
+  EXPORT_DEFAULT_FORMAT: "html"
+  
+  # UI Configuration
+  UI_TITLE: "Psyche Simulation - Jungian Archetype Explorer"
+  UI_THEME: "dark"
+  UI_UPDATE_INTERVAL: "1000"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: psyche-simulation-agent-config
+  namespace: psyche-simulation
+  labels:
+    app: psyche-simulation
+    component: agent-config
+data:
+  agent-configs.json: |
+    {
+      "Shadow": {
+        "temperature": 0.9,
+        "system_prompt": "You are the Shadow - the repository of repressed desires, instincts, and aspects of the personality that the conscious ego deems unacceptable. You embody raw, unfiltered unconscious drives.",
+        "color": "#2c3e50"
+      },
+      "Persona": {
+        "temperature": 0.5,
+        "system_prompt": "You are the Persona - the social mask worn in public, the image presented to the outside world. You represent adaptation to social expectations and norms.",
+        "color": "#3498db"
+      },
+      "Anima/Animus": {
+        "temperature": 0.7,
+        "system_prompt": "You are the Anima/Animus - the contrasexual aspect of the psyche. You represent the unconscious feminine side in men (Anima) or masculine side in women (Animus), bridging conscious and unconscious.",
+        "color": "#9b59b6"
+      },
+      "Self": {
+        "temperature": 0.6,
+        "system_prompt": "You are the Self - the unified whole of conscious and unconscious, the archetype of wholeness and the regulating center of the psyche. You seek integration and individuation.",
+        "color": "#f39c12"
+      },
+      "Ego": {
+        "temperature": 0.3,
+        "system_prompt": "You are the Ego - the conscious mind, the part of the id that has been modified by the direct influence of the external world. You are the rational decision-maker and mediator.",
+        "color": "#27ae60"
+      }
+    }
+  
+  communication-config.json: |
+    {
+      "allowed_communications": [
+        ["Shadow", "Persona"],
+        ["Persona", "Shadow"],
+        ["Self", "Ego"],
+        ["Ego", "Self"],
+        ["Anima/Animus", "Ego"],
+        ["Ego", "Anima/Animus"],
+        ["Shadow", "Self"],
+        ["Self", "Shadow"],
+        ["Persona", "Ego"],
+        ["Ego", "Persona"]
+      ],
+      "emergency_communications": [
+        ["Shadow", "Anima/Animus"],
+        ["Anima/Animus", "Shadow"],
+        ["Persona", "Self"],
+        ["Self", "Persona"],
+        ["Shadow", "Ego"],
+        ["Ego", "Shadow"],
+        ["Anima/Animus", "Persona"],
+        ["Persona", "Anima/Animus"]
+      ],
+      "emergency_threshold": 0.6,
+      "critical_threshold": 0.8,
+      "path_switch_delay": 2
+    }

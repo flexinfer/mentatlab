@@ -1,0 +1,108 @@
+# Staging Environment Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: psyche-simulation-config-staging
+  namespace: psyche-simulation-staging
+  labels:
+    app: psyche-simulation
+    component: config
+    environment: staging
+data:
+  # Application Configuration
+  ENVIRONMENT: "staging"
+  LOG_LEVEL: "INFO"
+  PORT: "8080"
+  HOST: "0.0.0.0"
+  
+  # Redis Configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_MAX_CONNECTIONS: "25"
+  REDIS_SOCKET_TIMEOUT: "5"
+  REDIS_RETRY_ON_TIMEOUT: "true"
+  
+  # LLM Configuration
+  LLM_API_URL: "http://litellm.flexinfer.ai/v1/chat/completions"
+  LLM_MODEL: "deepseek-r1-abliterated"
+  LLM_MAX_TOKENS: "500"
+  LLM_TEMPERATURE: "0.7"
+  LLM_TIMEOUT: "120"
+  LLM_REQUEST_DELAY: "3.0"
+  LLM_RETRY_ATTEMPTS: "3"
+  LLM_RETRY_DELAY: "3.0"
+  LLM_MAX_RETRY_DELAY: "45.0"
+  LLM_MAX_CONCURRENT_REQUESTS: "1"
+  
+  # Session Configuration
+  SESSION_AUTO_SAVE_INTERVAL: "200"
+  SESSION_MAX_CONVERSATION_HISTORY: "75"
+  SESSION_THINKING_INTERVAL: "12"
+  
+  # WebSocket Configuration
+  WEBSOCKET_ENABLE_REDIS: "true"
+  WEBSOCKET_REDIS_CHANNEL: "websocket_events_staging"
+  
+  # Health Check Configuration
+  HEALTH_CHECK_INTERVAL: "20"
+  HEALTH_CHECK_TIMEOUT: "8"
+  HEALTH_CHECK_REDIS_TIMEOUT: "4"
+  
+  # Performance Monitoring
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9090"
+  METRICS_PATH: "/metrics"
+  
+  # Security Configuration
+  JWT_EXPIRATION_HOURS: "12"
+  BCRYPT_ROUNDS: "12"
+  
+  # Export Configuration
+  EXPORT_FORMATS: "html,markdown,json,pdf"
+  EXPORT_DEFAULT_FORMAT: "html"
+  
+  # UI Configuration
+  UI_TITLE: "Psyche Simulation - Staging"
+  UI_THEME: "dark"
+  UI_UPDATE_INTERVAL: "750"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: psyche-simulation
+  namespace: psyche-simulation-staging
+  labels:
+    app: psyche-simulation
+    component: web
+    environment: staging
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: psyche-simulation
+      component: web
+  template:
+    metadata:
+      labels:
+        app: psyche-simulation
+        component: web
+        environment: staging
+    spec:
+      containers:
+      - name: psyche-simulation
+        image: psyche-simulation:staging
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "800m"
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: psyche-simulation-config-staging
+              key: ENVIRONMENT
+        # Add other environment variables as needed
