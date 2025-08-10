@@ -165,12 +165,12 @@ export default function ContractOverlay() {
     <div
       role="dialog"
       aria-label="Contract issues"
-      className="pointer-events-auto absolute top-2 left-2 z-50 rounded-lg border bg-white/90 dark:bg-gray-900/80 backdrop-blur shadow-sm w-[320px] text-xs"
+      className="pointer-events-auto absolute top-2 left-2 z-50 rounded-lg border bg-card/95 backdrop-blur shadow-sm w-[320px] text-xs"
       style={{ maxHeight: 260, overflow: 'hidden' }}
     >
       {/* ephemeral toast/banner */}
       {toast && (
-        <div data-testid="contract-overlay-toast" className="px-2 py-1 border-b text-[12px] text-emerald-700 bg-emerald-50">
+        <div data-testid="contract-overlay-toast" className="px-2 py-1 border-b text-[12px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20">
           {toast}
         </div>
       )}
@@ -233,14 +233,14 @@ export default function ContractOverlay() {
 
                   <div className="flex gap-1">
                     <button
-                      className="h-6 px-2 text-[11px] rounded border bg-white hover:bg-gray-50"
+                      className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
                       onClick={() => onApplyFix(i)}
                       title="Apply quick fix (stub)"
                     >
                       Apply fix
                     </button>
                     <button
-                      className="h-6 px-2 text-[11px] rounded border bg-white hover:bg-gray-50"
+                      className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
                       onClick={() => onDismiss(i.id)}
                       title="Dismiss issue"
                     >
@@ -256,7 +256,7 @@ export default function ContractOverlay() {
                   role="dialog"
                   aria-modal="false"
                   tabIndex={0}
-                  className="absolute right-0 top-0 z-60 w-[300px] rounded border bg-white p-3 shadow-md text-xs"
+                  className="absolute right-0 top-0 z-60 w-[300px] rounded border bg-card/95 backdrop-blur p-3 shadow-md text-xs"
                   style={{ transform: 'translateX(100%)', marginLeft: 8 }}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {
@@ -265,17 +265,17 @@ export default function ContractOverlay() {
                   }}
                 >
                   <div className="font-medium mb-1">{i.reason ?? 'Contract mismatch'}</div>
-                  <div className="text-gray-600 mb-2 text-[12px]">
+                  <div className="text-gray-600 dark:text-gray-400 mb-2 text-[12px]">
                     Source: {i.from} <br />
                     Target: {i.to}
                   </div>
                   <div className="mb-2">
                     <div className="text-[12px] font-medium">Suggested fix</div>
-                    <div className="text-gray-600">{(i as any).fix?.title ?? 'Try adapting types or open helper'}</div>
+                    <div className="text-gray-600 dark:text-gray-400">{(i as any).fix?.title ?? 'Try adapting types or open helper'}</div>
                   </div>
                   <div className="flex gap-2">
                     <button
-                      className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm"
+                      className="px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-sm"
                       onClick={() => {
                         onApplyFix(i);
                         setHovered(null);
@@ -284,7 +284,7 @@ export default function ContractOverlay() {
                       Apply fix
                     </button>
                     <button
-                      className="px-2 py-1 rounded bg-white border text-sm"
+                      className="px-2 py-1 rounded bg-background dark:bg-card border text-sm"
                       onClick={() => {
                         onDismiss(i.id);
                         setHovered(null);

@@ -207,7 +207,7 @@ export default function RunsPanel(): JSX.Element {
   }
 
   return (
-    <div style={{ padding: 12, border: '1px solid #ddd', borderRadius: 6, background: '#fff' }}>
+    <div className="p-3 border rounded bg-card" style={{ borderColor: 'hsl(var(--border))' }}>
       <h3>Orchestrator — Runs</h3>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -322,13 +322,13 @@ export default function RunsPanel(): JSX.Element {
             <div style={{ color: '#666' }}>No checkpoints yet</div>
           ) : (
             checkpoints.map((cp) => (
-              <div key={cp.id} style={{ padding: 6, borderBottom: '1px solid #f4f4f4' }}>
-                <div style={{ fontSize: 12, color: '#888' }}>{new Date(cp.ts).toLocaleString()}</div>
+              <div key={cp.id} className="px-2 py-2 border-b last:border-b-0">
+                <div className="text-[12px] text-gray-400">{new Date(cp.ts).toLocaleString()}</div>
                 <div>
-                  <strong>{cp.type}</strong> — <span style={{ fontFamily: 'monospace' }}>{cp.id}</span>
+                  <strong>{cp.type}</strong> — <span className="font-mono">{cp.id}</span>
                 </div>
                 {cp.data ? (
-                  <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, marginTop: 6 }}>
+                  <pre className="mt-1 text-[12px] whitespace-pre-wrap bg-muted/50 dark:bg-muted/20 rounded p-2 overflow-auto">
                     {JSON.stringify(cp.data, null, 2)}
                   </pre>
                 ) : null}

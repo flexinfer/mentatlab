@@ -77,13 +77,17 @@ export const DropZone: React.FC<DropZoneProps> = ({
     ];
 
     if (disabled) {
-      baseClasses.push('opacity-50', 'cursor-not-allowed', 'border-gray-300', 'bg-gray-50');
+      // Disabled: dim and use card background in dark mode
+      baseClasses.push('opacity-50', 'cursor-not-allowed', 'border-gray-600', 'dark:border-border', 'bg-gray-50', 'dark:mc-card-bg');
     } else if (dragError) {
-      baseClasses.push('border-red-400', 'bg-red-50', 'text-red-600');
+      // Error state: keep red indicators but use darker bg in dark mode
+      baseClasses.push('border-red-400', 'bg-red-50', 'dark:bg-red-900/20', 'text-red-600');
     } else if (isDragging) {
-      baseClasses.push('border-blue-400', 'bg-blue-50', 'text-blue-600', 'scale-105');
+      // Dragging state: highlight, but avoid very bright bg in dark mode
+      baseClasses.push('border-blue-400', 'bg-blue-50', 'dark:mc-card-bg', 'text-blue-600', 'scale-105');
     } else {
-      baseClasses.push('border-gray-300', 'hover:border-gray-400', 'hover:bg-gray-50');
+      // Default: gentle gray that becomes card background in dark mode
+      baseClasses.push('border-gray-300', 'hover:border-gray-400', 'hover:bg-gray-50', 'dark:mc-card-bg', 'dark:border-border', 'dark:hover:opacity-90');
     }
 
     return baseClasses.join(' ') + (className ? ` ${className}` : '');

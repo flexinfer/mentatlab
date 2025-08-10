@@ -35,8 +35,8 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
 
   return (
     <div className="h-full w-full flex flex-col">
-      <div className="px-2 py-1 border-b bg-white/60 backdrop-blur flex items-center justify-between">
-        <div className="text-[11px] text-gray-600">
+      <div className="px-2 py-1 border-b bg-card/60 backdrop-blur flex items-center justify-between">
+        <div className="text-[11px] text-gray-600 dark:text-gray-300">
           <span className="font-medium">Issues</span>
           <span className="mx-1 text-gray-300">|</span>
           <span>{issues.length} found</span>
@@ -48,7 +48,7 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="h-6 px-2 text-[11px] rounded border bg-white hover:bg-gray-50"
+            className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
             onClick={runLint}
             disabled={status === 'running'}
             title="Re-run linter"
@@ -72,17 +72,17 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
                         className={[
                           'inline-flex px-1.5 py-0.5 rounded border',
                           issue.kind === 'error'
-                            ? 'bg-red-50 text-red-700 border-red-200'
+                            ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800'
                             : issue.kind === 'warning'
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : 'bg-gray-50 text-gray-700 border-gray-200',
+                              ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                              : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-400 border-gray-200 dark:border-gray-700',
                         ].join(' ')}
                       >
                         {issue.kind}
                       </span>
                       <span className="font-mono text-gray-500">{issue.rule}</span>
                       <span className="text-gray-300">|</span>
-                      <span className="text-gray-700">{issue.message}</span>
+                      <span className="text-gray-700 dark:text-gray-300">{issue.message}</span>
                     </div>
                     <div className="mt-1 text-gray-400">
                       Target: {issue.target.type} {issue.target.id}
@@ -90,7 +90,7 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
                   </div>
                   {issue.fix && (
                     <button
-                      className="shrink-0 h-6 px-2 text-[11px] rounded border bg-white hover:bg-gray-50"
+                      className="shrink-0 h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
                       onClick={() => {
                         const f = issue.fix;
                         if (f) alert(`Quick fix: ${f.title} (placeholder)`);
