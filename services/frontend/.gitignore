@@ -1,3 +1,2 @@
 # Exclude accidental test outputs
 bin/
-etc/
