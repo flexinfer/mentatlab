@@ -145,7 +145,7 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
   return (
     <div className={`streaming-console ${className}`}>
       {/* Console Header */}
-      <div className="bg-gray-50 border-b border-gray-200 p-3">
+      <div className="bg-white dark:mc-card-bg border-b border-gray-200 dark:border-border p-3">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold">Streaming Console</h3>
           <div className="flex items-center space-x-2">
@@ -153,8 +153,8 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
               onClick={() => setIsPaused(!isPaused)}
               className={`px-3 py-1 rounded text-sm font-medium ${
                 isPaused
-                  ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                  : 'bg-green-100 text-green-800 hover:bg-green-200'
+                  ? 'bg-yellow-100 dark:mc-card-bg text-yellow-800 dark:hover:opacity-90 hover:bg-yellow-200'
+                  : 'bg-green-100 dark:mc-card-bg text-green-800 dark:hover:opacity-90 hover:bg-green-200'
               }`}
             >
               {isPaused ? '▶️ Resume' : '⏸️ Pause'}
@@ -163,8 +163,8 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
               onClick={() => setAutoScroll(!autoScroll)}
               className={`px-3 py-1 rounded text-sm font-medium ${
                 autoScroll
-                  ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                  : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  ? 'bg-blue-100 dark:mc-card-bg text-blue-800 dark:hover:opacity-90 hover:bg-blue-200'
+                  : 'bg-gray-100 dark:mc-card-bg text-gray-800 dark:hover:opacity-90 hover:bg-gray-200'
               }`}
             >
               Auto-scroll: {autoScroll ? 'ON' : 'OFF'}
@@ -179,7 +179,7 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
             placeholder="Search messages..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 min-w-64 px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 min-w-64 px-3 py-1 border border-gray-300 rounded-md text-sm bg-white dark:mc-card-bg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           
           <div className="flex items-center space-x-2">
@@ -190,8 +190,8 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
                 onClick={() => handleFilterToggle(type)}
                 className={`px-2 py-1 rounded text-xs font-medium ${
                   selectedFilters.has(type)
-                    ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                    : 'bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200'
+                    ? 'bg-blue-100 dark:mc-card-bg text-blue-800 border border-blue-300 dark:border-border'
+                    : 'bg-gray-100 dark:mc-card-bg text-gray-600 border border-gray-300 dark:border-border hover:bg-gray-200'
                 }`}
               >
                 {getMessageTypeIcon(type)} {type}
@@ -200,7 +200,7 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
             
             <button
               onClick={clearFilters}
-              className="px-2 py-1 rounded text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              className="px-2 py-1 rounded text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:opacity-90"
             >
               Clear
             </button>

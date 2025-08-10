@@ -3,7 +3,7 @@ import { StreamingCanvas } from './StreamingCanvas';
 import { StreamingControls } from './StreamingControls';
 import { StreamingConsole } from './StreamingConsole';
 import { useStreamingStore } from '../store/streamingStore';
-import { streamingService } from '../services/streamingService.new';
+import { streamingService } from '../services/api/streamingService';
 
 const StreamingPage: React.FC = () => {
   const { activeStreamId, streams, connectionStatus } = useStreamingStore();
@@ -61,7 +61,7 @@ const StreamingPage: React.FC = () => {
   }, [streams]);
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-white dark:mc-card-bg">
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="px-4 py-3 flex items-center justify-between">
           <h1 className="text-xl font-semibold text-gray-800">Streaming Mode</h1>
@@ -92,7 +92,7 @@ const StreamingPage: React.FC = () => {
             <StreamingCanvas />
           </div>
         </div>
-        <div className="w-96 border-l border-gray-200 bg-white">
+        <div className="w-96 border-l border-gray-200 dark:border-border bg-white dark:mc-card-bg">
           <StreamingConsole messages={messages} />
         </div>
       </div>

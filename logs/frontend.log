@@ -3,7 +3,9 @@
 > vite
 
 
-  VITE v7.0.5  ready in 113 ms
+  VITE v7.0.5  ready in 110 ms
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: use --host to expose
+5:56:09 PM [vite] (client) page reload src/main.tsx
+5:57:08 PM [vite] (client) hmr update /src/components/mission-control/layout/MissionControlLayout.tsx, /src/index.css

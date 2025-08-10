@@ -51,9 +51,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
       // Default fallback UI
       return (
-        <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-gray-50 dark:mc-card-bg flex flex-col justify-center py-12 sm:px-6 lg:px-8">
           <div className="sm:mx-auto sm:w-full sm:max-w-md">
-            <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+            <div className="bg-white dark:mc-card-bg py-8 px-4 shadow sm:rounded-lg sm:px-10">
               <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full">
                 <svg
                   className="w-6 h-6 text-red-600"
@@ -86,7 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 
                 <button
                   onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
-                  className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white dark:mc-card-bg hover:bg-gray-50 dark:hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
                   Try Again
                 </button>
@@ -98,8 +98,8 @@ export class ErrorBoundary extends Component<Props, State> {
                   <summary className="cursor-pointer text-sm font-medium text-gray-900">
                     Error Details
                   </summary>
-                  <div className="mt-2 p-3 bg-gray-100 rounded-md">
-                    <pre className="text-xs text-gray-800 whitespace-pre-wrap">
+                  <div className="mt-2 p-3 bg-gray-100 dark:mc-card-bg rounded-md">
+                    <pre className="text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
                       {this.state.error.toString()}
                       {this.state.errorInfo?.componentStack}
                     </pre>

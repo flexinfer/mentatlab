@@ -74,3 +74,9 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Helper class for Mission Control components that need card background */
+.mc-card-bg {
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+}

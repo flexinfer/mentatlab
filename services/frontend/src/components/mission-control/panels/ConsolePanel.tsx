@@ -102,7 +102,7 @@ export default function ConsolePanel({ runId, maxItems = 200 }: ConsolePanelProp
 
   return (
     <div className="h-full w-full flex flex-col">
-      <div className="px-2 py-1 border-b bg-white/60 dark:bg-gray-900/40 backdrop-blur flex items-center justify-between">
+      <div className="px-2 py-1 border-b bg-card/60 backdrop-blur flex items-center justify-between">
         <div className="text-[11px] text-gray-600 dark:text-gray-300">
           <span className="font-medium">Console</span>
           <span className="mx-1 text-gray-300">|</span>
@@ -116,7 +116,7 @@ export default function ConsolePanel({ runId, maxItems = 200 }: ConsolePanelProp
             placeholder="Filter (label + data)"
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            className="text-xs px-2 py-1 border rounded bg-white dark:bg-gray-800"
+            className="text-xs px-2 py-1 border rounded bg-background dark:bg-card"
             style={{ width: 220 }}
             aria-label="Console filter"
           />
@@ -151,7 +151,7 @@ export default function ConsolePanel({ runId, maxItems = 200 }: ConsolePanelProp
                   </div>
                 </div>
                 {e.data && (
-                  <pre className="mt-1 text-[10px] bg-gray-50 dark:bg-gray-900/40 border rounded p-2 overflow-auto max-h-24">
+                  <pre className="mt-1 text-[10px] bg-muted/50 dark:bg-muted/20 border rounded p-2 overflow-auto max-h-24">
                     {JSON.stringify(e.data, null, 2)}
                   </pre>
                 )}

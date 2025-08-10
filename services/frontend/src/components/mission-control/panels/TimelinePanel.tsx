@@ -72,8 +72,8 @@ export function TimelinePanel({ runId }: Props) {
 
   return (
     <div className="h-full w-full flex flex-col">
-      <div className="px-2 py-1 border-b bg-white/60 backdrop-blur flex items-center justify-between">
-        <div className="text-[11px] text-gray-600">
+      <div className="px-2 py-1 border-b bg-card/60 backdrop-blur flex items-center justify-between">
+        <div className="text-[11px] text-gray-600 dark:text-gray-300">
           <span className="font-medium">Run:</span> {runId}{' '}
           <span className="mx-1 text-gray-300">|</span>
           <span className="font-medium">Status:</span> {summary?.status ?? 'unknown'}{' '}
@@ -86,7 +86,7 @@ export function TimelinePanel({ runId }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="h-6 px-2 text-[11px] rounded border bg-white hover:bg-gray-50"
+            className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
             onClick={onGenerateReport}
           >
             Generate Report
@@ -126,14 +126,14 @@ export function TimelinePanel({ runId }: Props) {
                     <div className="flex items-center gap-2">
                       <span className="inline-flex h-1.5 w-1.5 rounded-full bg-indigo-500" />
                       <span className="text-gray-400">{new Date(c.at).toLocaleTimeString()}</span>
-                      <span className="font-medium text-gray-700">{c.label}</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{c.label}</span>
                     </div>
                     {c.media?.length ? (
                       <span className="text-gray-400">{c.media.length} media</span>
                     ) : null}
                   </div>
                   {c.data && (
-                    <pre className="mt-1 text-[10px] bg-gray-50 border rounded p-2 overflow-auto max-h-24">
+                    <pre className="mt-1 text-[10px] bg-muted/50 dark:bg-muted/20 border rounded p-2 overflow-auto max-h-24">
                       {JSON.stringify(c.data, null, 2)}
                     </pre>
                   )}
@@ -146,10 +146,10 @@ export function TimelinePanel({ runId }: Props) {
 
       {reportMd && (
         <div className="border-t">
-          <div className="px-2 py-1 bg-gray-50 text-[11px] text-gray-600 flex items-center justify-between">
+          <div className="px-2 py-1 bg-muted/50 dark:bg-muted/20 text-[11px] text-gray-600 dark:text-gray-300 flex items-center justify-between">
             <span>Report (Engineer View)</span>
             <button
-              className="h-6 px-2 text-[11px] rounded border bg-white hover:bg-gray-50"
+              className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
               onClick={() => setReportMd(null)}
             >
               Close

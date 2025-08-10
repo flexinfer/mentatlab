@@ -141,6 +141,13 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
+    // Detect dark mode and load theme CSS vars for card and border
+    const docStyle = window.getComputedStyle(document.documentElement);
+    const cardVar = (docStyle.getPropertyValue('--card') || '').trim();
+    const borderVar = (docStyle.getPropertyValue('--border') || '').trim();
+    const foregroundVar = (docStyle.getPropertyValue('--foreground') || '').trim();
+    const isDark = document.documentElement.classList.contains('dark');
+
     // Set up drawing parameters
     const streamHeight = Math.min(height / Math.max(activeStreams.size, 1), 120);
     const margin = 20;
@@ -149,12 +156,13 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     // Draw each active stream
     for (const [streamId, session] of activeStreams) {
       const messages = streamData.get(streamId) || [];
-      
-      // Draw stream header
-      ctx.fillStyle = '#333';
+
+      // Choose text color from theme
+      const textColor = isDark && foregroundVar ? `hsl(${foregroundVar})` : '#111827';
+      ctx.fillStyle = textColor;
       ctx.font = '14px Arial';
       ctx.fillText(`${session.node_id} (${streamId.substring(0, 8)}...)`, margin, yOffset + 20);
-      
+
       // Draw stream status indicator
       const statusColor = getStatusColor(session.status);
       ctx.fillStyle = statusColor;
@@ -164,11 +172,12 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
 
       // Draw streaming data visualization
       if (messages.length > 0) {
-        drawStreamTrace(ctx, messages, margin, yOffset + 30, width - 2 * margin, streamHeight - 60);
+        drawStreamTrace(ctx, messages, margin, yOffset + 30, width - 2 * margin, streamHeight - 60, { isDark, cardVar, borderVar });
       }
 
       // Draw stream info
-      ctx.fillStyle = '#666';
+      const metaColor = isDark && foregroundVar ? `hsl(${foregroundVar})` : '#6b7280';
+      ctx.fillStyle = metaColor;
       ctx.font = '12px Arial';
       ctx.fillText(`Messages: ${messages.length}`, margin, yOffset + streamHeight - 10);
 
@@ -176,7 +185,7 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     }
 
     // Draw overall streaming status
-    ctx.fillStyle = isStreaming ? '#22c55e' : '#6b7280';
+    ctx.fillStyle = isStreaming ? '#22c55e' : (isDark ? '#9ca3af' : '#6b7280');
     ctx.font = 'bold 16px Arial';
     ctx.fillText(
       isStreaming ? `Streaming ${activeStreams.size} sessions` : 'Not streaming',
@@ -192,7 +201,8 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     x: number,
     y: number,
     w: number,
-    h: number
+    h: number,
+    opts?: { isDark?: boolean; cardVar?: string; borderVar?: string }
   ) => {
     if (messages.length === 0) return;
 
@@ -201,12 +211,17 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     
     const stepX = w / Math.max(displayMessages.length - 1, 1);
     
-    // Draw background
-    ctx.fillStyle = '#f3f4f6';
+    // Draw background (use theme card in dark mode)
+    const isDark = !!opts?.isDark;
+    const cardVar = opts?.cardVar ?? '';
+    const borderVar = opts?.borderVar ?? '';
+    const bgColor = isDark && cardVar ? `hsl(${cardVar})` : '#f3f4f6';
+    const borderColor = isDark && borderVar ? `hsl(${borderVar})` : '#d1d5db';
+    ctx.fillStyle = bgColor;
     ctx.fillRect(x, y, w, h);
     
     // Draw border
-    ctx.strokeStyle = '#d1d5db';
+    ctx.strokeStyle = borderColor;
     ctx.strokeRect(x, y, w, h);
 
     // Draw data trace
@@ -281,7 +296,7 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
         ref={canvasRef}
         width={width}
         height={height}
-        className="border border-gray-300 rounded-lg bg-white"
+        className="border border-gray-300 dark:border-border rounded-lg bg-white dark:mc-card-bg"
         style={{ maxWidth: '100%', height: 'auto' }}
       />
       

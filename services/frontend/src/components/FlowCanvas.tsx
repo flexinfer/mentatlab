@@ -90,13 +90,16 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, type, data }) => 
     borderRadius: 8,
     boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
   };
-  // Status tint
+  // Status tint with proper dark mode support
   if (data.status === 'running') {
-    nodeStyle.background = '#fff7ed'; // amber-50
+    nodeStyle.background = 'hsl(var(--amber-50, 39 100% 97%))'; // amber-50 light, dark mode friendly
+    nodeStyle.borderColor = 'hsl(var(--amber-200, 48 97% 77%))';
   } else if (data.status === 'completed') {
-    nodeStyle.background = '#ecfdf5'; // emerald-50
+    nodeStyle.background = 'hsl(var(--emerald-50, 152 81% 96%))'; // emerald-50 light
+    nodeStyle.borderColor = 'hsl(var(--emerald-200, 152 76% 80%))';
   } else if (data.status === 'failed') {
-    nodeStyle.background = '#fef2f2'; // red-50
+    nodeStyle.background = 'hsl(var(--red-50, 0 86% 97%))'; // red-50 light
+    nodeStyle.borderColor = 'hsl(var(--red-200, 0 73% 77%))';
   }
 
   // Sanitize user input to prevent XSS attacks

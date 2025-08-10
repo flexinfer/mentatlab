@@ -95,12 +95,12 @@ export const StreamingControls: React.FC<StreamingControlsProps> = ({
 
   const getStatusColor = (status: string): string => {
     switch (status) {
-      case 'initializing': return 'text-yellow-600 bg-yellow-50';
-      case 'active': return 'text-green-600 bg-green-50';
-      case 'paused': return 'text-gray-600 bg-gray-50';
-      case 'completed': return 'text-blue-600 bg-blue-50';
-      case 'error': return 'text-red-600 bg-red-50';
-      default: return 'text-gray-400 bg-gray-50';
+      case 'initializing': return 'text-yellow-600 bg-yellow-50 dark:mc-card-bg';
+      case 'active': return 'text-green-600 bg-green-50 dark:mc-card-bg';
+      case 'paused': return 'text-gray-600 bg-gray-50 dark:mc-card-bg';
+      case 'completed': return 'text-blue-600 bg-blue-50 dark:mc-card-bg';
+      case 'error': return 'text-red-600 bg-red-50 dark:mc-card-bg';
+      default: return 'text-gray-400 bg-gray-50 dark:mc-card-bg';
     }
   };
 
@@ -116,18 +116,18 @@ export const StreamingControls: React.FC<StreamingControlsProps> = ({
   const errorSessionsCount = sessions.filter(s => s.status === 'error').length;
 
   return (
-    <div className={`streaming-controls bg-white border border-gray-200 rounded-lg ${className}`}>
+    <div className={`streaming-controls bg-white dark:mc-card-bg border border-gray-200 dark:border-border rounded-lg ${className}`}>
       {/* Global Controls Header */}
-      <div className="border-b border-gray-200 p-4">
+      <div className="border-b border-gray-200 dark:border-border p-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Streaming Controls</h3>
           <div className="flex items-center space-x-2">
             <span className={`px-2 py-1 rounded text-sm font-medium ${
-              globalStatus === 'running' ? 'bg-green-100 text-green-800' :
-              globalStatus === 'starting' ? 'bg-yellow-100 text-yellow-800' :
-              globalStatus === 'pausing' ? 'bg-orange-100 text-orange-800' :
-              globalStatus === 'error' ? 'bg-red-100 text-red-800' :
-              'bg-gray-100 text-gray-800'
+              globalStatus === 'running' ? 'bg-green-100 dark:mc-card-bg text-green-800' :
+              globalStatus === 'starting' ? 'bg-yellow-100 dark:mc-card-bg text-yellow-800' :
+              globalStatus === 'pausing' ? 'bg-orange-100 dark:mc-card-bg text-orange-800' :
+              globalStatus === 'error' ? 'bg-red-100 dark:mc-card-bg text-red-800' :
+              'bg-gray-100 dark:mc-card-bg text-gray-800'
             }`}>
               {globalStatus.charAt(0).toUpperCase() + globalStatus.slice(1)}
             </span>
@@ -175,19 +175,19 @@ export const StreamingControls: React.FC<StreamingControlsProps> = ({
 
         {/* Session Summary */}
         <div className="grid grid-cols-4 gap-4 text-center">
-          <div className="bg-green-50 p-2 rounded">
+          <div className="bg-green-50 dark:mc-card-bg p-2 rounded">
             <div className="text-lg font-bold text-green-600">{activeSessionsCount}</div>
             <div className="text-xs text-green-600">Active</div>
           </div>
-          <div className="bg-gray-50 p-2 rounded">
+          <div className="bg-gray-50 dark:mc-card-bg p-2 rounded">
             <div className="text-lg font-bold text-gray-600">{pausedSessionsCount}</div>
             <div className="text-xs text-gray-600">Paused</div>
           </div>
-          <div className="bg-red-50 p-2 rounded">
+          <div className="bg-red-50 dark:mc-card-bg p-2 rounded">
             <div className="text-lg font-bold text-red-600">{errorSessionsCount}</div>
             <div className="text-xs text-red-600">Errors</div>
           </div>
-          <div className="bg-blue-50 p-2 rounded">
+          <div className="bg-blue-50 dark:mc-card-bg p-2 rounded">
             <div className="text-lg font-bold text-blue-600">{sessions.length}</div>
             <div className="text-xs text-blue-600">Total</div>
           </div>
