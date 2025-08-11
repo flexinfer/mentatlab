@@ -1,0 +1,18 @@
+[project]
+name = "mentatlab-psyche-sim"
+version = "0.1.0"
+description = "Psyche‑Sim Cog‑Pak scaffold for MentatLab"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6.0"]
+
+[tool.pdm]
+backend = "pdm.backend"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm.scripts]
+# Convenience script to run the agent locally (stdin→stdout)
+run = "python src/main.py"
