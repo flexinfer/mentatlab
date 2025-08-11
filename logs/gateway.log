@@ -3,9 +3,9 @@ WARNING: The following problems are found in your project:
 Run pdm fix to fix all or pdm fix <name> to fix individual problem.
 INFO:     Will watch for changes in these directories: ['/Users/cblevins/workspace/mentatlab/services/gateway']
 INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
-INFO:     Started reloader process [30275] using StatReload
-INFO:     Started server process [30277]
+INFO:     Started reloader process [69219] using StatReload
+INFO:     Started server process [69221]
 INFO:     Waiting for application startup.
 Error listening to Redis: pubsub connection not set: did you forget to call subscribe() or psubscribe()?
 INFO:     Application startup complete.
-INFO:     127.0.0.1:60428 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63243 - "GET /healthz HTTP/1.1" 200 OK

@@ -24,3 +24,14 @@ outputs:
 longRunning: false
 env:
   - "PYTHONUNBUFFERED=1"
+
+ui:
+  remoteEntry: "agents/psyche-sim/ui/remoteEntry.js"
+  title: "Psyche Simulation"
+  description: "Open to run the Psyche Simulation agent (streaming demo). Click Run to start a streaming session."
+  icon: "🧠"
+  # Catalog metadata for frontend
+  catalog:
+    visible: true
+    category: "Simulations"
+    tags: ["psyche","simulation","streaming"]

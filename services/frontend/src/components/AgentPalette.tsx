@@ -13,9 +13,19 @@ import React, { useEffect, useState } from 'react';
 // import { Card, CardContent, CardHeader, CardTitle } from './ui/card'; // Temporarily commented out due to import error
 
 interface Agent {
+  id?: string;
   name: string;
   description: string;
   type: string; // e.g., flexinfer.echo
+  // Optional UI metadata (populated by /api/v1/agents)
+  ui?: {
+    remoteEntry?: string;
+    title?: string;
+    description?: string;
+    icon?: string;
+  };
+  // Other optional metadata may be present from the manifest listing
+  [key: string]: any;
 }
 
 /**
@@ -77,6 +87,88 @@ const AgentPalette: React.FC = () => {
             >
               <h3 className="text-md font-semibold">{agent.name}</h3>
               <p className="text-sm text-gray-600">{agent.description}</p>
+
+              {/* New: If agent provides a UI remoteEntry, show an Open UI button that loads it in a popup */}
+              {(agent as any).ui?.remoteEntry ? (
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    className="px-3 py-1 bg-blue-600 text-white rounded"
+                    onClick={() => {
+                      try {
+                        const popup = window.open("", `${agent.name}-ui`, "width=800,height=600");
+                        if (!popup) {
+                          alert("Popup blocked - allow popups for this site.");
+                          return;
+                        }
+                        // Build a minimal HTML document that loads the remoteEntry script and attempts to mount it
+                        const remoteUrl = (agent as any).ui.remoteEntry;
+                        const html = `
+                          <!doctype html>
+                          <html>
+                            <head>
+                              <meta charset="utf-8" />
+                              <title>${agent.name} UI</title>
+                              <style>body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin: 12px; }</style>
+                            </head>
+                            <body>
+                              <div id="agent-root"></div>
+                              <script>
+                                (function(){
+                                  // Load script
+                                  const s = document.createElement('script');
+                                  s.src = '${remoteUrl}';
+                                  s.onload = function() {
+                                    try {
+                                      // Attempt common globals that remoteEntry might expose
+                                      if (window.PsycheSimRemote && typeof window.PsycheSimRemote.mount === 'function') {
+                                        const container = document.getElementById('agent-root');
+                                        const rem = window.PsycheSimRemote;
+                                        rem.mount(container, null);
+                                        return;
+                                      }
+                                      // Try to find any global object with mount function (best-effort)
+                                      for (const k in window) {
+                                        try {
+                                          const v = window[k];
+                                          if (v && typeof v.mount === 'function') {
+                                            v.mount(document.getElementById('agent-root'), null);
+                                            return;
+                                          }
+                                        } catch(e) { /* ignore */ }
+                                      }
+                                      const p = document.createElement('pre');
+                                      p.textContent = 'Loaded remoteEntry but could not find a mount() function. Check remoteEntry exposes mount().';
+                                      document.getElementById('agent-root').appendChild(p);
+                                    } catch (err) {
+                                      const p = document.createElement('pre');
+                                      p.textContent = 'Error mounting remoteEntry: ' + err;
+                                      document.getElementById('agent-root').appendChild(p);
+                                    }
+                                  };
+                                  s.onerror = function(e) {
+                                    const p = document.createElement('pre');
+                                    p.textContent = 'Failed to load remoteEntry: ' + ${JSON.stringify(remoteUrl)};
+                                    document.getElementById('agent-root').appendChild(p);
+                                  };
+                                  document.body.appendChild(s);
+                                })();
+                              </script>
+                            </body>
+                          </html>
+                        `;
+                        popup.document.open();
+                        popup.document.write(html);
+                        popup.document.close();
+                      } catch (err) {
+                        console.error("Failed to open agent UI:", err);
+                        alert("Failed to open agent UI: " + err);
+                      }
+                    }}
+                  >
+                    Open UI
+                  </button>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

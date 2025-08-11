@@ -4,6 +4,9 @@ import asyncio
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+import logging
 
 from services.gateway.app.models import Flow, Node, Edge, Meta, Graph, Position
 from services.orchestrator.app.execution import ExecutionEngine, ExecutionResult
@@ -84,6 +87,16 @@ app = FastAPI(
     description="Service for managing and executing AI workflows.",
     version="0.1.0",
 )
+
+# Serve agent UI assets (agents/*/ui/*) so remoteEntry.js can be fetched from the browser.
+# Resolve the agents directory relative to the repository root (two parents up from this file).
+repo_root = Path(__file__).resolve().parents[3]
+agents_dir = repo_root / "agents"
+if agents_dir.exists():
+    app.mount("/agents", StaticFiles(directory=str(agents_dir), html=False), name="agents")
+else:
+    logger = logging.getLogger("uvicorn.error")
+    logger.warning(f"Agents directory not found at {agents_dir}; static agent UIs will not be served.")
 
 # Initialize services
 execution_engine = ExecutionEngine()
@@ -314,6 +327,45 @@ async def update_validation_config(
 async def healthz():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+# New: Local agent catalog endpoint - scans agents/*/manifest.yaml and returns a list for the frontend
+import glob
+from pathlib import Path
+import yaml as _yaml  # local alias to avoid collision with pydantic's yaml usage
+
+@app.get("/api/v1/agents")
+async def list_local_agents():
+    """
+    Return a list of locally-available agent manifests for the frontend catalog.
+    Scans agents/*/manifest.yaml and returns a simplified representation.
+    """
+    agents_root = repo_root / "agents"
+    manifests = []
+    try:
+        for manifest_path in sorted(agents_root.glob("*/manifest.yaml")):
+            try:
+                with open(manifest_path, "r") as f:
+                    manifest = _yaml.safe_load(f)
+                # Normalize manifest to a frontend-friendly shape
+                agent_entry = {
+                    "id": manifest.get("id"),
+                    "version": manifest.get("version"),
+                    "image": manifest.get("image"),
+                    "description": manifest.get("description"),
+                    "runtime": manifest.get("runtime"),
+                    "longRunning": manifest.get("longRunning", False),
+                    "ui": manifest.get("ui", {}),
+                    "inputs": manifest.get("inputs", []),
+                    "outputs": manifest.get("outputs", []),
+                    "manifest_path": str(manifest_path)
+                }
+                manifests.append(agent_entry)
+            except Exception:
+                # skip invalid manifests but continue scanning
+                continue
+        return manifests
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to list local agents: {exc}")
 
 if __name__ == "__main__":
     import uvicorn

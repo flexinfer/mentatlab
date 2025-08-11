@@ -18,4 +18,8 @@ export const FeatureFlags = {
   CONTRACT_OVERLAY: (env.VITE_FF_CONTRACT_OVERLAY ?? (env.DEV ? 'true' : 'false')) === 'true',
   // Orchestrator Runs panel (dev/demo only)
   ORCHESTRATOR_PANEL: (env.VITE_FF_ORCHESTRATOR_PANEL ?? (env.DEV ? 'true' : 'false')) === 'true',
+  // Network panel (enabled by default)
+  NETWORK_PANEL: (env.VITE_FF_NETWORK_PANEL ?? (env.DEV ? 'true' : 'true')) === 'true',
+  // Allow loading remote CogPak UI scripts (can bring their own WebGL). Default disabled for stability.
+  ALLOW_REMOTE_COGPAK_UI: (env.VITE_FF_ALLOW_REMOTE_COGPAK_UI ?? 'false') === 'true',
 } as const;
