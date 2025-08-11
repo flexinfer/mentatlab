@@ -67,12 +67,10 @@ def _emit_stream_message(msg: Dict[str, Any]) -> None:
 
 def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_delay: float = 0.25):
     """
-    Emit a small sequence of streaming messages:
-      - stream_start (legacy)
-      - multiple text:stream messages (isComplete false until last)
-      - progress updates
-      - stream:status completed
-      - media: none here but could be added
+    Emit a structured simulation of a small network of subconscious subcomponents.
+    - Subcomponents produce short comments about the prompt.
+    - The 'ego' agent integrates their outputs incrementally and evolves an integration score.
+    - Messages are emitted as streaming NDJSON (text:stream, progress, stream:status, stream_end).
     """
     base = {
         "agent_id": agent_id,
@@ -80,43 +78,120 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         "timestamp": _now_iso(),
     }
 
-    # stream_start (legacy)
+    # Define subcomponents and deterministic behaviour
+    subcomponents = [
+        {"id": "id_core", "role": "core", "voice": "matter-of-fact"},
+        {"id": "superego", "role": "moral", "voice": "concerned"},
+        {"id": "shadow", "role": "repressed", "voice": "dark"},
+        {"id": "memory", "role": "recall", "voice": "remembering"},
+        {"id": "intuition", "role": "intuition", "voice": "whisper"},
+    ]
+
+    # stream_start
     start_msg = {
         **base,
         "id": str(uuid.uuid4()),
         "type": "stream_start",
-        "data": {"message": "stream started", "agent": agent_id},
+        "data": {"message": "psyche stream initiated", "agent": agent_id},
         "sequence": 0,
     }
     _emit_stream_message(start_msg)
 
-    total = len(text_chunks)
-    for i, chunk in enumerate(text_chunks, start=1):
-        msg = {
+    # Ego internal state (evolves)
+    ego_state = {"integration_score": 0.0, "history": []}
+
+    total_rounds = max(1, len(text_chunks))
+    sequence = 1
+
+    # For each round (derived from chunks) run each subcomponent and have ego integrate
+    for round_idx in range(total_rounds):
+        prompt_fragment = text_chunks[round_idx] if round_idx < len(text_chunks) else text_chunks[-1]
+
+        # Each subcomponent produces a short reaction
+        sub_outputs = []
+        for comp in subcomponents:
+            # Deterministic pseudo-response
+            resp = f"{comp['id']} ({comp['role']}): reacts to '{prompt_fragment[:40]}'"
+            sub_outputs.append({"component": comp["id"], "text": resp})
+
+            # Emit the subcomponent chunk as text:stream
+            msg = {
+                **base,
+                "id": str(uuid.uuid4()),
+                "type": "text:stream",
+                "content": resp,
+                "isComplete": False,
+                "sequence": sequence,
+                "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": comp["id"]},
+            }
+            _emit_stream_message(msg)
+            sequence += 1
+
+            # Small progress per component
+            progress = {
+                **base,
+                "id": str(uuid.uuid4()),
+                "type": "progress",
+                "operation": f"{comp['id']}.process",
+                "progress": int((sequence % 100)),
+                "message": f"{comp['id']} processed fragment {round_idx+1}",
+                "details": {"round": round_idx + 1, "component": comp["id"]},
+                "sequence": sequence,
+            }
+            _emit_stream_message(progress)
+            sequence += 1
+
+            time.sleep(chunk_delay * 0.6)
+
+        # Ego integrates subcomponent outputs
+        integration_text = " | ".join([o["text"] for o in sub_outputs])
+        # Simple integration rule: integration_score increases with length of integration_text
+        added = min(1.0, len(integration_text) / 200.0)
+        ego_state["integration_score"] = round(ego_state["integration_score"] + added, 3)
+        ego_state["history"].append({"round": round_idx + 1, "integration": integration_text})
+
+        ego_msg_text = f"ego: integrated round {round_idx+1}; score={ego_state['integration_score']}"
+        ego_msg = {
             **base,
             "id": str(uuid.uuid4()),
             "type": "text:stream",
-            "content": chunk,
-            "isComplete": False if i < total else True,
-            "sequence": i,
-            "model": {"name": AGENT_MODEL, "provider": "psyche-sim"},
+            "content": ego_msg_text,
+            "isComplete": False,
+            "sequence": sequence,
+            "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": "ego"},
         }
-        _emit_stream_message(msg)
+        _emit_stream_message(ego_msg)
+        sequence += 1
 
-        # progress message
-        progress = {
+        # Emit a stream status update for this round
+        status_msg = {
             **base,
             "id": str(uuid.uuid4()),
-            "type": "progress",
-            "operation": "thinking",
-            "progress": int((i / total) * 100),
-            "message": f"Chunk {i}/{total}",
-            "details": {"current": i, "total": total},
-            "sequence": i,
+            "type": "stream:status",
+            "status": "active",
+            "progress": {"current": round_idx + 1, "total": total_rounds, "percentage": int(((round_idx + 1) / total_rounds) * 100)},
+            "sequence": sequence,
         }
-        _emit_stream_message(progress)
+        _emit_stream_message(status_msg)
+        sequence += 1
 
         time.sleep(chunk_delay)
+
+    # Finalize: ego produces the final integrated response
+    final_response = f"Ego final synthesis (score={ego_state['integration_score']}): " \
+                     f"{' // '.join([h['integration'][:60] for h in ego_state['history']])}"
+
+    final_msg = {
+        **base,
+        "id": str(uuid.uuid4()),
+        "type": "text:stream",
+        "content": final_response,
+        "isComplete": True,
+        "sequence": sequence,
+        "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": "ego"},
+    }
+    _emit_stream_message(final_msg)
+    sequence += 1
 
     # stream status -> completed
     status_msg = {
@@ -124,76 +199,89 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         "id": str(uuid.uuid4()),
         "type": "stream:status",
         "status": "completed",
-        "progress": {"current": total, "total": total, "percentage": 100},
-        "sequence": total + 1,
+        "progress": {"current": total_rounds, "total": total_rounds, "percentage": 100},
+        "sequence": sequence,
     }
     _emit_stream_message(status_msg)
+    sequence += 1
 
     # legacy stream_end event
     end_msg = {
         **base,
         "id": str(uuid.uuid4()),
         "type": "stream_end",
-        "data": {"message": "stream ended"},
-        "sequence": total + 2,
+        "data": {"message": "psyche stream ended", "final_score": ego_state["integration_score"]},
+        "sequence": sequence,
     }
     _emit_stream_message(end_msg)
+    # small pause
+    time.sleep(0.02)
 
 
 def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Minimal processing: if 'prompt' present return an echo; if mode=stream,
-    the caller will perform streaming emission and then the final payload is returned.
+    Implement a simple Psyche simulation flow based on the examples/psyche-simulation.
+    - Creates per-subcomponent outputs
+    - Produces an 'ego' integrated final text and graph summary that mirrors the UI's Flow schema.
     """
-    result: Dict[str, Any] = {}
-    if isinstance(spec, dict):
-        if "prompt" in spec and isinstance(spec["prompt"], str):
-            prompt = spec["prompt"].strip()
-            # Simple deterministic reply for now
-            reply = f"Echo: {prompt}"
-            result["text"] = reply
-            result["source"] = "psyche-sim-echo"
-        else:
-            result["echo"] = spec
+    # Base result structure
+    result: Dict[str, Any] = {"components": {}, "ego": {}}
+
+    prompt = ""
+    if isinstance(spec, dict) and isinstance(spec.get("prompt"), str):
+        prompt = spec["prompt"].strip()
     else:
-        result["echo"] = spec
+        prompt = str(spec) if spec is not None else " "
 
-    if context is not None:
-        result["context_received"] = context
+    # Subcomponents (same roles as in streaming)
+    subcomponents = [
+        {"id": "id_core", "role": "core"},
+        {"id": "superego", "role": "moral"},
+        {"id": "shadow", "role": "repressed"},
+        {"id": "memory", "role": "recall"},
+        {"id": "intuition", "role": "intuition"},
+    ]
 
-    # augment with a small graph-like payload to help MissionControl graph UI render nodes/edges
-    # This is intentionally lightweight. The frontend expects Flow / Node / Edge shapes.
+    # Each subcomponent produces a deterministic "thought"
+    for comp in subcomponents:
+        comp_text = f"{comp['id']} ({comp['role']}): reflection on '{prompt[:60]}'"
+        result["components"][comp["id"]] = {
+            "role": comp["role"],
+            "text": comp_text,
+            "confidence": round(0.5 + (len(comp_text) % 10) / 20.0, 3)
+        }
+
+    # Ego integrates: simple concatenation and a computed score
+    integration_pieces = [v["text"] for v in result["components"].values()]
+    ego_text = " || ".join(integration_pieces)
+    integration_score = round(min(10.0, max(0.0, len(ego_text) / 80.0)), 3)
+
+    result["ego"] = {
+        "integrated_text": ego_text,
+        "integration_score": integration_score,
+        "analysis": f"Ego produced integration with score {integration_score}"
+    }
+
+    # Graph summary for UI consumption
     graph_payload = {
         "flow": {
             "apiVersion": "v1",
             "kind": "Flow",
             "meta": {
                 "id": str(uuid.uuid4()),
-                "name": "psyche-sim-demo",
-                "version": "0.1.0",
+                "name": "psyche-sim-network",
+                "version": "0.2.0",
                 "createdAt": _now_iso(),
             },
             "graph": {
                 "nodes": [
-                    {
-                        "id": "agent.self",
-                        "type": "psyche-agent",
-                        "position": {"x": 100, "y": 100},
-                        "isMediaNode": False,
-                        "inputs": {},
-                        "outputs": {},
-                    },
-                    {
-                        "id": "output.text",
-                        "type": "media:display",
-                        "position": {"x": 400, "y": 100},
-                        "isMediaNode": False,
-                        "inputs": {},
-                        "outputs": {},
-                    },
+                    {"id": comp["id"], "type": "psyche.subcomponent", "position": {"x": 100 + idx * 120, "y": 100}, "isMediaNode": False}
+                    for idx, comp in enumerate(subcomponents)
+                ] + [
+                    {"id": "ego", "type": "psyche.ego", "position": {"x": 100 + len(subcomponents) * 120, "y": 250}, "isMediaNode": False}
                 ],
                 "edges": [
-                    {"from": "agent.self", "to": "output.text"},
+                    {"from": comp["id"], "to": "ego"} for comp in subcomponents
                 ],
             },
             "runConfig": {
@@ -203,6 +291,9 @@ def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> D
     }
 
     result["graph_summary"] = graph_payload
+    if context is not None:
+        result["context_received"] = context
+
     return result
 
 

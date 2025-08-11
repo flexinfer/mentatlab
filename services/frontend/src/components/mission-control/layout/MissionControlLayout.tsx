@@ -16,9 +16,13 @@ import { useStreamingStore } from '../../../store/index';
 import { StreamConnectionState } from '../../../types/streaming';
 import ContractOverlay from '../overlays/ContractOverlay';
 import PropertyInspector from '../../PropertyInspector';
+import NetworkPanel from '../panels/NetworkPanel';
+import { getOrchestratorBaseUrl } from '@/config/orchestrator';
 
 export function MissionControlLayout() {
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
+  // Currently mounted CogPak UI (mounts into the main canvas)
+  const [cogpakUi, setCogpakUi] = React.useState<{ url: string; title: string } | null>(null);
   // THEME: dark mode persisted
   const [dark, setDark] = React.useState<boolean>(() => {
     try { return (localStorage.getItem('theme') ?? 'light') === 'dark'; } catch { return false; }
@@ -52,8 +56,73 @@ export function MissionControlLayout() {
     return uiConfig[flag] ?? FeatureFlags[flag];
   };
 
+  // Listen for openCogpak events dispatched by CogPaksList, gated by feature flag
+  React.useEffect(() => {
+    const handler = (ev: Event) => {
+      try {
+        if (!isEnabled('ALLOW_REMOTE_COGPAK_UI')) {
+          console.warn('[MissionControlLayout] openCogpak ignored: ALLOW_REMOTE_COGPAK_UI=false');
+          return;
+        }
+        const detail = (ev as CustomEvent).detail as { url: string; title: string };
+        console.log('[MissionControlLayout] openCogpak event received', detail);
+        if (detail && detail.url) setCogpakUi(detail);
+      } catch (err) {
+        console.log('[MissionControlLayout] openCogpak handler error', err);
+      }
+    };
+    window.addEventListener('openCogpak', handler as EventListener);
+    return () => window.removeEventListener('openCogpak', handler as EventListener);
+  }, [uiConfig]);
+
   // Settings Drawer open state
   const [settingsOpen, setSettingsOpen] = React.useState<boolean>(false);
+
+  // When a CogPak UI is requested, load its remoteEntry and attempt to mount into #cogpak-mount
+  React.useEffect(() => {
+    if (!cogpakUi) return;
+    if (!isEnabled('ALLOW_REMOTE_COGPAK_UI')) {
+      console.warn('[MissionControlLayout] Skipping remote UI load (flag disabled)');
+      return;
+    }
+    const container = document.getElementById('cogpak-mount');
+    if (!container) return;
+
+    const script = document.createElement('script');
+    script.src = cogpakUi.url;
+    script.async = true;
+    script.onload = () => {
+      try {
+        // Try common global first, then scan for any global with mount()
+        const globalAny = window as any;
+        if (globalAny.PsycheSimRemote && typeof globalAny.PsycheSimRemote.mount === 'function') {
+          globalAny.PsycheSimRemote.mount(container, null);
+          return;
+        }
+        for (const k in globalAny) {
+          try {
+            const v = globalAny[k];
+            if (v && typeof v.mount === 'function') {
+              v.mount(container, null);
+              return;
+            }
+          } catch {}
+        }
+        container.innerHTML = '<pre>Loaded remoteEntry but could not find mount() function.</pre>';
+      } catch (err) {
+        container.innerHTML = `<pre>Error mounting remoteEntry: ${String(err)}</pre>`;
+      }
+    };
+    script.onerror = () => {
+      container.innerHTML = `<pre>Failed to load remoteEntry: ${cogpakUi.url}</pre>`;
+    };
+
+    document.body.appendChild(script);
+    return () => {
+      try { document.body.removeChild(script); } catch {}
+      if (container) container.innerHTML = '';
+    };
+  }, [cogpakUi, uiConfig]);
 
   // Auto-select latest run when streaming recorder starts runs (e.g., EnhancedStream)
   React.useEffect(() => {
@@ -90,17 +159,113 @@ export function MissionControlLayout() {
     }
   }, []);
 
-  // RunsPanel is already a React component; use it directly in JSX
+  const openRemoteUi = (remoteEntry: string | undefined, title: string) => {
+    if (!remoteEntry) return;
+    // Prefer VITE_API_URL if set (dev), otherwise default to orchestrator dev port (8000)
+    const backendBase = ((import.meta.env as any)?.VITE_API_URL as string) || 'http://127.0.0.1:8000';
+    const remoteUrl = /^https?:\/\//i.test(remoteEntry)
+      ? remoteEntry
+      : `${backendBase.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
+    const detail = { url: remoteUrl, title: title || 'CogPak UI' };
+    console.log('[CogPaksList] dispatching openCogpak', detail);
+    try {
+      window.dispatchEvent(new CustomEvent('openCogpak', { detail }));
+    } catch (err) {
+      console.error('Failed to dispatch openCogpak event', err);
+    }
+  };
+
+  // Robust local agents fetch + UI
+  const [agents, setAgents] = React.useState<any[]>([]);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const endpoint = '/api/v1/agents';
+
+    const tryParseAgentsFromText = (rawText: string) => {
+      try {
+        const parsed = JSON.parse(rawText);
+        return Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.agents) ? parsed.agents : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const fetchAgents = async () => {
+      try {
+        // First attempt: same-origin (works when dev server proxies /api to backend)
+        const trySameOrigin = async () => {
+          let res = await fetch(endpoint, { credentials: 'same-origin' });
+          let rawText = await res.text().catch(() => '');
+          return { res, rawText };
+        };
+        const tryBackend = async () => {
+          const base = getOrchestratorBaseUrl().replace(/\/+$/, '');
+          let res = await fetch(`${base}${endpoint}`, { credentials: 'same-origin' });
+          let rawText = await res.text().catch(() => '');
+          return { res, rawText };
+        };
+
+        let { res, rawText } = await trySameOrigin();
+        // Fallback when same-origin returned non-200 or HTML
+        if (!res.ok || (rawText || '').trim().startsWith('<')) {
+          ({ res, rawText } = await tryBackend());
+        }
+
+        if (!res.ok) {
+          const msg = `endpoint ${res.url} returned HTTP ${res.status}${rawText ? ' - ' + rawText.slice(0, 300) : ''}`;
+          if (mounted) {
+            setError(msg);
+            console.error('[CogPaksList] failed to load agents –', msg);
+          }
+          return;
+        }
+
+        // Try to parse JSON now that we have rawText (and not HTML)
+        const arr = tryParseAgentsFromText(rawText);
+        if (!arr) {
+          const snippet = (rawText || '').slice(0, 1000);
+          const msg = `JSON Parse error: response not JSON; response snippet: ${snippet}`;
+          if (mounted) {
+            setError(msg);
+            console.error('[CogPaksList] failed to load agents –', msg);
+          }
+          return;
+        }
+
+        if (mounted) setAgents(arr);
+      } catch (e: any) {
+        if (!mounted) return;
+        const msg = e?.message ?? String(e);
+        setError(msg);
+        console.error('[CogPaksList] failed to load agents –', msg);
+      }
+    };
+
+    fetchAgents();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (error) {
+    return <div className="px-2 text-red-500 text-xs">Error loading CogPaks: {error}</div>;
+  }
+
+  if (agents.length === 0) {
+    return <div className="px-2 text-gray-500 text-xs">No CogPaks found.</div>;
+  }
+
+  // Which primary canvas to show (default to Network)
+  const [mainView, setMainView] = React.useState<'network' | 'flow'>('network');
 
   return (
-    <div
-      className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[56px_1fr] bg-background text-foreground"
-      style={{
-        position: 'relative',
-        height: '100vh', // explicit viewport sizing so React Flow gets a real height
-        width: '100vw',
-      }}
-    >
+    <div className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[240px_1fr] bg-background text-foreground" style={{
+      position: 'relative',
+      height: '100vh',
+      width: '100vw',
+    }}>
       {/* Top Bar */}
       <header className="row-start-1 col-span-2 flex items-center justify-between px-4 border-b bg-card/70 backdrop-blur">
         <div className="flex items-center gap-3">
@@ -133,16 +298,20 @@ export function MissionControlLayout() {
       </header>
 
       {/* Left Nav */}
-      <aside className="row-start-2 col-start-1 border-r bg-muted/50">
-        {/* Placeholder: Workspaces / Flows / Search */}
+      <aside className="row-start-2 col-start-1 border-r bg-card/70 backdrop-blur">
+        {/* Workspace sidebar: Workspaces / CogPaks / Flows */}
         <nav className="p-2 text-xs space-y-2">
           <SectionTitle>Workspaces</SectionTitle>
           <ul className="space-y-1 text-gray-600 dark:text-gray-300">
             <li className="px-2 py-1 rounded hover:bg-muted cursor-pointer">Default</li>
           </ul>
+
+          <SectionTitle className="mt-3">CogPaks</SectionTitle>
+          <CogPaksList allowRemoteUi={isEnabled('ALLOW_REMOTE_COGPAK_UI')} onSelectNetwork={() => setMainView('network')} />
+
           <SectionTitle className="mt-3">Flows</SectionTitle>
           <ul className="space-y-1 text-gray-600 dark:text-gray-300">
-            <li className="px-2 py-1 rounded hover:bg-muted cursor-pointer">example-flow</li>
+            <li className="px-2 py-1 rounded hover:bg-muted cursor-pointer" onClick={() => setMainView('flow')}>example-flow</li>
           </ul>
         </nav>
       </aside>
@@ -158,9 +327,15 @@ export function MissionControlLayout() {
         >
           {/* Canvas center of gravity */}
           <div style={{ height: '100%', width: '100%' }}>
-            <ReactFlowProvider>
-              <FlowCanvas />
-            </ReactFlowProvider>
+            {mainView === 'network' ? (
+              <NetworkPanel runId={activeRunId} />
+            ) : (
+              <ReactFlowProvider>
+                <FlowCanvas />
+                {/* Mounted CogPak UI overlay (mounts remoteEntry into #cogpak-mount) */}
+                <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
+              </ReactFlowProvider>
+            )}
           </div>
         </div>
 
@@ -171,7 +346,7 @@ export function MissionControlLayout() {
               Streaming overlays enabled
             </div>
           )}
-          {isEnabled('CONTRACT_OVERLAY') && <ContractOverlay />}
+          {/* contract overlay removed from global overlays — moved to per-panel transparency */}
         </div>
 
         {/* Right Dock */}
@@ -228,20 +403,8 @@ export function MissionControlLayout() {
  */
 function RightDock({ uiConfig, setUiConfig, isEnabled }: { uiConfig: Partial<Record<keyof typeof FeatureFlags, boolean>>; setUiConfig: React.Dispatch<React.SetStateAction<Partial<Record<keyof typeof FeatureFlags, boolean>>>>; isEnabled: (f: keyof typeof FeatureFlags) => boolean }) {
   return (
-    <div
-      className="pointer-events-auto absolute top-2 right-2 bottom-32 w-[360px] rounded-lg border text-foreground shadow-sm overflow-hidden flex flex-col"
-      style={{
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        bottom: 128,
-        width: 360,
-        display: 'flex',
-        flexDirection: 'column',
-        pointerEvents: 'auto',
-        zIndex: 40,
-        backgroundColor: 'hsl(var(--card))',
-      }}
+    <div className="pointer-events-auto absolute top-2 right-2 bottom-32 w-[360px] rounded-lg border text-foreground shadow-sm overflow-hidden flex flex-col bg-card/70 backdrop-blur"
+      style={{ position: 'absolute', top: 8, right: 8, bottom: 128, width: 360, zIndex: 40 }}
     >
       <div className="h-9 border-b flex items-center px-3 text-xs font-medium bg-muted/50">Inspector</div>
       <div className="flex-1 overflow-auto p-3 text-xs text-gray-600 dark:text-gray-300">
@@ -267,14 +430,16 @@ function BottomDock({
 }) {
   // Interactive tabs
   const isEnabledLocal = isEnabled ?? (() => true);
-  const initialTab = ((): 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' => {
+  const initialTab = ((): 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' => {
     try {
       const stored = localStorage.getItem('mc_bottom_active_tab') as any;
       if (stored) return stored;
     } catch {}
+    // Prefer Network by default when available
+    if (isEnabledLocal('NETWORK_PANEL')) return 'Network';
     return isEnabledLocal('NEW_STREAMING') ? 'Timeline' : 'Console';
   })();
-  const [activeTab, setActiveTabRaw] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs'>(initialTab);
+  const [activeTab, setActiveTabRaw] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network'>(initialTab);
   const setActiveTab = (t: typeof activeTab) => {
     setActiveTabRaw(t);
     try { localStorage.setItem('mc_bottom_active_tab', t); } catch {}
@@ -309,19 +474,8 @@ function BottomDock({
 
   return (
     <div
-      className="pointer-events-auto absolute left-2 right-[376px] bottom-2 h-56 rounded-lg border text-foreground shadow-sm overflow-hidden flex flex-col"
-      style={{
-        position: 'absolute',
-        left: 8,
-        right: 376,
-        bottom: 8,
-        height: 224,
-        display: 'flex',
-        flexDirection: 'column',
-        pointerEvents: 'auto',
-        zIndex: 35,
-        backgroundColor: 'hsl(var(--card))',
-      }}
+      className="pointer-events-auto absolute left-2 right-[376px] bottom-2 h-56 rounded-lg border text-foreground shadow-sm overflow-hidden flex flex-col bg-card/70 backdrop-blur"
+      style={{ position: 'absolute', left: 8, right: 376, bottom: 8, height: 224, zIndex: 35 }}
     >
       <div className="h-8 border-b bg-muted/50 text-xs">
         <div className="h-full flex items-center justify-between px-3">
@@ -330,6 +484,9 @@ function BottomDock({
             <TabBadge label="Run Queue" active={activeTab === 'Run Queue'} onClick={() => setActiveTab('Run Queue')} />
             {isEnabledLocal('NEW_STREAMING') && (
               <TabBadge label="Timeline" active={activeTab === 'Timeline'} onClick={() => setActiveTab('Timeline')} badge={timelineCount} />
+            )}
+            {isEnabledLocal('NETWORK_PANEL') && (
+              <TabBadge label="Network" active={activeTab === 'Network'} onClick={() => setActiveTab('Network')} />
             )}
             {isEnabledLocal('ORCHESTRATOR_PANEL') && (
               <TabBadge label="Runs" active={activeTab === 'Runs'} onClick={() => setActiveTab('Runs')} />
@@ -377,13 +534,14 @@ function BottomDock({
             › Run Queue placeholder. Queue controls will appear here.
           </div>
         )}
-        {activeTab === 'Runs' && isEnabledLocal('ORCHESTRATOR_PANEL') && <RunsPanel />}
+        {activeTab === 'Runs' && isEnabledLocal('ORCHESTRATOR_PANEL') && <RunsPanelComponent />}
         {activeTab === 'Timeline' && isEnabledLocal('NEW_STREAMING') && <TimelinePanel runId={runId} />}
         {activeTab === 'Timeline' && !FeatureFlags.NEW_STREAMING && (
           <div className="p-2 font-mono text-[11px] text-gray-600">
             › Streaming disabled. Enable NEW_STREAMING flag to view Timeline.
           </div>
         )}
+        {activeTab === 'Network' && isEnabledLocal('NETWORK_PANEL') && <NetworkPanel runId={runId} />}
         {activeTab === 'Issues' && <IssuesPanel onCountChange={setIssuesCount} />}
       </div>
     </div>
@@ -566,5 +724,168 @@ function TabBadge({
 function SectionTitle({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <div className={['text-[10px] uppercase tracking-wide text-gray-400 px-2', className].join(' ')}>{children}</div>;
 }
+
+function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi?: boolean; onSelectNetwork?: () => void }) {
+  // Robust local agents fetch + UI
+  const [agents, setAgents] = React.useState<any[]>([]);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const endpoint = '/api/v1/agents';
+
+    const tryParseAgentsFromText = (rawText: string) => {
+      try {
+        const parsed = JSON.parse(rawText);
+        return Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.agents) ? parsed.agents : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const fetchAgents = async () => {
+      try {
+        // First attempt: same-origin (works when dev server proxies /api to backend)
+        const trySameOrigin = async () => {
+          let res = await fetch(endpoint, { credentials: 'same-origin' });
+          let rawText = await res.text().catch(() => '');
+          return { res, rawText };
+        };
+        const tryBackend = async () => {
+          const base = getOrchestratorBaseUrl().replace(/\/+$/, '');
+          let res = await fetch(`${base}${endpoint}`, { credentials: 'same-origin' });
+          let rawText = await res.text().catch(() => '');
+          return { res, rawText };
+        };
+
+        let { res, rawText } = await trySameOrigin();
+        // Fallback when same-origin returned non-200 or HTML
+        if (!res.ok || (rawText || '').trim().startsWith('<')) {
+          ({ res, rawText } = await tryBackend());
+        }
+
+        if (!res.ok) {
+          const msg = `endpoint ${res.url} returned HTTP ${res.status}${rawText ? ' - ' + rawText.slice(0, 300) : ''}`;
+          if (mounted) {
+            setError(msg);
+            console.error('[CogPaksList] failed to load agents –', msg);
+          }
+          return;
+        }
+
+        // Try to parse JSON now that we have rawText (and not HTML)
+        const arr = tryParseAgentsFromText(rawText);
+        if (!arr) {
+          const snippet = (rawText || '').slice(0, 1000);
+          const msg = `JSON Parse error: response not JSON; response snippet: ${snippet}`;
+          if (mounted) {
+            setError(msg);
+            console.error('[CogPaksList] failed to load agents –', msg);
+          }
+          return;
+        }
+
+        if (mounted) setAgents(arr);
+      } catch (e: any) {
+        if (!mounted) return;
+        const msg = e?.message ?? String(e);
+        setError(msg);
+        console.error('[CogPaksList] failed to load agents –', msg);
+      }
+    };
+
+    fetchAgents();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (error) {
+    return <div className="px-2 text-red-500 text-xs">Error loading CogPaks: {error}</div>;
+  }
+
+  if (agents.length === 0) {
+    return <div className="px-2 text-gray-500 text-xs">No CogPaks found.</div>;
+  }
+
+  const openRemoteUi = (remoteEntry: string | undefined, title: string) => {
+    if (!remoteEntry) return;
+    if (!allowRemoteUi) {
+      console.warn('[CogPaksList] Remote UI blocked by feature flag');
+      return;
+    }
+    // Prefer VITE_API_URL if set (dev), otherwise default to orchestrator dev port (8000)
+    const backendBase = ((import.meta.env as any)?.VITE_API_URL as string) || 'http://127.0.0.1:8000';
+    const remoteUrl = /^https?:\/\//i.test(remoteEntry)
+      ? remoteEntry
+      : `${backendBase.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
+    const detail = { url: remoteUrl, title: title || 'CogPak UI' };
+    console.log('[CogPaksList] dispatching openCogpak', detail);
+    try {
+      window.dispatchEvent(new CustomEvent('openCogpak', { detail }));
+    } catch (err) {
+      console.error('Failed to dispatch openCogpak event', err);
+    }
+  };
+
+  return (
+    <ul className="space-y-1 text-gray-600 dark:text-gray-300">
+      {agents.map((agent) => {
+        const title = (agent?.ui?.title as string) || agent?.name || agent?.id || 'unknown-cogpak';
+        const remote = agent?.ui?.remoteEntry;
+        const key = agent?.manifest_path || agent?.id || title;
+        return (
+          <li
+            key={key}
+            className="flex items-center justify-between px-2 py-1 rounded hover:bg-muted cursor-pointer"
+            title={agent?.description || ''}
+            onClick={() => onSelectNetwork?.()}
+          >
+            <span className="truncate">{title}</span>
+            {remote ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openRemoteUi(remote, title);
+                }}
+                className="ml-2 text-[11px] px-2 py-0.5 rounded"
+                style={{
+                  backgroundColor: allowRemoteUi ? '#2563eb' : 'rgba(148,163,184,0.4)',
+                  color: allowRemoteUi ? '#fff' : 'rgba(226,232,240,0.8)',
+                  cursor: allowRemoteUi ? 'pointer' : 'not-allowed',
+                }}
+                disabled={!allowRemoteUi}
+                aria-label={`Open ${title} UI`}
+              >
+                UI
+              </button>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// Mounted CogPak UI overlay rendered inside the canvas
+function CogpakOverlay({ cogpakUi, onClose }: { cogpakUi: { url: string; title: string } | null; onClose: () => void }) {
+  if (!cogpakUi) return null;
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-auto">
+      <div className="w-11/12 h-5/6 bg-card/90 backdrop-blur rounded shadow-lg p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-medium text-sm">{cogpakUi.title}</div>
+          <button className="px-2 py-1 border rounded" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div id="cogpak-mount" className="h-full overflow-auto bg-transparent" />
+      </div>
+    </div>
+  );
+}
+
+// Provide a JSX-compatible component type for the Runs panel to satisfy TSX typing
+const RunsPanelComponent = (RunsPanel as unknown) as React.ComponentType<any>;
 
 export default MissionControlLayout;

@@ -68,10 +68,13 @@
 
 @layer base {
   * {
-    @apply border-border;
+    /* Use direct CSS var instead of @apply to avoid Tailwind unknown utility error */
+    border-color: hsl(var(--border));
   }
   body {
-    @apply bg-background text-foreground;
+    /* Replace @apply with direct variables to avoid Tailwind utility resolution issues */
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 }
 

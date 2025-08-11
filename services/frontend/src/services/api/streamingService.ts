@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { EnhancedStream } from '../streamingService.enhanced';
 import { StreamingMessage, StreamConnectionState, StreamMessageHandler, ConnectionStateHandler } from '../../types/streaming'; // All imported from types/streaming
 import { MediaType, MediaChunk, MediaReference } from '../../types/media'; // Corrected import for MediaType and MediaChunk
+import { getOrchestratorBaseUrl } from '@/config/orchestrator';
 
 /**
  * Service for interacting with multimodal streaming endpoints.
@@ -117,10 +118,14 @@ export class StreamingService {
 }
 
 // Export a singleton instance for convenience
+// Derive WS/SSE endpoints from orchestrator base when env overrides not provided
+const httpBase = (import.meta.env.VITE_ORCHESTRATOR_URL as string) || getOrchestratorBaseUrl();
+const normalizedHttp = String(httpBase || '').replace(/\/+$/, '');
+const wsBase = (import.meta.env.VITE_WS_URL as string) || normalizedHttp.replace(/^http/, 'ws');
 export const streamingService = new StreamingService(
-  'default-stream-id', // Placeholder for streamId
-  import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws',
-  import.meta.env.VITE_WS_URL ? (import.meta.env.VITE_WS_URL + '/sse') : 'http://localhost:8000/ws/sse'
+  'default-stream-id',
+  `${wsBase}/ws`,
+  `${normalizedHttp}/ws/sse`
 );
 
 export default streamingService;

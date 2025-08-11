@@ -9,6 +9,9 @@ WORKDIR /app
 # Copy source
 COPY src/ ./src/
 
+# Copy UI remote entry so frontend can fetch it from the image/package
+COPY ui/ ./ui/
+
 # Optional hooks (prestart/health) - copied for lifecycle compatibility
 COPY prestart.sh /app/prestart.sh
 COPY health.sh /app/health.sh
