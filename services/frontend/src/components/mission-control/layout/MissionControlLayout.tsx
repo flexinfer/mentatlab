@@ -161,8 +161,8 @@ export function MissionControlLayout() {
 
   const openRemoteUi = (remoteEntry: string | undefined, title: string) => {
     if (!remoteEntry) return;
-    // Prefer VITE_API_URL if set (dev), otherwise default to orchestrator dev port (8000)
-    const backendBase = ((import.meta.env as any)?.VITE_API_URL as string) || 'http://127.0.0.1:8000';
+    // Prefer VITE_API_URL if set; otherwise use getOrchestratorBaseUrl() (run-local-dev.sh exports 8081)
+    const backendBase = ((import.meta.env as any)?.VITE_API_URL as string) || getOrchestratorBaseUrl();
     const remoteUrl = /^https?:\/\//i.test(remoteEntry)
       ? remoteEntry
       : `${backendBase.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
@@ -178,6 +178,7 @@ export function MissionControlLayout() {
   // Robust local agents fetch + UI
   const [agents, setAgents] = React.useState<any[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [mainView, setMainView] = React.useState<'network' | 'flow'>('network');
 
   React.useEffect(() => {
     let mounted = true;
@@ -256,9 +257,6 @@ export function MissionControlLayout() {
   if (agents.length === 0) {
     return <div className="px-2 text-gray-500 text-xs">No CogPaks found.</div>;
   }
-
-  // Which primary canvas to show (default to Network)
-  const [mainView, setMainView] = React.useState<'network' | 'flow'>('network');
 
   return (
     <div className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[240px_1fr] bg-background text-foreground" style={{
@@ -814,8 +812,8 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
       console.warn('[CogPaksList] Remote UI blocked by feature flag');
       return;
     }
-    // Prefer VITE_API_URL if set (dev), otherwise default to orchestrator dev port (8000)
-    const backendBase = ((import.meta.env as any)?.VITE_API_URL as string) || 'http://127.0.0.1:8000';
+    // Prefer VITE_API_URL if set; otherwise use getOrchestratorBaseUrl() (run-local-dev.sh exports 8081)
+    const backendBase = ((import.meta.env as any)?.VITE_API_URL as string) || getOrchestratorBaseUrl();
     const remoteUrl = /^https?:\/\//i.test(remoteEntry)
       ? remoteEntry
       : `${backendBase.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
