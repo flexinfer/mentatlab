@@ -100,11 +100,14 @@ class EnhancedStream {
     (useStreamingStore.getState() as StreamingState).registerStream(this.streamId, { wsUrl: this.wsUrl, sseUrl: this.sseUrl, config: this.config });
 
     try {
-      await this.connectWebSocket();
+      // Quick race to a live UI: try WS with a short deadline, then SSE, then simulation
+      const QUICK_DEADLINE_MS = 1500;
+      await this.connectWebSocket(QUICK_DEADLINE_MS);
     } catch (error) {
       console.warn('[EnhancedStream] WebSocket connection failed, falling back to SSE:', error);
       try {
-        await this.connectSSE();
+        const QUICK_DEADLINE_MS = 1500;
+        await this.connectSSE(QUICK_DEADLINE_MS);
       } catch (sseError) {
         console.error('[EnhancedStream] SSE connection also failed. Starting local simulation:', sseError);
         // Start simulation fallback so UI still gets a live network
@@ -117,7 +120,7 @@ class EnhancedStream {
   /**
    * Connect via WebSocket
    */
-  private async connectWebSocket(): Promise<void> {
+  private async connectWebSocket(timeoutOverride?: number): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         this.ws = new WebSocket(this.wsUrl);
@@ -128,7 +131,7 @@ class EnhancedStream {
             this.ws.close();
             reject(new Error('WebSocket connection timeout'));
           }
-        }, this.config.timeout);
+        }, timeoutOverride ?? this.config.timeout);
 
         this.ws.onopen = () => {
           clearTimeout(connectTimeout);
@@ -203,12 +206,20 @@ class EnhancedStream {
   /**
    * Connect via Server-Sent Events (SSE) as fallback
    */
-  private async connectSSE(): Promise<void> {
+  private async connectSSE(deadlineMs?: number): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         this.sse = new EventSource(this.sseUrl);
+        // Add deadline guard for initial connect
+        const deadline = deadlineMs ?? this.config.timeout;
+        const timer = window.setTimeout(() => {
+          try { this.sse?.close(); } catch {}
+          this.sse = null;
+          reject(new Error('SSE connection timeout'));
+        }, deadline);
 
         this.sse.onopen = () => {
+          window.clearTimeout(timer);
           console.log('[EnhancedStream] SSE connected successfully');
           this.stats.connectTime = Date.now();
           this.reconnectAttempts = 0;
@@ -232,6 +243,7 @@ class EnhancedStream {
         };
 
         this.sse.onerror = (errorEvent: Event) => { // Cast error to Event
+          window.clearTimeout(timer);
           const errorMessage: ErrorMessage = {
             id: uuidv4(),
             type: 'error',

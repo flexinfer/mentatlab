@@ -15,7 +15,7 @@ import {
 import 'reactflow/dist/style.css';
 import { ReactFlowProvider } from 'reactflow';
 
-import { useStreamingStore } from '../../../store';
+import { useStreamingStore } from '../../../store/index';
 import { StreamConnectionState } from '../../../types/streaming';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { FeatureFlags } from '../../../config/features';
@@ -200,9 +200,19 @@ export default function NetworkPanel({ runId }: Props) {
         map.set(norm(a?.name || a?.id || id), id);
       }
 
-      if (ids.length === 0) {
-        return { nodes: [], edges: [] };
+      // If too few agents, merge in canonical subconscious nodes to "make the point"
+      const origCount = ids.length;
+      const canonical = ['Ego', 'Perception', 'Memory', 'Planning', 'Actuator'];
+      if (ids.length < 3) {
+        for (const cid of canonical) {
+          if (!unique.has(cid)) {
+            unique.add(cid);
+            ids.push(cid);
+            map.set(cid, cid);
+          }
+        }
       }
+      if (ids.length === 0) return { nodes: [], edges: [] };
 
       const pts = layoutCircular(ids, { x: 0, y: 0 }, 220);
       const nn: RFNode[] = pts.map((p) => ({
@@ -245,6 +255,26 @@ export default function NetworkPanel({ runId }: Props) {
             }
           }
         }
+      }
+      // If we augmented with canonical nodes (origCount < 3), add default subconscious edges
+      if (origCount < 3) {
+        const ensureEdge = (s: string, t: string) => {
+          const id = `${s}->${t}`;
+          if (!ee.find((e) => e.id === id)) {
+            ee.push({
+              id,
+              source: s,
+              target: t,
+              animated: true,
+              markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--muted-foreground))' },
+              style: { strokeWidth: 1.5 },
+            });
+          }
+        };
+        ensureEdge('Perception', 'Ego');
+        ensureEdge('Ego', 'Planning');
+        ensureEdge('Planning', 'Memory');
+        ensureEdge('Planning', 'Actuator');
       }
 
       nameToIdRef.current = map;

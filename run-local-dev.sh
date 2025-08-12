@@ -139,6 +139,10 @@ mkdir -p logs
 # Set PYTHONPATH to project root for absolute imports
 export PYTHONPATH=$PWD
 
+# Frontend environment: align with orchestrator on port 8081
+export VITE_ORCHESTRATOR_URL="http://127.0.0.1:8081"
+export VITE_API_URL="http://127.0.0.1:8081"
+
 # Start Orchestrator (port 8081)
 echo -e "\n${YELLOW}Starting Orchestrator on port 8081...${NC}"
 cd services/orchestrator

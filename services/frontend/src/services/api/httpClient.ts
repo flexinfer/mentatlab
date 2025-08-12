@@ -4,6 +4,7 @@
  */
 
 import { FeatureFlags } from '../../config/features';
+import { getOrchestratorBaseUrl } from '@/config/orchestrator';
 
 export interface HttpConfig {
   baseUrl: string;
@@ -389,5 +390,5 @@ export class HttpError extends Error {
 
 // Export singleton instance
 export const httpClient = new HttpClient({
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseUrl: (import.meta.env.VITE_API_URL as string) || getOrchestratorBaseUrl(),
 });
