@@ -29,7 +29,17 @@ import sys
 import time
 import traceback
 import uuid
+import os
+import datetime
 from typing import Any, Dict, Optional
+# Add structured NDJSON emit helper imports
+try:
+    from agents.common.emit import log_info, log_error, checkpoint, emit_event, set_correlation_id
+except Exception:
+    # Fallback if namespace package resolution differs in certain environments
+    import sys as _sys, os as _os
+    _sys.path.append(_os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..")))
+    from agents.common.emit import log_info, log_error, checkpoint, emit_event, set_correlation_id
 
 AGENT_MODEL = "psyche-sim/0.1.0"
 
@@ -51,14 +61,71 @@ def read_input() -> Optional[Dict[str, Any]]:
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
 
+# CloudEvents helpers and config (opt-in via env)
+_CE_CONFIG: Dict[str, Any] = {
+    "enabled": False,
+    "source": "/mentatlab/agent/psyche-sim",
+    "specversion": "1.0",
+    "execution_id": None,
+    "checkpoint_interval": 0,
+}
+
+def _now_rfc3339() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+def _env_flag_true(val: Optional[str]) -> bool:
+    if val is None:
+        return False
+    return val.strip().lower() in ("1", "true", "yes", "on")
+
+def derive_type(payload: dict, default_type: str = "agent.data") -> str:
+    # checks payload.get("type") or payload.get("event_type") safely.
+    t = None
+    if isinstance(payload, dict):
+        t = payload.get("type") or payload.get("event_type")
+    return t if isinstance(t, str) and t else default_type
+
+def make_cloudevent(payload: dict, event_type: str, source: str, specversion: str, execution_id: Optional[str]) -> dict:
+    # returns envelope dict with uuid4 id and RFC3339 UTC time, and ce-execution_id when provided.
+    evt = {
+        "specversion": specversion,
+        "id": str(uuid.uuid4()),
+        "source": source,
+        "type": event_type,
+        "time": _now_rfc3339(),
+        "datacontenttype": "application/json",
+        "data": payload,
+    }
+    if execution_id:
+        evt["ce-execution_id"] = execution_id
+    return evt
+
 
 def _emit_stream_message(msg: Dict[str, Any]) -> None:
     """
     Emit a single JSON streaming message to stdout (NDJSON), flush immediately.
     This function is used for streaming messages that the UI/gateway expects.
     """
+    # Also surface an info log for debugging stream types
     try:
-        sys.stdout.write(json.dumps(msg, separators=(",", ":"), ensure_ascii=False) + "\n")
+        # keep logs minimal to avoid excessive noise
+        if isinstance(msg, dict) and "type" in msg:
+            log_info(f"stream_event:{msg.get('type')}", data={"sequence": msg.get("sequence")})
+    except Exception:
+        pass
+    try:
+        if _CE_CONFIG.get("enabled"):
+            evt_type = derive_type(msg, "agent.data")
+            wrapped = make_cloudevent(
+                msg,
+                evt_type,
+                _CE_CONFIG.get("source", "/mentatlab/agent/psyche-sim"),
+                _CE_CONFIG.get("specversion", "1.0"),
+                _CE_CONFIG.get("execution_id"),
+            )
+            sys.stdout.write(json.dumps(wrapped, separators=(",", ":"), ensure_ascii=False) + "\n")
+        else:
+            sys.stdout.write(json.dumps(msg, separators=(",", ":"), ensure_ascii=False) + "\n")
         sys.stdout.flush()
     except Exception:
         # If streaming fails, continue — final result will still be printed.
@@ -72,12 +139,16 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
     - The 'ego' agent integrates their outputs incrementally and evolves an integration score.
     - Messages are emitted as streaming NDJSON (text:stream, progress, stream:status, stream_end).
     """
+    # Announce streaming phase via contract log + checkpoint
+    log_info("psyche-sim: streaming simulation start", data={"agent_id": agent_id, "stream_id": stream_id})
+    checkpoint("streaming_start", 0.0, {"agent_id": agent_id, "stream_id": stream_id})
     base = {
         "agent_id": agent_id,
         "stream_id": stream_id,
         "timestamp": _now_iso(),
     }
-
+    checkpoint_interval = int(_CE_CONFIG.get("checkpoint_interval") or 0)
+    stream_data_count = 0
     # Define subcomponents and deterministic behaviour
     subcomponents = [
         {"id": "id_core", "role": "core", "voice": "matter-of-fact"},
@@ -86,7 +157,6 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         {"id": "memory", "role": "recall", "voice": "remembering"},
         {"id": "intuition", "role": "intuition", "voice": "whisper"},
     ]
-
     # stream_start
     start_msg = {
         **base,
@@ -96,24 +166,19 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         "sequence": 0,
     }
     _emit_stream_message(start_msg)
-
     # Ego internal state (evolves)
     ego_state = {"integration_score": 0.0, "history": []}
-
     total_rounds = max(1, len(text_chunks))
     sequence = 1
-
     # For each round (derived from chunks) run each subcomponent and have ego integrate
     for round_idx in range(total_rounds):
         prompt_fragment = text_chunks[round_idx] if round_idx < len(text_chunks) else text_chunks[-1]
-
         # Each subcomponent produces a short reaction
         sub_outputs = []
         for comp in subcomponents:
             # Deterministic pseudo-response
             resp = f"{comp['id']} ({comp['role']}): reacts to '{prompt_fragment[:40]}'"
             sub_outputs.append({"component": comp["id"], "text": resp})
-
             # Emit the subcomponent chunk as text:stream
             msg = {
                 **base,
@@ -126,7 +191,23 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
             }
             _emit_stream_message(msg)
             sequence += 1
-
+            # Checkpoint after N stream_data events (count text:stream only)
+            if checkpoint_interval > 0:
+                stream_data_count += 1
+                if stream_data_count % checkpoint_interval == 0:
+                    checkpoint_msg = {
+                        **base,
+                        "id": str(uuid.uuid4()),
+                        "type": "agent.checkpoint",
+                        "data": {
+                            "stream_data_count": stream_data_count,
+                            "sequence": sequence,
+                            "round": round_idx + 1,
+                        },
+                        "sequence": sequence,
+                    }
+                    _emit_stream_message(checkpoint_msg)
+                    sequence += 1
             # Small progress per component
             progress = {
                 **base,
@@ -140,16 +221,13 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
             }
             _emit_stream_message(progress)
             sequence += 1
-
             time.sleep(chunk_delay * 0.6)
-
         # Ego integrates subcomponent outputs
         integration_text = " | ".join([o["text"] for o in sub_outputs])
         # Simple integration rule: integration_score increases with length of integration_text
         added = min(1.0, len(integration_text) / 200.0)
         ego_state["integration_score"] = round(ego_state["integration_score"] + added, 3)
         ego_state["history"].append({"round": round_idx + 1, "integration": integration_text})
-
         ego_msg_text = f"ego: integrated round {round_idx+1}; score={ego_state['integration_score']}"
         ego_msg = {
             **base,
@@ -162,7 +240,22 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         }
         _emit_stream_message(ego_msg)
         sequence += 1
-
+        if checkpoint_interval > 0:
+            stream_data_count += 1
+            if stream_data_count % checkpoint_interval == 0:
+                checkpoint_msg = {
+                    **base,
+                    "id": str(uuid.uuid4()),
+                    "type": "agent.checkpoint",
+                    "data": {
+                        "stream_data_count": stream_data_count,
+                        "sequence": sequence,
+                        "round": round_idx + 1,
+                    },
+                    "sequence": sequence,
+                }
+                _emit_stream_message(checkpoint_msg)
+                sequence += 1
         # Emit a stream status update for this round
         status_msg = {
             **base,
@@ -173,14 +266,16 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
             "sequence": sequence,
         }
         _emit_stream_message(status_msg)
+        # Emit a checkpoint per round according to the agent contract
+        try:
+            checkpoint("round", (round_idx + 1) / float(total_rounds), {"round": round_idx + 1, "total_rounds": total_rounds})
+        except Exception:
+            pass
         sequence += 1
-
         time.sleep(chunk_delay)
-
     # Finalize: ego produces the final integrated response
     final_response = f"Ego final synthesis (score={ego_state['integration_score']}): " \
                      f"{' // '.join([h['integration'][:60] for h in ego_state['history']])}"
-
     final_msg = {
         **base,
         "id": str(uuid.uuid4()),
@@ -192,7 +287,22 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
     }
     _emit_stream_message(final_msg)
     sequence += 1
-
+    if checkpoint_interval > 0:
+        stream_data_count += 1
+        if stream_data_count % checkpoint_interval == 0:
+            checkpoint_msg = {
+                **base,
+                "id": str(uuid.uuid4()),
+                "type": "agent.checkpoint",
+                "data": {
+                    "stream_data_count": stream_data_count,
+                    "sequence": sequence,
+                    "round": total_rounds,
+                },
+                "sequence": sequence,
+            }
+            _emit_stream_message(checkpoint_msg)
+            sequence += 1
     # stream status -> completed
     status_msg = {
         **base,
@@ -204,7 +314,6 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
     }
     _emit_stream_message(status_msg)
     sequence += 1
-
     # legacy stream_end event
     end_msg = {
         **base,
@@ -214,6 +323,12 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         "sequence": sequence,
     }
     _emit_stream_message(end_msg)
+    # streaming completed checkpoint
+    try:
+        checkpoint("streaming_complete", 1.0, {"agent_id": agent_id, "stream_id": stream_id})
+        log_info("psyche-sim: streaming simulation complete", data={"agent_id": agent_id, "stream_id": stream_id})
+    except Exception:
+        pass
     # small pause
     time.sleep(0.02)
 
@@ -311,6 +426,12 @@ def make_output(result_payload: Dict[str, Any], start_time: float, end_time: flo
 
 def main() -> int:
     start_time = time.time()
+    # Emit process start log/checkpoint
+    try:
+        log_info("psyche-sim: start")
+        checkpoint("start", 0.0)
+    except Exception:
+        pass
     try:
         incoming = read_input()
         if incoming is None:
@@ -321,10 +442,61 @@ def main() -> int:
             end_time = time.time()
             out = make_output(err, start_time, end_time)
             print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
+            # Emit error log
+            try:
+                log_error("psyche-sim: no stdin input")
+            except Exception:
+                pass
             return 1
 
         spec = incoming.get("spec") if isinstance(incoming, dict) else incoming
         context = incoming.get("context") if isinstance(incoming, dict) else None
+        # Correlate by execution_id if present
+        try:
+            exec_id_for_corr = None
+            if isinstance(incoming, dict):
+                exec_id_for_corr = incoming.get("execution_id")
+            if not exec_id_for_corr and isinstance(context, dict):
+                exec_id_for_corr = context.get("execution_id")
+            if exec_id_for_corr:
+                set_correlation_id(str(exec_id_for_corr))
+        except Exception:
+            pass
+        # Configure CloudEvents/Checkpoint from environment and incoming context
+        ce_enabled = _env_flag_true(os.environ.get("PSYCHE_SIM_CE_ENABLED"))
+        ce_source = os.environ.get("PSYCHE_SIM_CE_SOURCE", "/mentatlab/agent/psyche-sim")
+        ce_version = os.environ.get("PSYCHE_SIM_CE_VERSION", "1.0")
+        try:
+            checkpoint_interval = int(os.environ.get("PSYCHE_SIM_CHECKPOINT_INTERVAL", "0") or "0")
+        except Exception:
+            checkpoint_interval = 0
+        exec_header = os.environ.get("PSYCHE_SIM_EXECUTION_ID_HEADER", "X-Execution-Id")
+
+        execution_id: Optional[str] = None
+        if isinstance(incoming, dict):
+            v = incoming.get("execution_id")
+            if isinstance(v, str) and v:
+                execution_id = v
+        if not execution_id and isinstance(context, dict):
+            v = context.get("execution_id")
+            if isinstance(v, str) and v:
+                execution_id = v
+            else:
+                headers = context.get("headers")
+                if isinstance(headers, dict) and exec_header:
+                    target = exec_header.lower()
+                    for k, v in headers.items():
+                        if isinstance(k, str) and k.lower() == target:
+                            execution_id = v if isinstance(v, str) else str(v)
+                            break
+
+        _CE_CONFIG.update({
+            "enabled": ce_enabled,
+            "source": ce_source,
+            "specversion": ce_version,
+            "execution_id": execution_id,
+            "checkpoint_interval": checkpoint_interval,
+        })
 
         # If streaming mode requested, simulate an NDJSON stream before final output
         mode = None
@@ -370,10 +542,13 @@ def main() -> int:
                 "sequence": 0,
             }
             _emit_stream_message(header)
-
+            try:
+                log_info("psyche-sim: initializing stream", data={"agent_id": agent_id, "stream_id": stream_id})
+                checkpoint("initializing", 0.05, {"agent_id": agent_id, "stream_id": stream_id})
+            except Exception:
+                pass
             # Simulate streaming chunks
             _simulate_streaming(agent_id=agent_id, stream_id=stream_id, text_chunks=text_chunks, chunk_delay=chunk_delay)
-
             # Small pause to ensure consumer can process
             time.sleep(0.05)
 
@@ -381,10 +556,25 @@ def main() -> int:
         result_payload = process(spec or {}, context)
         end_time = time.time()
         output = make_output(result_payload, start_time, end_time)
-
         # Emit the final single-line JSON result (orchestrator contract)
-        print(json.dumps(output, separators=(",", ":"), ensure_ascii=False))
+        if _CE_CONFIG.get("enabled"):
+            final_envelope = make_cloudevent(
+                output,
+                "agent.final",
+                _CE_CONFIG.get("source", "/mentatlab/agent/psyche-sim"),
+                _CE_CONFIG.get("specversion", "1.0"),
+                _CE_CONFIG.get("execution_id"),
+            )
+            print(json.dumps(final_envelope, separators=(",", ":"), ensure_ascii=False))
+        else:
+            print(json.dumps(output, separators=(",", ":"), ensure_ascii=False))
         sys.stdout.flush()
+        # Completion log/checkpoint
+        try:
+            checkpoint("end", 1.0)
+            log_info("psyche-sim: completed", data={"seconds": round(end_time - start_time, 4)})
+        except Exception:
+            pass
         return 0
 
     except Exception as exc:
@@ -398,6 +588,11 @@ def main() -> int:
         out = make_output(error_payload, start_time, end_time)
         print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
         sys.stdout.flush()
+        # Emit error log
+        try:
+            log_error("psyche-sim: internal error", data={"exception": str(exc)})
+        except Exception:
+            pass
         return 2
 
 

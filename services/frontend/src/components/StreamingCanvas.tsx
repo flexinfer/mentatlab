@@ -39,19 +39,77 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     setActiveStreams(sessionMap);
   }, [streamingSessions]);
 
+  // Discover active streams from the Gateway (helpful for local-dev)
+  useEffect(() => {
+    const env = (import.meta as any)?.env || {};
+    const gatewayBase = (env.VITE_GATEWAY_URL as string) || 'http://127.0.0.1:8080';
+    const fetchStreams = async () => {
+      try {
+        const url = gatewayBase.replace(/\/$/, '') + '/api/v1/streams';
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          console.warn('[StreamingCanvas] failed to fetch streams', resp.status);
+          return;
+        }
+        const json = await resp.json();
+        const sessions = json.streams || [];
+        const map = new Map<string, StreamSession>();
+        sessions.forEach((s: any) => {
+          // Normalize shape expected by this component
+          const session: any = {
+            stream_id: s.stream_id,
+            ws_url: s.ws_url || s.ws || `/ws/streams/${s.stream_id}`,
+            status: s.status || 'active',
+            agent_id: s.agent_id,
+            node_id: s.node_id || s.agent_id
+          };
+          map.set(session.stream_id, session);
+        });
+        setActiveStreams(map);
+      } catch (err) {
+        console.error('[StreamingCanvas] fetchStreams error', err);
+      }
+    };
+
+    // Fetch immediately and then poll periodically while component mounted
+    fetchStreams();
+    const interval = setInterval(fetchStreams, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Connect to streaming sessions
   useEffect(() => {
     if (activeStreams.size === 0) return;
 
     const connectToStreams = async () => {
+      console.debug('[StreamingCanvas] connectToStreams - activeStreams:', Array.from(activeStreams.keys()));
       for (const [streamId, session] of activeStreams) {
         try {
           // Connect to stream WebSocket
-          const ws = new WebSocket(`ws://localhost:8001${session.ws_url}`);
+          // Derive gateway base URL from Vite env (supports VITE_GATEWAY_URL) with a sensible default.
+          const env = (import.meta as any)?.env || {};
+          const gatewayBase = (env.VITE_GATEWAY_URL as string) || 'http://127.0.0.1:8080';
+          const gatewayProto = gatewayBase.startsWith('https') ? 'wss' : 'ws';
+          // Strip protocol and trailing slash
+          const gatewayHost = gatewayBase.replace(/^https?:\/\//, '').replace(/\/$/, '');
+          const wsPath = session.ws_url && session.ws_url.startsWith('/') ? session.ws_url : `/${session.ws_url}`;
+          const wsUrl = `${gatewayProto}://${gatewayHost}${wsPath}`;
+          
+          // Debug: announce the URL we're about to connect to
+          console.debug(`[StreamingCanvas] attempting WS connect for stream=${streamId} wsUrl=${wsUrl} session=`, session);
+          const ws = new WebSocket(wsUrl);
           
           ws.onopen = () => {
             console.log(`Connected to stream: ${streamId}`);
             onStreamStatusChange?.(streamId, 'connected');
+            // Best-effort subscribe message in case server expects an explicit subscribe payload
+            try {
+              const subscribeMsg = JSON.stringify({ type: 'subscribe', stream_id: streamId });
+              ws.send(subscribeMsg);
+              console.debug(`[StreamingCanvas] sent subscribe message for stream=${streamId}`);
+            } catch (err) {
+              console.debug(`[StreamingCanvas] failed to send subscribe for ${streamId}:`, err);
+            }
           };
 
           ws.onmessage = (event) => {
@@ -304,6 +362,27 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
         Active streams: {activeStreams.size} | 
         Total messages: {Array.from(streamData.values()).reduce((acc, messages) => acc + messages.length, 0)}
       </div>
+      
+      {/* Active streams preview panel - shows last received message for quick debugging */}
+      {activeStreams.size > 0 && (
+        <div className="mt-3 text-xs text-gray-700">
+          <div className="font-medium mb-1">Active Streams</div>
+          {[...activeStreams.entries()].map(([streamId, session]) => {
+            const msgs = streamData.get(streamId) || [];
+            const last = msgs.length ? msgs[msgs.length - 1] : null;
+            const preview = last ? (typeof last.data === 'object' ? JSON.stringify(last.data).slice(0, 140) : String(last.data).slice(0,140)) : 'no messages yet';
+            return (
+              <div key={streamId} className="py-1 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold">{session.node_id || session.agent_id}</div>
+                  <div className="text-xs text-gray-500">{streamId.substring(0,8)}</div>
+                </div>
+                <div className="text-xs text-gray-600 truncate">{preview}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

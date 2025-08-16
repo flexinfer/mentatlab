@@ -18,6 +18,9 @@ import ContractOverlay from '../overlays/ContractOverlay';
 import PropertyInspector from '../../PropertyInspector';
 import NetworkPanel from '../panels/NetworkPanel';
 import { getOrchestratorBaseUrl } from '@/config/orchestrator';
+// ADD: orchestrator run helper
+import { startDemoRunAndStream } from '../../../services/api/orchestrator';
+import GraphPanel from '../panels/GraphPanel';
 
 export function MissionControlLayout() {
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
@@ -258,6 +261,16 @@ export function MissionControlLayout() {
     return <div className="px-2 text-gray-500 text-xs">No CogPaks found.</div>;
   }
 
+  // ADD: Start an orchestrator run (FastAPI backend) and subscribe to SSE
+  const startOrchestratorRun = React.useCallback(async () => {
+    try {
+      const { runId } = await startDemoRunAndStream();
+      setActiveRunId(runId);
+    } catch (e) {
+      console.error('[MissionControl] Start Orchestrator Run failed', e);
+    }
+  }, []);
+
   return (
     <div className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[240px_1fr] bg-background text-foreground" style={{
       position: 'relative',
@@ -354,6 +367,8 @@ export function MissionControlLayout() {
           runId={activeRunId}
           onStartDemo={startDemoRun}
           onStartLive={startLive}
+          // ADD: pass handler to bottom dock
+          onStartOrchestratorRun={startOrchestratorRun}
           isEnabled={isEnabled}
         />
 
@@ -420,24 +435,29 @@ function BottomDock({
   onStartDemo,
   onStartLive
   , isEnabled
+  // ADD: orchestrator run handler
+  , onStartOrchestratorRun
 }: {
   runId: string | null;
   onStartDemo: () => void;
   onStartLive?: () => void;
   isEnabled?: (flag: keyof typeof FeatureFlags) => boolean;
+  // ADD: orchestrator run handler
+  onStartOrchestratorRun?: () => void;
 }) {
   // Interactive tabs
   const isEnabledLocal = isEnabled ?? (() => true);
-  const initialTab = ((): 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' => {
+  const initialTab = ((): 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph' => {
     try {
       const stored = localStorage.getItem('mc_bottom_active_tab') as any;
       if (stored) return stored;
     } catch {}
     // Prefer Network by default when available
     if (isEnabledLocal('NETWORK_PANEL')) return 'Network';
-    return isEnabledLocal('NEW_STREAMING') ? 'Timeline' : 'Console';
+    if (isEnabledLocal('NEW_STREAMING')) return 'Timeline';
+    return isEnabledLocal('MISSION_CONSOLE') ? 'Console' : 'Run Queue';
   })();
-  const [activeTab, setActiveTabRaw] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network'>(initialTab);
+  const [activeTab, setActiveTabRaw] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph'>(initialTab);
   const setActiveTab = (t: typeof activeTab) => {
     setActiveTabRaw(t);
     try { localStorage.setItem('mc_bottom_active_tab', t); } catch {}
@@ -452,6 +472,30 @@ function BottomDock({
   // NEW: badge counts
   const [issuesCount, setIssuesCount] = React.useState<number>(0);
   const [timelineCount, setTimelineCount] = React.useState<number>(0);
+  // Selected node from Graph (bridged via CustomEvent)
+  const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null);
+
+  // Bridge: Listen for node selection changes from GraphPanel via window events.
+  // GraphPanel can dispatch:
+  //   window.dispatchEvent(new CustomEvent('graphNodeSelected', { detail: { nodeId } }))
+  //   window.dispatchEvent(new CustomEvent('graphNodeCleared'))
+  React.useEffect(() => {
+    const onNodeSelected = (e: Event) => {
+      try {
+        const nodeId = (e as CustomEvent).detail?.nodeId as string | undefined;
+        setSelectedNodeId(nodeId ?? null);
+      } catch {
+        setSelectedNodeId(null);
+      }
+    };
+    const onNodeCleared = () => setSelectedNodeId(null);
+    window.addEventListener('graphNodeSelected', onNodeSelected as EventListener);
+    window.addEventListener('graphNodeCleared', onNodeCleared as EventListener);
+    return () => {
+      window.removeEventListener('graphNodeSelected', onNodeSelected as EventListener);
+      window.removeEventListener('graphNodeCleared', onNodeCleared as EventListener);
+    };
+  }, []);
 
   // Subscribe to timeline updates for current run
   React.useEffect(() => {
@@ -478,7 +522,9 @@ function BottomDock({
       <div className="h-8 border-b bg-muted/50 text-xs">
         <div className="h-full flex items-center justify-between px-3">
           <div className="flex items-center gap-2">
-            <TabBadge label="Console" active={activeTab === 'Console'} onClick={() => setActiveTab('Console')} />
+            {isEnabledLocal('MISSION_CONSOLE') && (
+              <TabBadge label="Console" active={activeTab === 'Console'} onClick={() => setActiveTab('Console')} />
+            )}
             <TabBadge label="Run Queue" active={activeTab === 'Run Queue'} onClick={() => setActiveTab('Run Queue')} />
             {isEnabledLocal('NEW_STREAMING') && (
               <TabBadge label="Timeline" active={activeTab === 'Timeline'} onClick={() => setActiveTab('Timeline')} badge={timelineCount} />
@@ -490,6 +536,10 @@ function BottomDock({
               <TabBadge label="Runs" active={activeTab === 'Runs'} onClick={() => setActiveTab('Runs')} />
             )}
             <TabBadge label="Issues" active={activeTab === 'Issues'} onClick={() => setActiveTab('Issues')} badge={issuesCount} />
+            {/* NEW: Graph tab (feature flagged) */}
+            {isEnabledLocal('MISSION_GRAPH') && (
+              <TabBadge label="Graph" active={activeTab === 'Graph'} onClick={() => setActiveTab('Graph')} />
+            )}
           </div>
           <div className="flex items-center gap-2">
             {isEnabledLocal('MULTIMODAL_UPLOAD') && (
@@ -521,12 +571,25 @@ function BottomDock({
                 ▶ Start Demo Run
               </Button>
             )}
+            {/* ADD: Start Orchestrator Run button (visible when Orchestrator panel is enabled) */}
+            {isEnabledLocal('ORCHESTRATOR_PANEL') && (
+              <Button
+                variant="outline"
+                className="h-6 px-2 text-[11px]"
+                onClick={onStartOrchestratorRun}
+                title="Create a backend run and stream live events"
+              >
+                ▶ Start Orchestrator Run
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-0 text-xs text-gray-700 dark:text-gray-300">
-        {activeTab === 'Console' && <ConsolePanel runId={runId} />}
+        {activeTab === 'Console' && isEnabledLocal('MISSION_CONSOLE') && (
+          <ConsolePanel runId={runId} selectedNodeId={selectedNodeId} />
+        )}
         {activeTab === 'Run Queue' && (
           <div className="p-2 font-mono text-[11px] text-gray-600 dark:text-gray-400">
             › Run Queue placeholder. Queue controls will appear here.
@@ -541,6 +604,12 @@ function BottomDock({
         )}
         {activeTab === 'Network' && isEnabledLocal('NETWORK_PANEL') && <NetworkPanel runId={runId} />}
         {activeTab === 'Issues' && <IssuesPanel onCountChange={setIssuesCount} />}
+        {/* NEW: Graph content (feature flagged) */}
+        {activeTab === 'Graph' && isEnabledLocal('MISSION_GRAPH') && (
+          <div className="h-full">
+            <GraphPanel runId={runId} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -727,6 +796,9 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
   // Robust local agents fetch + UI
   const [agents, setAgents] = React.useState<any[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
+  const [runningAgents, setRunningAgents] = React.useState<Set<string>>(new Set());
+  const [scheduleError, setScheduleError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let mounted = true;
@@ -783,7 +855,17 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
           return;
         }
 
-        if (mounted) setAgents(arr);
+        // Filter to only show our two cogpacks if they exist
+        const filteredAgents = arr.filter((agent: any) =>
+          agent?.id === 'psyche-sim' || agent?.id === 'ctm-cogpack' ||
+          agent?.name?.toLowerCase().includes('psyche') ||
+          agent?.name?.toLowerCase().includes('ctm')
+        );
+        
+        // If no filtered agents, use all agents
+        const finalAgents = filteredAgents.length > 0 ? filteredAgents : arr;
+        
+        if (mounted) setAgents(finalAgents);
       } catch (e: any) {
         if (!mounted) return;
         const msg = e?.message ?? String(e);
@@ -798,13 +880,91 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
     };
   }, []);
 
-  if (error) {
-    return <div className="px-2 text-red-500 text-xs">Error loading CogPaks: {error}</div>;
-  }
+  const scheduleAgent = async (agentId: string) => {
+    if (runningAgents.has(agentId)) {
+      console.log(`Agent ${agentId} is already running`);
+      return;
+    }
 
-  if (agents.length === 0) {
-    return <div className="px-2 text-gray-500 text-xs">No CogPaks found.</div>;
-  }
+    // Find the agent manifest from our loaded agents
+    const agent = agents.find(a => a?.id === agentId);
+    if (!agent) {
+      setScheduleError(`Agent ${agentId} not found`);
+      return;
+    }
+
+    setScheduleError(null);
+    setRunningAgents(prev => new Set(prev).add(agentId));
+    
+    try {
+      const base = getOrchestratorBaseUrl().replace(/\/+$/, '');
+      
+      // Prepare the request with the full agent manifest
+      const requestBody = {
+        agent_manifest: {
+          id: agent.id,
+          version: agent.version,
+          image: agent.image,
+          description: agent.description,
+          runtime: agent.runtime,
+          longRunning: agent.longRunning || false,
+          ui: agent.ui,
+          inputs: agent.inputs || [],
+          outputs: agent.outputs || []
+        },
+        inputs: {
+          spec: {
+            prompt: "Run from UI sidebar",
+            mode: "stream",
+            agent_id: agentId
+          },
+          context: {
+            source: 'frontend-sidebar',
+            timestamp: new Date().toISOString()
+          }
+        },
+        execution_id: `ui-${agentId}-${Date.now()}`,
+        skip_validation: true
+      };
+
+      console.log(`Scheduling agent ${agentId} with manifest:`, requestBody);
+      
+      const response = await fetch(`${base}/api/v1/agents/schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.detail || `Failed to schedule agent: ${response.status}`);
+      }
+
+      console.log(`Agent ${agentId} scheduled successfully:`, data);
+      
+      // Simulate agent completion after 10 seconds
+      setTimeout(() => {
+        setRunningAgents(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(agentId);
+          return newSet;
+        });
+      }, 10000);
+    } catch (error) {
+      console.error(`Failed to schedule agent ${agentId}:`, error);
+      setScheduleError(`Failed to schedule ${agentId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Remove from running set on error
+      setRunningAgents(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(agentId);
+        return newSet;
+      });
+    }
+  };
 
   const openRemoteUi = (remoteEntry: string | undefined, title: string) => {
     if (!remoteEntry) return;
@@ -826,42 +986,92 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
     }
   };
 
+  if (error) {
+    return <div className="px-2 text-red-500 text-xs">Error loading CogPaks: {error}</div>;
+  }
+
+  if (agents.length === 0) {
+    return <div className="px-2 text-gray-500 text-xs">No CogPaks found.</div>;
+  }
+
   return (
-    <ul className="space-y-1 text-gray-600 dark:text-gray-300">
-      {agents.map((agent) => {
-        const title = (agent?.ui?.title as string) || agent?.name || agent?.id || 'unknown-cogpak';
-        const remote = agent?.ui?.remoteEntry;
-        const key = agent?.manifest_path || agent?.id || title;
-        return (
-          <li
-            key={key}
-            className="flex items-center justify-between px-2 py-1 rounded hover:bg-muted cursor-pointer"
-            title={agent?.description || ''}
-            onClick={() => onSelectNetwork?.()}
-          >
-            <span className="truncate">{title}</span>
-            {remote ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openRemoteUi(remote, title);
-                }}
-                className="ml-2 text-[11px] px-2 py-0.5 rounded"
-                style={{
-                  backgroundColor: allowRemoteUi ? '#2563eb' : 'rgba(148,163,184,0.4)',
-                  color: allowRemoteUi ? '#fff' : 'rgba(226,232,240,0.8)',
-                  cursor: allowRemoteUi ? 'pointer' : 'not-allowed',
-                }}
-                disabled={!allowRemoteUi}
-                aria-label={`Open ${title} UI`}
-              >
-                UI
-              </button>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+    <div>
+      {scheduleError && (
+        <div className="px-2 mb-2 text-red-500 text-xs">{scheduleError}</div>
+      )}
+      <ul className="space-y-1 text-gray-600 dark:text-gray-300">
+        {agents.map((agent) => {
+          const agentId = agent?.id || agent?.name || 'unknown';
+          const title = (agent?.ui?.title as string) || agent?.name || agent?.id || 'unknown-cogpak';
+          const remote = agent?.ui?.remoteEntry;
+          const key = agent?.manifest_path || agent?.id || title;
+          const isRunning = runningAgents.has(agentId);
+          const isSelected = selectedAgent === agentId;
+          
+          return (
+            <li
+              key={key}
+              className={`flex flex-col px-2 py-1 rounded cursor-pointer transition-colors ${
+                isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-muted'
+              } ${isRunning ? 'animate-pulse' : ''}`}
+              title={agent?.description || ''}
+              onClick={() => setSelectedAgent(isSelected ? null : agentId)}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <span className={`text-xs ${isRunning ? 'text-amber-600' : ''}`}>
+                    {isRunning ? '🔄' : '●'}
+                  </span>
+                  <span className="truncate">{title}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {remote && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openRemoteUi(remote, title);
+                      }}
+                      className="text-[11px] px-2 py-0.5 rounded"
+                      style={{
+                        backgroundColor: allowRemoteUi ? '#2563eb' : 'rgba(148,163,184,0.4)',
+                        color: allowRemoteUi ? '#fff' : 'rgba(226,232,240,0.8)',
+                        cursor: allowRemoteUi ? 'pointer' : 'not-allowed',
+                      }}
+                      disabled={!allowRemoteUi}
+                      aria-label={`Open ${title} UI`}
+                    >
+                      UI
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              {isSelected && (
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      scheduleAgent(agentId);
+                    }}
+                    disabled={isRunning}
+                    className={`text-[11px] px-3 py-1 rounded transition-colors ${
+                      isRunning
+                        ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
+                  >
+                    {isRunning ? 'Running...' : '▶ Run'}
+                  </button>
+                  {isRunning && (
+                    <span className="text-[10px] text-amber-600">Agent is running...</span>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

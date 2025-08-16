@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import datetime
 
 import redis.asyncio as redis
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -123,6 +124,52 @@ class ConnectionManager:
                 logger.error(f"Failed to publish streaming event to Redis: {e}")
 
 manager = ConnectionManager()
+
+@router.websocket("/ws")
+async def general_websocket_endpoint(websocket: WebSocket):
+    """General WebSocket endpoint for real-time event streaming."""
+    await manager.connect(websocket)
+    
+    # Send initial connection confirmation
+    await websocket.send_text(json.dumps({
+        "type": "connected",
+        "timestamp": datetime.now().isoformat()
+    }))
+    
+    try:
+        while True:
+            # Handle incoming messages from clients
+            message = await websocket.receive_text()
+            
+            try:
+                data = json.loads(message)
+                msg_type = data.get("type")
+                
+                # Handle different message types
+                if msg_type == "ping":
+                    await websocket.send_text(json.dumps({
+                        "type": "pong",
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                elif msg_type == "test":
+                    # Echo test messages back
+                    await websocket.send_text(json.dumps({
+                        "type": "test_response",
+                        "data": data.get("data"),
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                # The connection will receive broadcasts automatically
+                
+            except json.JSONDecodeError:
+                # Handle non-JSON messages
+                logger.warning(f"Received non-JSON message: {message}")
+                
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        logger.info("WebSocket client disconnected from /ws endpoint")
+    except Exception as e:
+        logger.error(f"WebSocket error on /ws endpoint: {e}")
+        manager.disconnect(websocket)
 
 @router.websocket("/ws/orchestrator-events")
 async def websocket_endpoint(websocket: WebSocket):

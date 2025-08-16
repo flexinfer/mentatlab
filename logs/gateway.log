@@ -3,16 +3,90 @@ WARNING: The following problems are found in your project:
 Run pdm fix to fix all or pdm fix <name> to fix individual problem.
 INFO:     Will watch for changes in these directories: ['/Users/cblevins/workspace/mentatlab/services/gateway']
 INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
-INFO:     Started reloader process [2868] using StatReload
-INFO:     Started server process [2870]
+INFO:     Started reloader process [82815] using StatReload
+INFO:     Started server process [82817]
 INFO:     Waiting for application startup.
 Error listening to Redis: pubsub connection not set: did you forget to call subscribe() or psubscribe()?
 INFO:     Application startup complete.
-INFO:     127.0.0.1:51512 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49871 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49900 - "POST /api/v1/streams/init HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49901 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49902 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49903 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49904 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49905 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49906 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49907 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49908 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49909 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49910 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49911 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49912 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49913 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49914 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49915 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49916 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49917 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49918 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49919 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49920 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49921 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49922 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49923 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49924 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49925 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49926 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49927 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49928 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49929 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49930 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49931 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49932 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49933 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49934 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49935 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49936 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49937 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49938 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49939 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49940 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49941 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49942 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49943 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49944 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49945 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49946 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49947 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49948 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49949 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49950 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49951 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49952 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49953 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49954 - "POST /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3/publish HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49955 - "DELETE /api/v1/streams/stream_4ae15074c0c340d194616235a949c7e3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49973 - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:49974 - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:49975 - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     connection closed
+INFO:     127.0.0.1:49980 - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:49981 - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:49982 - "WebSocket /ws" [accepted]
+INFO:     connection open
 INFO:     Shutting down
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
+INFO:     connection closed
 INFO:     Waiting for application shutdown.
 Error listening to Redis: Connection closed by server.
 Error closing pubsub connection: Connection closed by server.
 INFO:     Application shutdown complete.
-INFO:     Finished server process [2870]
-INFO:     Stopping reloader process [2868]
+INFO:     Finished server process [82817]
+INFO:     Stopping reloader process [82815]

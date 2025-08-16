@@ -32,7 +32,7 @@ import { MediaType, MediaChunk, MediaReference } from '../types/media';
 import { useStreamingStore, type StreamingState } from '../store/index'; // Use the Map-based streaming store with exported StreamingState
 import { StreamMessageHandler, ConnectionStateHandler } from '../types/streaming'; // Import from types/streaming
 // ADD: Feature flags and Mission Control flight recorder
-import { FeatureFlags } from '../config/features';
+import { FeatureFlags, isCloudEventsEnabled, isStreamWorkerEnabled } from '../config/features';
 import { flightRecorder } from './mission-control/services';
 
 interface ReconnectionConfig {
@@ -79,13 +79,23 @@ class EnhancedStream {
   // ADD: Simulation timer (fallback mode when transports are unavailable)
   private simTimerId: number | null = null;
 
+  // ADD: Workerized parsing (opt-in via VITE_FF_STREAM_WORKER); defaults to disabled
+  private parserWorker: Worker | null = null;
+  private useWorkerParsing: boolean = false;
+
   constructor(
     public readonly streamId: string,
     private wsUrl: string,
     private sseUrl: string,
     private config: StreamingConfig = DEFAULT_STREAMING_CONFIG,
     private reconnectionConfig: ReconnectionConfig = DEFAULT_RECONNECTION_CONFIG
-  ) {}
+  ) {
+    // ADD: Initialize workerized parsing only when enabled. Safe default is false.
+    this.useWorkerParsing = isStreamWorkerEnabled();
+    if (this.useWorkerParsing) {
+      this.initParserWorker();
+    }
+  }
 
   /**
    * Connect to the stream using WebSocket with SSE fallback
@@ -156,8 +166,13 @@ class EnhancedStream {
 
         this.ws.onmessage = (event) => {
           this.stats.messagesReceived++;
-          this.stats.bytesReceived += event.data.byteLength || event.data.length;
-          this.handleMessage(event.data);
+          this.stats.bytesReceived += (event.data?.byteLength ?? event.data?.length ?? 0);
+          // ADD: When worker parsing is enabled, forward raw frame to worker; otherwise keep existing logic
+          if (this.useWorkerParsing && this.parserWorker) {
+            this.forwardToWorker(event.data);
+          } else {
+            this.handleMessage(event.data);
+          }
         };
 
         this.ws.onclose = (event) => {
@@ -239,7 +254,12 @@ class EnhancedStream {
         this.sse.onmessage = (event) => {
           this.stats.messagesReceived++;
           this.stats.bytesReceived += event.data.length;
-          this.handleMessage(event.data);
+          // ADD: Workerized parsing opt-in path for SSE frames
+          if (this.useWorkerParsing && this.parserWorker) {
+            this.forwardToWorker(event.data);
+          } else {
+            this.handleMessage(event.data);
+          }
         };
 
         this.sse.onerror = (errorEvent: Event) => { // Cast error to Event
@@ -280,7 +300,7 @@ class EnhancedStream {
   /**
    * Handle incoming messages
    */
-  private handleMessage(data: string | ArrayBuffer): void {
+  private handleMessage(data: string | ArrayBuffer, normalized?: any): void {
     try {
       let message: StreamingMessage;
       
@@ -293,17 +313,22 @@ class EnhancedStream {
         message = JSON.parse(text);
       }
 
+      // ADD: Attach normalized structure from worker if available (non-breaking extra field)
+      if (normalized) {
+        (message as any).__normalized = normalized;
+      }
+
       // Update sequence tracking
-      if (message.sequence !== undefined) {
-        if (message.sequence > this.lastSequenceNumber + 1) {
+      if ((message as any).sequence !== undefined) {
+        if ((message as any).sequence > this.lastSequenceNumber + 1) {
           console.warn('[EnhancedStream] Message sequence gap detected:', 
-            this.lastSequenceNumber, '->', message.sequence);
+            this.lastSequenceNumber, '->', (message as any).sequence);
         }
-        this.lastSequenceNumber = message.sequence;
+        this.lastSequenceNumber = (message as any).sequence;
       }
 
       // Handle acknowledgment if required
-      if (message.id && this.shouldAcknowledge(message)) {
+      if ((message as any).id && this.shouldAcknowledge(message)) {
         this.sendAcknowledgment(message);
       }
 
@@ -837,6 +862,91 @@ class EnhancedStream {
       window.clearInterval(this.simTimerId);
       this.simTimerId = null;
       console.log('[EnhancedStream] Simulation fallback stopped.');
+    }
+  }
+
+  // ------------------------
+  // Workerized parsing helpers (opt-in, safe defaults are off)
+  // ------------------------
+
+  /**
+   * Initialize the parsing Web Worker and send initial configuration.
+   * Config is driven by feature flags:
+   * - VITE_FF_STREAM_WORKER: enables worker path
+   * - VITE_FF_CE_ENVELOPE: worker unwraps CloudEvents envelopes when true
+   */
+  private initParserWorker(): void {
+    try {
+      this.parserWorker = new Worker(new URL('./streamingWorker.ts', import.meta.url), { type: 'module' });
+      // Send initial config to worker
+      this.parserWorker.postMessage({
+        type: 'config',
+        cloudevents: isCloudEventsEnabled(),
+      });
+      this.parserWorker.onerror = (err: any) => {
+        console.error('[EnhancedStream] Parser worker error:', err);
+        this.teardownWorker('error');
+        // Fallback to main-thread parsing on worker failure
+        this.useWorkerParsing = false;
+      };
+      console.log('[EnhancedStream] Parser worker initialized (flag-gated).');
+    } catch (e) {
+      console.warn('[EnhancedStream] Failed to initialize parser worker; falling back to main-thread parsing.', e);
+      this.parserWorker = null;
+      this.useWorkerParsing = false;
+    }
+  }
+
+  /**
+   * Terminate and clear the worker instance.
+   */
+  private teardownWorker(_reason?: string): void {
+    try {
+      // @ts-ignore terminate may not exist in some worker stubs
+      this.parserWorker?.terminate?.();
+    } catch {}
+    this.parserWorker = null;
+  }
+
+  /**
+   * Forward a raw WS/SSE frame to the worker for normalization.
+   * If the worker fails or times out, falls back to main-thread parsing.
+   */
+  private forwardToWorker(data: string | ArrayBuffer): void {
+    if (!this.parserWorker) {
+      this.handleMessage(data);
+      return;
+    }
+
+    const payload = typeof data === 'string' ? data : new TextDecoder().decode(data);
+    const reqId = uuidv4();
+
+    const onMsg = (evt: MessageEvent) => {
+      const msg = (evt as any).data;
+      if (msg && msg.__requestId === reqId) {
+        try { this.parserWorker?.removeEventListener('message', onMsg as any); } catch {}
+        window.clearTimeout(timerId);
+        const normalized = msg.payload; // { data, envelope?, meta }
+        // Continue delivery through existing pathways, non-breaking
+        this.handleMessage(payload, normalized);
+      }
+    };
+
+    // Robust timeout to avoid UI stalls
+    const timerId = window.setTimeout(() => {
+      try { this.parserWorker?.removeEventListener('message', onMsg as any); } catch {}
+      // Fallback: parse on main thread
+      this.handleMessage(payload);
+    }, 500);
+
+    this.parserWorker.addEventListener('message', onMsg as any);
+    try {
+      this.parserWorker.postMessage({ type: 'parse', __requestId: reqId, payload });
+    } catch (e) {
+      window.clearTimeout(timerId);
+      try { this.parserWorker?.removeEventListener('message', onMsg as any); } catch {}
+      // Fallback: parse on main thread
+      this.handleMessage(payload);
     }
   }
 }
