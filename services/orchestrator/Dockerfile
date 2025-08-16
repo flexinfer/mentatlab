@@ -1,51 +1,41 @@
-FROM node:20-alpine AS builder
+# Orchestrator (Python FastAPI) - production-like runtime
+# Note: Using Python 3.13 to satisfy services/orchestrator/pyproject.toml requires-python constraint.
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# System deps (curl for healthchecks)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates build-essential \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Install build tools (some projects require these for native modules)
-RUN apk add --no-cache python3 make g++ || true
+# Copy only the services tree to preserve import paths like services.gateway.app.models
+COPY services /app/services
 
-# Copy package files and install dependencies
-COPY services/orchestrator/package*.json ./
-RUN npm ci --prefer-offline --no-audit
-
-# Copy tsconfig and source for TypeScript build
-COPY services/orchestrator/tsconfig.json ./
-COPY services/orchestrator/src ./src
-
-# Optional: copy repo-level schemas into builder if TypeScript reads them during build
-# (keeps parity with runtime layout — runtime stage will also receive schemas)
-COPY schemas ./schemas
-# Also copy schemas into the service folder so TypeScript imports that reference service-local schemas resolve
-# e.g. services/orchestrator/src/validation can import ../../schemas/... after this copy.
-COPY schemas /app/services/orchestrator/schemas
-# Also make schemas available at absolute /schemas so relative imports in source (e.g. "../../../../schemas/...") still resolve.
-COPY schemas /schemas
-
-# Build the project into /app/dist
-RUN npm run build
-
-FROM node:20-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-
-# Install runtime utilities used by HEALTHCHECK / compose healthchecks
-RUN apk add --no-cache curl wget
-
-# Copy production package files and install only production deps
-COPY services/orchestrator/package*.json ./
-RUN npm ci --omit=dev --prefer-offline --no-audit
-
-# Copy built artifacts from the builder stage
-COPY --from=builder /app/dist ./dist
-
-# Ensure repo-level JSON schemas are available at runtime so compiled JS imports resolve:
-# Place them at /app/schemas so relative imports from dist (../../../schemas/...) resolve correctly.
-COPY schemas /app/schemas
-# Also provide them at absolute /schemas for any runtime modules that import via filesystem absolute paths
-COPY schemas /schemas
+# Install Python dependencies declared in services/orchestrator/pyproject.toml
+# Installing directly via pip for deterministic container runtime (no dev extras)
+RUN pip install --no-cache-dir --upgrade pip \
+  && pip install --no-cache-dir \
+     uvicorn \
+     fastapi \
+     "pydantic>=2.0" \
+     pytest \
+     httpx \
+     "kubernetes>=33.1.0" \
+     "boto3>=1.26.0" \
+     "botocore>=1.29.0" \
+     "jsonschema>=4.0.0" \
+     opentelemetry-api \
+     opentelemetry-sdk \
+     opentelemetry-instrumentation-fastapi \
+     opentelemetry-instrumentation-starlette \
+     opentelemetry-exporter-otlp
 
 EXPOSE 7070
+ENV PORT=7070
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD curl -fsS http://localhost:7070/ready || exit 1
-
-CMD ["node", "dist/server.js"]
+# Run the FastAPI app
+CMD ["uvicorn", "services.orchestrator.app.main:app", "--host", "0.0.0.0", "--port", "7070"]

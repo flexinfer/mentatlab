@@ -5,11 +5,8 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "PING"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -19,14 +16,51 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     environment:
-      - PORT=7070
-      - REDIS_URL=redis://redis:6379
+      - ORCH_RUNSTORE=${ORCH_RUNSTORE:-memory}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      redis:
+        condition: service_healthy
     ports:
       - "7070:7070"
-    depends_on:
-      - redis
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:7070/ready >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:7070/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    environment:
+      - ORCHESTRATOR_BASE_URL=http://orchestrator:7070
+      - PORT=8080
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build:
+      context: services/frontend
+      dockerfile: Dockerfile
+    environment:
+      - VITE_GATEWAY_BASE_URL=http://localhost:8080
+      - PORT=5173
+    depends_on:
+      gateway:
+        condition: service_healthy
+    ports:
+      - "5173:5173"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5173 || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 5

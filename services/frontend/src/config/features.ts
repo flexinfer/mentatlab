@@ -22,4 +22,35 @@ export const FeatureFlags = {
   NETWORK_PANEL: (env.VITE_FF_NETWORK_PANEL ?? (env.DEV ? 'true' : 'true')) === 'true',
   // Allow loading remote CogPak UI scripts (can bring their own WebGL). Default disabled for stability.
   ALLOW_REMOTE_COGPAK_UI: (env.VITE_FF_ALLOW_REMOTE_COGPAK_UI ?? 'false') === 'true',
+  // NEW: Mission Control Graph (React Flow DAG) – default on in dev
+  MISSION_GRAPH: (env.VITE_FF_MISSION_GRAPH ?? (env.DEV ? 'true' : 'false')) === 'true',
+  // NEW: Mission Control Console – default on in dev
+  MISSION_CONSOLE: (env.VITE_FF_MISSION_CONSOLE ?? (env.DEV ? 'true' : 'false')) === 'true',
 } as const;
+
+/**
+ * Getter: Whether CloudEvents envelopes are expected from gateway.
+ * Backed by VITE_FF_CE_ENVELOPE; defaults to false when unset/invalid.
+ */
+export function isCloudEventsEnabled(): boolean {
+  const v = env?.VITE_FF_CE_ENVELOPE ?? 'false';
+  return String(v).toLowerCase() === 'true';
+}
+
+/**
+ * Getter: Whether to use a Web Worker to parse inbound streaming messages.
+ * Backed by VITE_FF_STREAM_WORKER; defaults to false when unset/invalid.
+ */
+export function isStreamWorkerEnabled(): boolean {
+  const v = env?.VITE_FF_STREAM_WORKER ?? 'false';
+  return String(v).toLowerCase() === 'true';
+}
+
+/**
+ * Getter: Placeholder for an alternative fast store toggling (no-op here).
+ * Backed by VITE_FF_FAST_STORE; defaults to false when unset/invalid.
+ */
+export function isFastStoreEnabled(): boolean {
+  const v = env?.VITE_FF_FAST_STORE ?? 'false';
+  return String(v).toLowerCase() === 'true';
+}

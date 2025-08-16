@@ -118,14 +118,20 @@ export class StreamingService {
 }
 
 // Export a singleton instance for convenience
-// Derive WS/SSE endpoints from orchestrator base when env overrides not provided
-const httpBase = (import.meta.env.VITE_ORCHESTRATOR_URL as string) || getOrchestratorBaseUrl();
-const normalizedHttp = String(httpBase || '').replace(/\/+$/, '');
-const wsBase = (import.meta.env.VITE_WS_URL as string) || normalizedHttp.replace(/^http/, 'ws');
+// Prefer Gateway URL for streaming transports (VITE_GATEWAY_URL). Fall back to orchestrator if not set.
+const gatewayBase = (import.meta.env.VITE_GATEWAY_URL as string)
+  || (import.meta.env.VITE_ORCHESTRATOR_URL as string)
+  || getOrchestratorBaseUrl();
+const normalizedGateway = String(gatewayBase || '').replace(/\/+$/, '');
+const wsBase = (import.meta.env.VITE_WS_URL as string) || normalizedGateway.replace(/^http/, 'ws');
+
+// Default endpoints point at Gateway streaming paths for local-dev.
 export const streamingService = new StreamingService(
   'default-stream-id',
-  `${wsBase}/ws`,
-  `${normalizedHttp}/ws/sse`
+  // WebSocket endpoint for a default stream id (frontend will create per-stream clients as needed)
+  `${wsBase}/ws/streams/default-stream-id`,
+  // SSE endpoint for a default stream id
+  `${normalizedGateway}/api/v1/streams/default-stream-id/sse`
 );
 
 export default streamingService;

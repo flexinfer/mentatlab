@@ -251,7 +251,21 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
         // React Flow expects node ids and optional handle ids separately.
         // Our graph edges are "nodeId.handleId" (e.g., "agentA.out" -> "agentB.in").
         const parseEndpoint = (endpoint: string): { nodeId: string; handleId?: string } => {
-          const [nodeId, handleId] = endpoint.split('.');
+          // Defensive parsing: some manifests may contain literal strings "undefined" or "null"
+          // as the handle portion. Normalize those to undefined so React Flow doesn't try to
+          // use an invalid handle id.
+          if (typeof endpoint !== 'string' || endpoint.trim() === '') {
+            return { nodeId: '', handleId: undefined };
+          }
+          const parts = endpoint.split('.');
+          const nodeId = parts[0] || '';
+          let handleId: string | undefined = parts.length > 1 ? parts.slice(1).join('.') : undefined;
+          if (handleId !== undefined) {
+            handleId = handleId.trim();
+            if (!handleId || handleId === 'undefined' || handleId === 'null') {
+              handleId = undefined;
+            }
+          }
           return { nodeId, handleId };
         };
 
@@ -292,6 +306,151 @@ const FlowCanvas: React.FC = () => { // Removed onNodeSelect prop
 
     fetchFlow();
   }, [setNodes, setEdges]);
+
+  // Wire live stream sessions from the Gateway into the Flow view.
+  // This is a best-effort mapping:
+  //  - Queries gateway: GET {GATEWAY_BASE}/api/v1/streams
+  //  - Opens WS to each session.ws_url and listens for stream messages
+  //  - Maps message kinds (node:exec, edge:transmit, tool:call, stream_end) to node/edge updates
+  useEffect(() => {
+    if (!FeatureFlags.NEW_STREAMING) return;
+
+    const env = (import.meta as any)?.env || {};
+    const gatewayBase = (env.VITE_GATEWAY_URL as string) || 'http://127.0.0.1:8080';
+    const gatewayHost = gatewayBase.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const gatewayProto = gatewayBase.startsWith('https') ? 'wss' : 'ws';
+
+    const controllers: { abort: () => void }[] = [];
+    const wsMap = new Map<string, WebSocket>();
+
+    const normalizePayload = (raw: any): any => {
+      // Accept CloudEvents envelope or raw payloads
+      if (!raw) return raw;
+      if (raw.data && typeof raw.data === 'object') {
+        // Some envelopes use data.data (double-wrapped); prefer inner-most 'data'
+        if (raw.data.data && typeof raw.data.data === 'object') return raw.data.data;
+        return raw.data;
+      }
+      return raw;
+    };
+
+    const handleStreamMessage = (parsed: any) => {
+      try {
+        const payload = normalizePayload(parsed);
+        const kind = ((payload?.kind || payload?.type || '') + '').toLowerCase();
+
+        // Normalize node identifier heuristics:
+        // prefer payload.model.component (agents often set model.component to the node id),
+        // then payload.node, payload.node_id, payload.id, payload.data.node, payload.data.id.
+        const nodeId =
+          (payload?.model && payload.model.component) ||
+          payload?.node ||
+          payload?.node_id ||
+          payload?.id ||
+          (payload?.data && (payload.data.node || payload.data.id));
+
+        // node execution: mark node running briefly
+        if (kind.includes('node:exec') || kind.includes('node_exec') || kind.includes('nodeexec')) {
+          if (nodeId) {
+            updateNodes((currentNodes) =>
+              currentNodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, status: 'running' } } : n))
+            );
+            // clear to completed after short delay
+            setTimeout(() => {
+              updateNodes((currentNodes) =>
+                currentNodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, status: 'completed' } } : n))
+              );
+            }, 1200);
+          }
+        }
+
+        // edge transmit: animate matching edges
+        if (kind.includes('edge:transmit') || kind.includes('edge_transmit') || kind.includes('edgetransmit')) {
+          const from = payload.from || payload.source;
+          const to = payload.to || payload.target;
+          if (from && to) {
+            setEdges(edges.map((e) => (e.source === from && e.target === to ? { ...e, animated: true, style: { ...(e.style || {}), stroke: '#3b82f6' } } : e)));
+            // stop animation shortly after
+            setTimeout(() => {
+              setEdges(edges.map((e) => (e.source === from && e.target === to ? { ...e, animated: false } : e)));
+            }, 1200);
+          }
+        }
+
+        // tool calls: mark node as running and log tokens
+        if (kind.includes('tool:call') || kind.includes('tool_call') || kind.includes('toolcall')) {
+          const node = payload.node || payload.id || payload.node_id;
+          if (node) {
+            updateNodes((currentNodes) =>
+              currentNodes.map((n) => (n.id === node ? { ...n, data: { ...n.data, status: 'running' } } : n))
+            );
+            setTimeout(() => {
+              updateNodes((currentNodes) =>
+                currentNodes.map((n) => (n.id === node ? { ...n, data: { ...n.data, status: 'completed' } } : n))
+              );
+            }, 800);
+          }
+        }
+
+        // stream_end -> mark all nodes completed
+        if (((payload?.type || '') + '').toLowerCase().includes('stream_end') || ((parsed?.type || '') + '').toLowerCase().includes('stream_end')) {
+          updateNodes((currentNodes) => currentNodes.map((n) => ({ ...n, data: { ...n.data, status: 'completed' } })));
+        }
+      } catch (err) {
+        // tolerate errors
+      }
+    };
+
+    const init = async () => {
+      try {
+        const controller = new AbortController();
+        controllers.push({ abort: () => controller.abort() });
+        const resp = await fetch(`${gatewayBase}/api/v1/streams`, { signal: controller.signal });
+        if (!resp.ok) return;
+        const body = await resp.json();
+        const sessions = body.streams || body || [];
+        for (const s of sessions) {
+          try {
+            const wsPath = s.ws_url && s.ws_url.startsWith('/') ? s.ws_url : `/${s.ws_url || ''}`;
+            const wsUrl = `${gatewayProto}://${gatewayHost}${wsPath}`;
+            const ws = new WebSocket(wsUrl);
+            wsMap.set(s.stream_id, ws);
+            ws.onmessage = (ev) => {
+              try {
+                const parsed = JSON.parse(ev.data);
+                handleStreamMessage(parsed);
+              } catch (e) {
+                // non-json frames: ignore
+              }
+            };
+            ws.onopen = () => {
+              console.log('[FlowCanvas] Subscribed to gateway stream', s.stream_id);
+            };
+            ws.onclose = () => {
+              wsMap.delete(s.stream_id);
+            };
+          } catch (e) {
+            // ignore per-stream errors
+          }
+        }
+      } catch (e) {
+        // ignore discovery errors
+      }
+    };
+
+    init();
+
+    return () => {
+      // cleanup
+      controllers.forEach((c) => c.abort());
+      wsMap.forEach((w) => {
+        try {
+          w.close();
+        } catch {}
+      });
+      wsMap.clear();
+    };
+  }, [setEdges, updateNodes]);
 
   useEffect(() => {
     // Only wire streaming when enabled and WS connections allowed

@@ -8,6 +8,7 @@ agent data streaming with multimodal support.
 import asyncio
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Any, Union
@@ -17,17 +18,64 @@ import redis.asyncio as redis
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+# NEW: httpx for SSE proxy
+import httpx
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # Configuration
-REDIS_URL = "redis://localhost"
+REDIS_URL = os.getenv("REDIS_URL", "").strip()  # set to "redis://host:port" to enable
 STREAM_REGISTRY_KEY = "mentatlab:streams"
 STREAM_EVENTS_PREFIX = "mentatlab:stream:"
 MAX_BUFFER_SIZE = 1000
 HEARTBEAT_INTERVAL = 30  # seconds
+
+# CloudEvents feature flags (defaults safe/off)
+CE_ENABLED = os.getenv("GATEWAY_CE_ENABLED", "false").lower() == "true"
+CE_SOURCE = os.getenv("GATEWAY_CE_SOURCE", "/mentatlab/gateway")
+CE_SPECVERSION = os.getenv("GATEWAY_CE_VERSION", "1.0")
+CE_DEFAULT_TYPE = os.getenv("GATEWAY_CE_DEFAULT_TYPE", "stream.data")
+# Optional response header name (e.g., "X-CloudEvents-Enabled"); emit only for SSE responses
+CE_RESPONSE_HEADER = (os.getenv("GATEWAY_CE_RESPONSE_HEADER") or "").strip() or None
+# Time provider currently only supports "system" (RFC3339 via system clock); reserved for future extensibility
+CE_TIME_PROVIDER = os.getenv("GATEWAY_CE_TIME_PROVIDER", "system")
+
+def wrap_cloudevent(payload: dict, event_type: Optional[str], source: str, specversion: str) -> dict:
+    """
+    Minimal CloudEvents v1.0 wrapper.
+    Non-destructive: original payload is placed under 'data' unchanged.
+    """
+    return {
+        "specversion": specversion,
+        "id": str(uuid.uuid4()),
+        "source": source,
+        "type": event_type or CE_DEFAULT_TYPE,
+        "time": datetime.now(timezone.utc).isoformat(),
+        "datacontenttype": "application/json",
+        "data": payload,
+    }
+
+def derive_event_type(payload: dict, default_type: str) -> str:
+    """
+    Derive event type from payload keys ('type' or 'event_type') non-destructively.
+    Falls back to default_type when not present.
+    """
+    if not isinstance(payload, dict):
+        return default_type
+    for key in ("type", "event_type"):
+        if key in payload:
+            val = payload.get(key)
+            if val is None:
+                continue
+            # Handle Enum and str; otherwise stringify
+            if isinstance(val, Enum):
+                return str(val.value)
+            if isinstance(val, str):
+                return val
+            return str(val)
+    return default_type
 
 
 class StreamEventType(str, Enum):
@@ -84,6 +132,14 @@ class StreamingConnectionManager:
         
     async def initialize(self):
         """Initialize Redis connection and start background tasks."""
+        # If REDIS_URL is not configured, skip Redis initialization (local-dev)
+        if not REDIS_URL:
+            logger.info("REDIS_URL not set; running without Redis persistence (in-memory only)")
+            self.redis_client = None
+            # Start heartbeat task even when Redis is disabled
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+            return
+        
         try:
             # Create Redis connection pool for better concurrency handling
             self.redis_client = redis.from_url(
@@ -202,7 +258,13 @@ class StreamingConnectionManager:
             websocket = self.active_connections[connection_id]
             for message in self.message_buffers[stream_id]:
                 try:
-                    await websocket.send_text(message.model_dump_json())
+                    if CE_ENABLED:
+                        payload_obj = message.model_dump()
+                        ce_type = derive_event_type(payload_obj, CE_DEFAULT_TYPE)
+                        envelope = wrap_cloudevent(payload_obj, ce_type, CE_SOURCE, CE_SPECVERSION)
+                        await websocket.send_text(json.dumps(envelope))
+                    else:
+                        await websocket.send_text(message.model_dump_json())
                 except Exception as e:
                     logger.error(f"Failed to send buffered message: {e}")
         
@@ -244,14 +306,20 @@ class StreamingConnectionManager:
                 buffer.pop(0)  # Remove oldest message
         
         # Send to all subscribers
-        message_json = message.model_dump_json()
+        if CE_ENABLED:
+            payload_obj = message.model_dump()
+            ce_type = derive_event_type(payload_obj, CE_DEFAULT_TYPE)
+            envelope = wrap_cloudevent(payload_obj, ce_type, CE_SOURCE, CE_SPECVERSION)
+            message_json_to_send = json.dumps(envelope)
+        else:
+            message_json_to_send = message.model_dump_json()
         failed_connections = []
         
         for connection_id in self.stream_subscriptions[stream_id]:
             if connection_id in self.active_connections:
                 websocket = self.active_connections[connection_id]
                 try:
-                    await websocket.send_text(message_json)
+                    await websocket.send_text(message_json_to_send)
                 except Exception as e:
                     logger.error(f"Failed to send message to {connection_id}: {e}")
                     failed_connections.append(connection_id)
@@ -535,7 +603,18 @@ async def sse_stream(stream_id: str):
         """Generate SSE events for the stream."""
         try:
             # Send initial connection event
-            yield f"event: stream_start\ndata: {json.dumps({'stream_id': stream_id})}\n\n"
+            _start_payload = {"stream_id": stream_id}
+            if CE_ENABLED:
+                _start_envelope = wrap_cloudevent(
+                    _start_payload,
+                    derive_event_type(_start_payload, CE_DEFAULT_TYPE),
+                    CE_SOURCE,
+                    CE_SPECVERSION
+                )
+                _start_data = json.dumps(_start_envelope)
+            else:
+                _start_data = json.dumps(_start_payload)
+            yield f"event: stream_start\ndata: {_start_data}\n\n"
             
             # Create a temporary subscription for SSE
             sse_connection_id = f"sse_{uuid.uuid4().hex[:8]}"
@@ -554,18 +633,35 @@ async def sse_stream(stream_id: str):
                     
                     for message in new_messages:
                         event_type = message.type.value
-                        data = message.model_dump()
-                        yield f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+                        payload_obj = message.model_dump()
+                        if CE_ENABLED:
+                            ce_type = derive_event_type(payload_obj, CE_DEFAULT_TYPE)
+                            envelope = wrap_cloudevent(payload_obj, ce_type, CE_SOURCE, CE_SPECVERSION)
+                            data_json = json.dumps(envelope)
+                        else:
+                            data_json = json.dumps(payload_obj)
+                        yield f"event: {event_type}\ndata: {data_json}\n\n"
                     
                     last_message_count = len(buffer)
                 
                 # Check if stream ended
                 if session.status == StreamStatus.COMPLETED:
-                    yield f"event: stream_end\ndata: {json.dumps({'stream_id': stream_id})}\n\n"
+                    _end_payload = {"stream_id": stream_id}
+                    if CE_ENABLED:
+                        _end_envelope = wrap_cloudevent(
+                            _end_payload,
+                            derive_event_type(_end_payload, CE_DEFAULT_TYPE),
+                            CE_SOURCE,
+                            CE_SPECVERSION
+                        )
+                        _end_data = json.dumps(_end_envelope)
+                    else:
+                        _end_data = json.dumps(_end_payload)
+                    yield f"event: stream_end\ndata: {_end_data}\n\n"
                     break
                 
                 await asyncio.sleep(0.1)  # Small delay to prevent tight loop
-                
+            
         except Exception as e:
             logger.error(f"SSE stream error: {e}")
             yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
@@ -574,15 +670,20 @@ async def sse_stream(stream_id: str):
             if stream_id in streaming_manager.stream_subscriptions:
                 streaming_manager.stream_subscriptions[stream_id].discard(sse_connection_id)
     
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Cache-Control"
+    }
+    # Optional header emission when CE is enabled
+    if CE_ENABLED and CE_RESPONSE_HEADER:
+        headers[CE_RESPONSE_HEADER] = "true"
+    
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Cache-Control"
-        }
+        headers=headers
     )
 
 
@@ -639,6 +740,60 @@ async def publish_stream_data(stream_id: str, data: Dict[str, Any]):
     await streaming_manager.broadcast_to_stream(stream_id, message)
     
     return {"message": "Data published", "sequence": message.sequence}
+
+
+# NEW: SSE proxy endpoint for orchestrator runs
+@router.get("/api/v1/runs/{run_id}/events")
+async def sse_run_events(run_id: str, request: Request):
+    """
+    Proxy SSE stream from Orchestrator:
+    - Forwards Last-Event-ID header and query params (e.g., replay)
+    - Streams bytes transparently without altering frames
+    - Does not attempt reconnect; client handles it
+    """
+    url = _orch_url(f"/api/v1/runs/{run_id}/events")
+    headers = _forward_sse_headers(request)
+    params = dict(request.query_params)
+
+    # Use shared httpx.AsyncClient from app.state
+    client: httpx.AsyncClient = getattr(request.app.state, "http_client", None)
+    if client is None:
+        # Fall back with an explicit error; matches 502 guidance (infra issue)
+        raise HTTPException(status_code=502, detail="orchestrator_unreachable: http client not initialized")
+
+    # Preflight to honor non-200 statuses transparently (before starting StreamingResponse)
+    try:
+        pre = await client.get(url, headers=headers, params=params)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"orchestrator_unreachable: {str(e)}")
+    if pre.status_code != 200:
+        # Forward body+status as-is
+        return StreamingResponse(
+            content=iter((pre.content,)),  # single chunk
+            media_type=pre.headers.get("content-type", "application/json"),
+            status_code=pre.status_code,
+        )
+
+    async def upstream_iter():
+        # Open a fresh streaming connection for actual event flow
+        async with client.stream("GET", url, headers=headers, params=params) as r:
+            # If upstream errors after preflight (rare), surface its body as an SSE 'error' frame
+            if r.status_code != 200:
+                body = await r.aread()
+                # Emit a minimal SSE error frame without changing status (stream already started)
+                yield b"event: error\ndata: " + json.dumps({"status": r.status_code, "error": body.decode(errors="ignore")}).encode() + b"\n\n"
+                return
+            async for chunk in r.aiter_bytes():
+                # Transparent passthrough; do not modify bytes
+                yield chunk
+
+    # SSE response headers recommended for proxies/CDN compatibility
+    resp_headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(upstream_iter(), media_type="text/event-stream", headers=resp_headers)
 
 
 # Note: Startup and shutdown events are now handled in main.py

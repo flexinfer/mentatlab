@@ -148,3 +148,58 @@ To lint the code for all services:
     ```bash
     cd services/frontend
     npm run lint
+
+## Full‑stack via Docker Compose
+
+Bring up Redis, Orchestrator (FastAPI), Gateway (FastAPI), and Frontend (Vite preview) locally.
+
+- Compose file: [`docker-compose.yml`](docker-compose.yml:1)
+- Service apps:
+  - Orchestrator (Python FastAPI): [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:1)
+  - Gateway (Python FastAPI): [`services/gateway/app/main.py`](services/gateway/app/main.py:1)
+  - Frontend (Vite): [`services/frontend/vite.config.js`](services/frontend/vite.config.js:1)
+
+Environment defaults (copy to .env if needed):
+- [`.env.example`](.env.example:1)
+
+Run stack:
+```bash
+# from repository root
+docker compose up --build
+```
+
+Open the app:
+- Frontend: http://localhost:5173
+
+Service healthchecks:
+- Gateway: http://localhost:8080/healthz
+- Orchestrator: http://localhost:7070/healthz
+
+Create a run (via Gateway → Orchestrator):
+```bash
+curl -X POST http://localhost:8080/api/v1/runs \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "demo",
+    "plan": {
+      "nodes": [
+        {"id":"n1","agent":"echo","params":{"args":["Hello"]}}
+      ],
+      "edges":[]
+    }
+  }'
+```
+
+Stream events (supports Last-Event-ID resume):
+```bash
+# replace <runId> with the returned id from create run
+curl -N http://localhost:8080/api/v1/runs/<runId>/events
+# to resume from event id 0 (example)
+curl -N -H 'Last-Event-ID: 0' http://localhost:8080/api/v1/runs/<runId>/events
+```
+
+Notes:
+- Redis is optional for the Orchestrator. Default runstore is in‑memory. To enable Redis persistence set:
+  - `ORCH_RUNSTORE=redis`
+  - `REDIS_URL=redis://redis:6379/0`
+- Images are production‑like (no dev hot reload). Compose healthchecks ensure service readiness before dependents start.

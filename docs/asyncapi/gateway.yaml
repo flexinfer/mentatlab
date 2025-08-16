@@ -1,0 +1,271 @@
+asyncapi: "3.0.0"
+info:
+  title: MentatLab Gateway Streaming API
+  version: "0.1.0"
+  description: |-
+    Documentation-only initial AsyncAPI 3.0.0 spec for MentatLab gateway streaming.
+    Covers WebSocket, Server-Sent Events (SSE), and HTTP publish/init endpoints.
+    Outbound subscriber messages may be either a plain StreamMessage or a CloudEventsEnvelope
+    wrapping a StreamMessage when the feature flag GATEWAY_CE_ENABLED is enabled.
+    Current implementation reference: services/gateway/app/streaming.py
+defaultContentType: application/json
+servers:
+  ws:
+    protocol: ws
+    url: ws://localhost:8080
+    description: Local development WebSocket server
+  http:
+    protocol: http
+    url: http://localhost:8080
+    description: Local development HTTP/SSE server
+channels:
+  ws/streams/{stream_id}:
+    address: /ws/streams/{stream_id}
+    description: WebSocket subscription channel for stream data. Clients connect and receive server-sent data frames.
+    parameters:
+      stream_id:
+        description: Stream identifier
+        schema:
+          type: string
+  sse/streams/{stream_id}:
+    address: /api/v1/streams/{stream_id}/sse
+    description: Server-Sent Events subscription channel for stream data.
+    parameters:
+      stream_id:
+        description: Stream identifier
+        schema:
+          type: string
+  http/streams.publish:
+    address: /api/v1/streams/{stream_id}/publish
+    description: HTTP publish endpoint (client sends new data into a stream).
+    parameters:
+      stream_id:
+        description: Stream identifier
+        schema:
+          type: string
+  http/streams.init:
+    address: /api/v1/streams/init
+    description: HTTP endpoint to initialize a new streaming session.
+operations:
+  ws_stream_receive:
+    action: receive
+    channel: ws/streams/{stream_id}
+    summary: Receive stream messages via WebSocket
+    servers:
+      - ws
+    messages:
+      - $ref: '#/components/messages/StreamMessage'
+      - $ref: '#/components/messages/CloudEventsEnvelope'
+  sse_stream_receive:
+    action: receive
+    channel: sse/streams/{stream_id}
+    summary: Receive stream messages via SSE
+    servers:
+      - http
+    messages:
+      - $ref: '#/components/messages/StreamMessage'
+      - $ref: '#/components/messages/CloudEventsEnvelope'
+  http_stream_publish_send:
+    action: send
+    channel: http/streams.publish
+    summary: Publish data into a stream via HTTP
+    servers:
+      - http
+    messages:
+      - $ref: '#/components/messages/PublishRequest'
+  http_stream_init_send:
+    action: send
+    channel: http/streams.init
+    summary: Initialize a new stream
+    servers:
+      - http
+    messages:
+      - $ref: '#/components/messages/InitRequest'
+  http_stream_init_receive:
+    action: receive
+    channel: http/streams.init
+    summary: Receive initialization response
+    servers:
+      - http
+    messages:
+      - $ref: '#/components/messages/InitResponse'
+components:
+  schemas:
+    StreamMessage:
+      type: object
+      description: Standard outbound stream message to subscribers.
+      properties:
+        type:
+          type: string
+          description: Event type
+          enum: [stream_start, stream_data, stream_end, stream_error, heartbeat]
+        data:
+          type: object
+          additionalProperties: true
+          description: Event payload (free-form)
+        stream_id:
+          type: string
+        agent_id:
+          type: string
+          nullable: true
+        sequence:
+          type: integer
+          description: Monotonic sequence number within a stream
+        timestamp:
+          type: string
+          format: date-time
+      required: [type, data, stream_id, sequence, timestamp]
+    CloudEventsEnvelope:
+      type: object
+      description: CloudEvents v1.0 envelope when GATEWAY_CE_ENABLED=true; wraps StreamMessage in data.
+      properties:
+        specversion:
+          type: string
+          enum: ["1.0"]
+        id:
+          type: string
+          description: Unique event ID (UUID)
+        source:
+          type: string
+        type:
+          type: string
+        time:
+          type: string
+          format: date-time
+        datacontenttype:
+          type: string
+          const: application/json
+        data:
+          $ref: '#/components/schemas/StreamMessage'
+      required: [specversion, id, source, type, time, datacontenttype, data]
+    PublishRequest:
+      type: object
+      description: HTTP publish payload (client → gateway).
+      properties:
+        type:
+          type: string
+          description: Logical event type for downstream consumers
+          example: stream_data
+        data:
+          type: object
+          additionalProperties: true
+        agent_id:
+          type: string
+          nullable: true
+        sequence:
+          type: integer
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+          nullable: true
+      required: [type, data]
+    InitRequest:
+      type: object
+      description: HTTP init request (client → gateway).
+      properties:
+        agent_id:
+          type: string
+          description: Agent identifier to associate with the stream
+        pin_name:
+          type: string
+          description: Optional pin name (defaults to "output")
+          default: output
+      required: [agent_id]
+    InitResponse:
+      type: object
+      description: HTTP init response (gateway → client).
+      properties:
+        stream_id:
+          type: string
+        ws_url:
+          type: string
+          format: uri-reference
+        sse_url:
+          type: string
+          format: uri-reference
+        status:
+          type: string
+          description: Stream status (informational)
+      required: [stream_id, ws_url, sse_url]
+  messages:
+    StreamMessage:
+      name: StreamMessage
+      title: Plain Stream Message
+      payload:
+        $ref: '#/components/schemas/StreamMessage'
+      examples:
+        - name: example
+          summary: Plain StreamMessage example
+          payload:
+            type: stream_data
+            data:
+              value: 42
+            stream_id: stream_1234
+            agent_id: agent_abc
+            sequence: 1
+            timestamp: "2025-01-01T00:00:00Z"
+    CloudEventsEnvelope:
+      name: CloudEventsEnvelope
+      title: CloudEvents-wrapped StreamMessage
+      payload:
+        $ref: '#/components/schemas/CloudEventsEnvelope'
+      examples:
+        - name: example
+          summary: CloudEvent envelope wrapping a StreamMessage
+          payload:
+            specversion: "1.0"
+            id: "123e4567-e89b-12d3-a456-426614174000"
+            source: "/mentatlab/gateway"
+            type: "stream.data"
+            time: "2025-01-01T00:00:01Z"
+            datacontenttype: "application/json"
+            data:
+              type: stream_data
+              data:
+                value: 42
+              stream_id: stream_1234
+              agent_id: agent_abc
+              sequence: 1
+              timestamp: "2025-01-01T00:00:00Z"
+    PublishRequest:
+      name: PublishRequest
+      title: HTTP Publish Request
+      payload:
+        $ref: '#/components/schemas/PublishRequest'
+      examples:
+        - name: example
+          summary: PublishRequest example
+          payload:
+            type: stream_data
+            data:
+              value: 7
+            agent_id: "agent_abc"
+            timestamp: "2025-01-01T00:00:02Z"
+    InitRequest:
+      name: InitRequest
+      title: HTTP Init Request
+      payload:
+        $ref: '#/components/schemas/InitRequest'
+      examples:
+        - name: example
+          summary: InitRequest example
+          payload:
+            agent_id: "agent_abc"
+            pin_name: "output"
+    InitResponse:
+      name: InitResponse
+      title: HTTP Init Response
+      payload:
+        $ref: '#/components/schemas/InitResponse'
+      examples:
+        - name: example
+          summary: InitResponse example
+          payload:
+            stream_id: "stream_abcd1234"
+            ws_url: "/ws/streams/stream_abcd1234"
+            sse_url: "/api/v1/streams/stream_abcd1234/sse"
+
+x-notes:
+  - Feature flag GATEWAY_CE_ENABLED: when true, outbound messages to subscribers may be wrapped in CloudEventsEnvelope.
+  - This document maps to current implementation in services/gateway/app/streaming.py and will be refined; CI generation to follow.

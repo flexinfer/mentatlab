@@ -1,0 +1,37 @@
+id: mentatlab.ctm-cogpack
+version: 0.1.0
+image: mentatlab/ctm-cogpack:local-dev
+description: Continuous Thought Machine (CTM) Cogpack — tick-based temporal processing agent with neuron-level MLPs
+runtime: python3.12
+longRunning: false
+ui:
+  remoteEntry: agents/ctm-cogpack/ui/remoteEntry.js
+  title: Continuous Thought Machine
+  description: Open to run the CTM agent with tick-based temporal processing. Click Run to start a streaming session.
+  icon: 🧠
+  catalog:
+    visible: true
+    category: Cognitive
+    tags:
+      - ctm
+      - neural
+      - streaming
+      - temporal
+inputs:
+  - name: spec
+    type: json
+    metadata:
+      description: "Specification for the run (task definition). Example: {\"prompt\": \"...\", \"params\": {...}}"
+  - name: context
+    type: json
+    metadata:
+      description: "Context for the run (optional metadata)"
+outputs:
+  - name: output
+    type: stream
+    metadata:
+      description: "Streaming output from the CTM agent"
+  - name: stats
+    type: json
+    metadata:
+      description: "Statistics from the CTM run"
