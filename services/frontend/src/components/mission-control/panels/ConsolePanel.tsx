@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRunConsole, ConsoleLevel, ConsoleType, ConsoleFilters } from './console/useRunConsole';
 import Badge from '@/components/ui/Badge';
 import CodeInline from '@/components/ui/CodeInline';
+import { PanelShell } from '@/components/ui/PanelShell';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { ScrollArea } from '@/components/ui/ScrollArea';
+import { cn } from '@/lib/cn';
 
 /**
  * Mission Control Console Panel
@@ -155,148 +160,165 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
   };
 
   return (
-    <div className="h-full w-full flex flex-col">
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-2 p-2 border-b bg-card/70 backdrop-blur">
-        {/* Types */}
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-gray-500">Types:</span>
-          {typeDefs.map(({ key, label }) => (
-            <label key={key} className="inline-flex items-center gap-1 text-[11px]">
-              <input
-                type="checkbox"
-                checked={typeSet.has(key)}
-                onChange={() => toggleType(key)}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
-        </div>
-
-        {/* Levels (for logs) */}
-        <div className="flex items-center gap-2 ml-3">
-          <span className="text-[11px] text-gray-500">Log levels:</span>
-          {levelDefs.map(({ key, label }) => (
-            <label key={key} className="inline-flex items-center gap-1 text-[11px]">
-              <input
-                type="checkbox"
-                checked={levelSet.has(key)}
-                onChange={() => toggleLevel(key)}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
-        </div>
-
-        {/* Node filter */}
-        <div className="flex items-center gap-1 ml-3">
-          <span className="text-[11px] text-gray-500">Node:</span>
-          <select
-            className="h-6 text-[11px] border rounded bg-card"
-            value={nodeFilter ?? '(all)'}
-            onChange={(e) => {
-              const val = e.target.value;
-              setNodeFilter(val === '(all)' || val === '(all nodes)' ? null : val);
-            }}
-          >
-            {nodeOptions.map((n) => (
-              <option key={n} value={n === '(all nodes)' ? '(all)' : n}>
-                {n}
-              </option>
+    <PanelShell
+      title={<span className="uppercase tracking-wide text-gray-500">Console</span>}
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2 p-2 border-b bg-card/70 backdrop-blur">
+          {/* Types */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-gray-500">Types:</span>
+            {typeDefs.map(({ key, label }) => (
+              <label key={key} className="inline-flex items-center gap-1 text-[11px]">
+                <Input
+                  type="checkbox"
+                  checked={typeSet.has(key)}
+                  onChange={() => toggleType(key)}
+                  size="sm"
+                  className="w-auto h-4"
+                />
+                <span>{label}</span>
+              </label>
             ))}
-          </select>
-        </div>
+          </div>
 
-        {/* Search */}
-        <div className="flex items-center gap-1 ml-3">
-          <input
-            type="text"
-            placeholder="Search message or data…"
-            className="h-6 px-2 text-[11px] rounded border bg-background min-w-[180px]"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
+          {/* Levels (for logs) */}
+          <div className="flex items-center gap-2 ml-3">
+            <span className="text-[11px] text-gray-500">Log levels:</span>
+            {levelDefs.map(({ key, label }) => (
+              <label key={key} className="inline-flex items-center gap-1 text-[11px]">
+                <Input
+                  type="checkbox"
+                  checked={levelSet.has(key)}
+                  onChange={() => toggleLevel(key)}
+                  size="sm"
+                  className="w-auto h-4"
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
 
-        {/* Autoscroll */}
-        <div className="flex items-center gap-1 ml-auto">
-          <label className="inline-flex items-center gap-1 text-[11px]">
-            <input
-              type="checkbox"
-              checked={autoscroll}
-              onChange={(e) => setAutoscroll(e.target.checked)}
-            />
-            <span>Autoscroll</span>
-          </label>
-
-          {/* Pause stream */}
-          <label className="inline-flex items-center gap-1 text-[11px] ml-2">
-            <input
-              type="checkbox"
-              checked={paused}
-              onChange={(e) => setPaused(e.target.checked)}
-            />
-            <span>Pause</span>
-          </label>
-
-          {/* Clear */}
-          <button
-            className="ml-2 h-6 px-2 text-[11px] rounded border bg-card hover:bg-muted"
-            onClick={clear}
-            title="Clear console view"
-          >
-            Clear
-          </button>
-
-          {/* Counts */}
-          <span className="ml-3 text-[11px] text-gray-500">
-            {filtered.length}/{items.length}
-          </span>
-        </div>
-      </div>
-
-      {/* List */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-auto p-2 space-y-1 font-sans text-[11px]"
-        onScroll={onScroll}
-      >
-        {filtered.length === 0 && (
-          <div className="text-gray-500">No events.</div>
-        )}
-
-        {filtered.map((it) => {
-          return (
-            <div key={`${it.seq}-${it.id ?? ''}`} className="px-2 py-1 rounded hover:bg-muted/40 transition-colors">
-              <div className="flex items-center gap-2">
-                {/* Time */}
-                <span className="text-gray-400 min-w-[120px] tabular-nums">
-                  {formatTime(it.ts)}
-                </span>
-                {/* Type */}
-                <Badge variant={typeVariant(it.type)} title={String(it.type)}>
-                  {it.type}
-                </Badge>
-                {/* Level */}
-                {it.type === 'log' && it.level && (
-                  <Badge variant={levelVariant(it.level)} title={String(it.level)}>
-                    {it.level}
-                  </Badge>
-                )}
-                {/* Node */}
-                {it.nodeId && (
-                  <span className="text-gray-500">· {it.nodeId}</span>
-                )}
-                {/* Message/Data */}
-                <span className="flex-1 text-gray-800 dark:text-gray-200">
-                  {renderMessageOrData(it)}
-                </span>
-              </div>
+          {/* Node filter */}
+          <div className="flex items-center gap-1 ml-3">
+            <span className="text-[11px] text-gray-500">Node:</span>
+            <div className="w-48">
+              <Select
+                size="sm"
+                className="text-[11px]"
+                value={nodeFilter ?? '(all)'}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setNodeFilter(val === '(all)' || val === '(all nodes)' ? null : val);
+                }}
+              >
+                {nodeOptions.map((n) => (
+                  <option key={n} value={n === '(all nodes)' ? '(all)' : n}>
+                    {n}
+                  </option>
+                ))}
+              </Select>
             </div>
-          );
-        })}
-      </div>
-    </div>
+          </div>
+
+          {/* Search */}
+          <div className="flex items-center gap-1 ml-3">
+            <Input
+              type="text"
+              placeholder="Search message or data…"
+              size="sm"
+              className={cn('px-2 text-[11px] min-w-[180px]')}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+
+          {/* Autoscroll */}
+          <div className="flex items-center gap-1 ml-auto">
+            <label className="inline-flex items-center gap-1 text-[11px]">
+              <Input
+                type="checkbox"
+                checked={autoscroll}
+                onChange={(e) => setAutoscroll(e.target.checked)}
+                size="sm"
+                className="w-auto h-4"
+              />
+              <span>Autoscroll</span>
+            </label>
+
+            {/* Pause stream */}
+            <label className="inline-flex items-center gap-1 text-[11px] ml-2">
+              <Input
+                type="checkbox"
+                checked={paused}
+                onChange={(e) => setPaused(e.target.checked)}
+                size="sm"
+                className="w-auto h-4"
+              />
+              <span>Pause</span>
+            </label>
+
+            {/* Clear */}
+            <button
+              className="ml-2 h-6 px-2 text-[11px] rounded border bg-card hover:bg-muted"
+              onClick={clear}
+              title="Clear console view"
+            >
+              Clear
+            </button>
+
+            {/* Counts */}
+            <span className="ml-3 text-[11px] text-gray-500">
+              {filtered.length}/{items.length}
+            </span>
+          </div>
+        </div>
+      }
+      className="h-full w-full"
+    >
+      {/* List */}
+      <ScrollArea orientation="vertical" className="flex-1">
+        <div
+          ref={scrollRef}
+          className="p-2 space-y-1 font-sans text-[11px] flex-1"
+          onScroll={onScroll}
+        >
+          {filtered.length === 0 && (
+            <div className="text-gray-500">No events.</div>
+          )}
+
+          {filtered.map((it) => {
+            return (
+              <div key={`${it.seq}-${it.id ?? ''}`} className="px-2 py-1 rounded hover:bg-muted/40 transition-colors">
+                <div className="flex items-center gap-2">
+                  {/* Time */}
+                  <span className="text-gray-400 min-w-[120px] tabular-nums">
+                    {formatTime(it.ts)}
+                  </span>
+                  {/* Type */}
+                  <Badge variant={typeVariant(it.type)} title={String(it.type)}>
+                    {it.type}
+                  </Badge>
+                  {/* Level */}
+                  {it.type === 'log' && it.level && (
+                    <Badge variant={levelVariant(it.level)} title={String(it.level)}>
+                      {it.level}
+                    </Badge>
+                  )}
+                  {/* Node */}
+                  {it.nodeId && (
+                    <span className="text-gray-500">· {it.nodeId}</span>
+                  )}
+                  {/* Message/Data */}
+                  <span className="flex-1 text-gray-800 dark:text-gray-200">
+                    {renderMessageOrData(it)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </ScrollArea>
+    </PanelShell>
   );
 }
 

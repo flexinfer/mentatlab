@@ -32,6 +32,7 @@ import 'reactflow/dist/style.css';
 import NodeCard, { type NodeCardData } from './graph/NodeCard';
 import { useRunGraph, type RunStatus } from './graph/useRunGraph';
 import Badge from '@/components/ui/Badge';
+import { PanelShell } from '@/components/ui/PanelShell';
 
 type Props = {
   runId: string | null;
@@ -99,7 +100,47 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
   }, [nodes]);
 
   return (
-    <div className="h-full w-full flex flex-col">
+    <PanelShell
+      title={<span className="uppercase tracking-wide text-gray-500">Graph</span>}
+      toolbar={
+        <div className="px-2 h-8 border-b bg-card/60 backdrop-blur flex items-center justify-between text-[11px]">
+          <div className="flex items-center gap-2">
+            <span className="uppercase tracking-wide text-gray-500">Graph</span>
+            <span className="text-gray-300">|</span>
+            <span className="inline-flex items-center gap-2">
+              {statusToBadge(runStatus)}
+              {selectedNodeId && (
+                <span className="text-gray-400">• Selected: {selectedNodeId}</span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="h-6 px-2 rounded border bg-background hover:bg-muted"
+              onClick={fitView}
+              title="Fit view"
+            >
+              ⤢ Fit
+            </button>
+            <button
+              className="h-6 px-2 rounded border bg-background hover:bg-muted"
+              onClick={handleRetryFailed}
+              title="Retry failed nodes (placeholder)"
+            >
+              ↻ Retry Failed
+            </button>
+            <button
+              className="h-6 px-2 rounded border bg-background hover:bg-muted text-red-600 border-red-200"
+              onClick={onCancelRun}
+              disabled={!runId}
+              title={runId ? 'Cancel this run' : 'No run selected'}
+            >
+              ✖ Cancel Run
+            </button>
+          </div>
+        </div>
+      }
+    >
       {/* Edge animation styles */}
       <style>{`
         .react-flow__edge-path {
@@ -114,44 +155,6 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
           to { stroke-dashoffset: -24; }
         }
       `}</style>
-
-      {/* Toolbar */}
-      <div className="px-2 h-8 border-b bg-card/60 backdrop-blur flex items-center justify-between text-[11px]">
-        <div className="flex items-center gap-2">
-          <span className="uppercase tracking-wide text-gray-500">Graph</span>
-          <span className="text-gray-300">|</span>
-          <span className="inline-flex items-center gap-2">
-            {statusToBadge(runStatus)}
-            {selectedNodeId && (
-              <span className="text-gray-400">• Selected: {selectedNodeId}</span>
-            )}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="h-6 px-2 rounded border bg-background hover:bg-muted"
-            onClick={fitView}
-            title="Fit view"
-          >
-            ⤢ Fit
-          </button>
-          <button
-            className="h-6 px-2 rounded border bg-background hover:bg-muted"
-            onClick={handleRetryFailed}
-            title="Retry failed nodes (placeholder)"
-          >
-            ↻ Retry Failed
-          </button>
-          <button
-            className="h-6 px-2 rounded border bg-background hover:bg-muted text-red-600 border-red-200"
-            onClick={onCancelRun}
-            disabled={!runId}
-            title={runId ? 'Cancel this run' : 'No run selected'}
-          >
-            ✖ Cancel Run
-          </button>
-        </div>
-      </div>
 
       {/* Canvas */}
       <div className="flex-1 relative">
@@ -176,6 +179,6 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
           </ReactFlow>
         </ReactFlowProvider>
       </div>
-    </div>
+    </PanelShell>
   );
 }

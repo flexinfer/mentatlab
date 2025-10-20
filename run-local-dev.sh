@@ -198,6 +198,10 @@ export VITE_API_URL="http://127.0.0.1:8081"
 export VITE_WS_URL="ws://127.0.0.1:8080"
 export VITE_CONNECT_WS="true"
 
+# Ensure ORCHESTRATOR_BASE_URL is set for local FastAPI development (default if unset)
+ORCHESTRATOR_BASE_URL="${ORCHESTRATOR_BASE_URL:-http://127.0.0.1:8081}"
+export ORCHESTRATOR_BASE_URL
+
 # Gateway environment for local agent forwarding
 export GATEWAY_BASE_URL="http://127.0.0.1:8080"
 

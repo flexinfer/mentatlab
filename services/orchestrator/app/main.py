@@ -1,7 +1,8 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, AsyncIterator
 from graphlib import TopologicalSorter
 import asyncio
 from datetime import datetime
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
@@ -116,11 +117,6 @@ def create_execution_plan(flow: Flow) -> List[str]:
 _ORCH_EXEC_ID_HEADER = os.getenv("ORCH_EXECUTION_ID_HEADER", "X-Execution-Id")
 _ORCH_GEN_EXEC_ID = os.getenv("ORCH_GENERATE_EXECUTION_ID_IF_MISSING", "true").lower() in ("1", "true", "yes")
 
-app = FastAPI(
-    title="Orchestrator Service",
-    description="Service for managing and executing AI workflows.",
-    version="0.1.0",
-)
 # New: global store instance
 STORE: RunStore | None = None
 # New: global driver instance
@@ -128,13 +124,14 @@ DRIVER: LocalSubprocessDriver | None = None
 # NEW: global scheduler instance
 SCHEDULER: Scheduler | None = None
 
-# Initialize RunStore adapter based on environment
-@app.on_event("startup")
-async def _init_runstore():
-    global STORE
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI app startup and shutdown"""
+    global STORE, DRIVER, SCHEDULER
+
+    # Startup
     STORE = await get_store_from_env()
     # Initialize LocalSubprocessDriver with repo_root as cwd for module resolution
-    global DRIVER
     try:
         DRIVER = LocalSubprocessDriver(STORE, env_passthrough={}, cwd=str(repo_root))
     except Exception:
@@ -163,7 +160,6 @@ async def _init_runstore():
         if isinstance(args, list) and args:
             return [str(args[0]), *[str(a) for a in args[1:]]]
         raise ValueError(f"Cannot resolve command for node {ns.id} (agent={ns.agent})")
-    global SCHEDULER
     if STORE is not None and DRIVER is not None:
         SCHEDULER = Scheduler(
             STORE,
@@ -172,6 +168,18 @@ async def _init_runstore():
         )
     else:
         SCHEDULER = None
+
+    yield
+
+    # Shutdown (cleanup if needed)
+    pass
+
+app = FastAPI(
+    title="Orchestrator Service",
+    description="Service for managing and executing AI workflows.",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 def _ensure_store() -> RunStore:
     if STORE is None:
@@ -793,7 +801,7 @@ async def _execute_run(run_id: str, plan: RunPlan) -> None:
         await store.append_event(run_id, "status", {"runId": run_id, "status": "failed"})
 
 # SSE stream utilities
-async def _sse_event_stream(run_id: str, resume_from_id: Optional[str]) -> asyncio.AsyncIterator[bytes]:
+async def _sse_event_stream(run_id: str, resume_from_id: Optional[str]) -> AsyncIterator[bytes]:
     store = _ensure_store()
 
     # Backfill using RunStore

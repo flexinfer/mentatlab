@@ -8,14 +8,49 @@ from services.gateway.app import streaming
 import os
 # NEW: Imports for proxying
 from typing import Optional, Dict, Any
+from contextlib import asynccontextmanager
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response
 import httpx
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI app startup and shutdown"""
+    # Startup
+    # Initialize streaming manager
+    await streaming.streaming_manager.initialize()
+    # Initialize shared httpx.AsyncClient
+    # Connection pool with sane defaults and timeouts
+    timeout = httpx.Timeout(connect=5.0, read=60.0, write=30.0, pool=60.0)
+    limits = httpx.Limits(max_keepalive_connections=20, max_connections=100, keepalive_expiry=60.0)
+    app.state.http_client = httpx.AsyncClient(timeout=timeout, limits=limits, follow_redirects=False)
+    # Initialize websockets manager
+    await websockets.manager.connect_redis()
+
+    yield
+
+    # Shutdown
+    # Cleanup streaming manager
+    await streaming.streaming_manager.shutdown()
+    # Close shared httpx.AsyncClient
+    client = getattr(app.state, "http_client", None)
+    if client:
+        await client.aclose()
+    # Cleanup websockets manager
+    try:
+        if websockets.manager.pubsub:
+            await websockets.manager.pubsub.unsubscribe(websockets.UI_NOTIFICATION_CHANNEL, websockets.STREAMING_EVENTS_CHANNEL)
+            await websockets.manager.pubsub.close()
+        if websockets.manager.redis_client:
+            await websockets.manager.redis_client.close()
+    except Exception:
+        pass  # Ignore cleanup errors
 
 app = FastAPI(
     title="Gateway Service",
     description="Gateway for MentatLab streaming",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Security: CORS Configuration
@@ -208,26 +243,6 @@ async def orchestrator_info(request: Request) -> Response:
     except httpx.RequestError as e:
         return JSONResponse(status_code=502, content={"error": "orchestrator_unreachable", "detail": str(e)})
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize services on startup."""
-    # Initialize streaming manager
-    await streaming.streaming_manager.initialize()
-    # NEW: Initialize shared httpx.AsyncClient
-    # Connection pool with sane defaults and timeouts
-    timeout = httpx.Timeout(connect=5.0, read=60.0, write=30.0, pool=60.0)
-    limits = httpx.Limits(max_keepalive_connections=20, max_connections=100, keepalive_expiry=60.0)
-    app.state.http_client = httpx.AsyncClient(timeout=timeout, limits=limits, follow_redirects=False)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup services on shutdown."""
-    # Cleanup streaming manager
-    await streaming.streaming_manager.shutdown()
-    # NEW: Close shared httpx.AsyncClient
-    client = getattr(app.state, "http_client", None)
-    if client:
-        await client.aclose()
 
 @app.get("/healthz")
 async def healthz():

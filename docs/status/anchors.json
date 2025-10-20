@@ -90,28 +90,28 @@
   },
   "orchestrator.server": {
     "doc": "docs/orchestrator_design.md",
-    "code": "[services/orchestrator/src/server.ts](services/orchestrator/src/server.ts:1)",
+    "code": "[services/orchestrator/app/main.py](services/orchestrator/app/main.py:1)",
     "tags": ["backend", "orchestrator", "service"],
     "status": "done",
     "exists": true
   },
   "orchestrator.routes.runs": {
     "doc": "docs/orchestrator_design.md",
-    "code": "[services/orchestrator/src/routes/runs.ts](services/orchestrator/src/routes/runs.ts:1)",
+    "code": "[services/orchestrator/app/main.py](services/orchestrator/app/main.py:1003)",
     "tags": ["backend", "orchestrator", "api", "sse"],
     "status": "done",
     "exists": true
   },
   "orchestrator.api.rest": {
     "doc": "docs/references/orchestrator-api.md#rest-endpoints",
-    "code": "[services/orchestrator/src/routes/runs.ts](services/orchestrator/src/routes/runs.ts:1)",
+    "code": "[services/orchestrator/app/main.py](services/orchestrator/app/main.py:939)",
     "tags": ["orchestrator","api","rest"],
     "status": "done",
     "exists": true
   },
   "orchestrator.api.sse": {
     "doc": "docs/references/orchestrator-api.md#sse-endpoint",
-    "code": "[services/orchestrator/src/routes/runs.ts](services/orchestrator/src/routes/runs.ts:141)",
+    "code": "[services/orchestrator/app/main.py](services/orchestrator/app/main.py:1003)",
     "tags": ["orchestrator","api","sse"],
     "status": "done",
     "exists": true

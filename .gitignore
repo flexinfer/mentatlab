@@ -2,7 +2,8 @@
 __pycache__/
 *.py[cod]
 services/*/.venv/
-
+services/frontend/dist/
+services/gateway/.venv/
 # Node
 services/frontend/node_modules/
 
@@ -10,7 +11,7 @@ services/frontend/node_modules/
 .env
 services/gateway/.pdm-python
 logs/frontend.log
-logs/frontend.log
+compose-logs.txt
 
 # Test/tooling outputs
 /bin/
