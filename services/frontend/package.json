@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "echo build",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "start": "echo start",
+    "start": "vite preview",
     "dev": "vite",
     "e2e": "playwright test",
     "e2e:up": "cd ../../ && docker-compose up --build -d orchestrator redis",

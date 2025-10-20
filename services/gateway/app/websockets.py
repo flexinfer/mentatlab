@@ -207,40 +207,4 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         manager.disconnect(websocket)
 
-# Ensure Redis connection is established when the application starts
-@router.on_event("startup")
-async def startup_event():
-    await manager.connect_redis()
-    # Initialize streaming manager if not already done
-    if hasattr(streaming_manager, 'initialize') and not hasattr(streaming_manager, '_initialized'):
-        try:
-            await streaming_manager.initialize()
-            streaming_manager._initialized = True
-            logger.info("Streaming manager initialized from websockets startup")
-        except Exception as e:
-            logger.error(f"Failed to initialize streaming manager: {e}")
-
-@router.on_event("shutdown")
-async def shutdown_event():
-    try:
-        if manager.pubsub:
-            await manager.pubsub.unsubscribe(UI_NOTIFICATION_CHANNEL, STREAMING_EVENTS_CHANNEL)
-            await manager.pubsub.close()
-    except Exception as e:
-        logger.warning(f"Error closing pubsub connection: {e}")
-    
-    try:
-        if manager.redis_client:
-            await manager.redis_client.close()
-    except Exception as e:
-        logger.warning(f"Error closing Redis connection: {e}")
-    
-    # Shutdown streaming manager
-    if hasattr(streaming_manager, 'shutdown'):
-        try:
-            await streaming_manager.shutdown()
-            logger.info("Streaming manager shutdown complete")
-        except Exception as e:
-            logger.error(f"Error shutting down streaming manager: {e}")
-    
-    logger.info("Redis connection and streaming services closed on shutdown.")
+# Note: Lifecycle management (startup/shutdown) is now handled in main.py lifespan context manager

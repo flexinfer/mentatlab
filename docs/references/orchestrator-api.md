@@ -4,6 +4,7 @@ This page documents the Orchestrator service REST and SSE surface. Authoritative
 
 Data types and schemas
 - TypeScript types (wire format and domain types): [`services/orchestrator/src/types.ts`](services/orchestrator/src/types.ts:1)
++ Implementation reference: Python FastAPI implementation: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:1)
 - JSON schemas (validation / examples):
   - Run: [`schemas/orchestrator/run.schema.json`](schemas/orchestrator/run.schema.json:1)
   - Checkpoint: [`schemas/orchestrator/checkpoint.schema.json`](schemas/orchestrator/checkpoint.schema.json:1)
@@ -17,6 +18,7 @@ REST endpoints (summary)
     - 200 (plan): returns a plan object when `mode=plan` (server may return a plan representation)
     - 201 (created): returns { runId: string } for real runs
   - Server handler: [`services/orchestrator/src/routes/runs.ts`](services/orchestrator/src/routes/runs.ts:19)
++ Server handler implementation: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:457)
 
 - GET /runs/:runId
   - Description: Fetch a single run
@@ -24,6 +26,7 @@ REST endpoints (summary)
     - 200: { run: Run } or Run object
     - 404: run not found
   - Server handler: [`services/orchestrator/src/routes/runs.ts`](services/orchestrator/src/routes/runs.ts:241)
++ Server handler implementation: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:939)
 
 - GET /runs/:runId/checkpoints
   - Description: List checkpoints for a run
@@ -38,6 +41,7 @@ REST endpoints (summary)
     - 201: { checkpointId: string }
     - 400: validation errors (see JSON schema)
   - Server handler: [`services/orchestrator/src/routes/runs.ts`](services/orchestrator/src/routes/runs.ts:96)
++ Server handler implementation: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:939)
 
 - DELETE /runs/:runId
   - Description: Cancel / request termination of a run
@@ -62,9 +66,11 @@ SSE endpoint
     - `checkpoint` — checkpoint objects
   - Heartbeat / keepalive: server may emit comment lines to maintain connection — clients should treat them as heartbeat markers.
   - Server handler: [`services/orchestrator/src/routes/runs.ts`](services/orchestrator/src/routes/runs.ts:141)
++ Server handler implementation: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:1003)
 
 Auth / CORS / Rate limiting
 - Server bootstrapping and middleware (auth, CORS, rate limiting) are configured in the server entrypoint: [`services/orchestrator/src/server.ts`](services/orchestrator/src/server.ts:1)
++ Server bootstrap and global middleware: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:119)
 - Important environment variables:
   - ORCHESTRATOR_API_KEY — when present, endpoints require requests to include the valid API key
   - CORS_ORIGINS — comma-separated origins permitted by CORS
@@ -81,6 +87,9 @@ Client guidance
 
 References
 - Server bootstrap and global middleware: [`services/orchestrator/src/server.ts`](services/orchestrator/src/server.ts:1)
++ Server bootstrap and global middleware: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:119)
 - Routes and SSE handlers: [`services/orchestrator/src/routes/runs.ts`](services/orchestrator/src/routes/runs.ts:1)
++ Routes and SSE handlers: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:1003)
 - Types: [`services/orchestrator/src/types.ts`](services/orchestrator/src/types.ts:1)
++ Implementation types / handlers: [`services/orchestrator/app/main.py`](services/orchestrator/app/main.py:656)
 - Schemas: see section above

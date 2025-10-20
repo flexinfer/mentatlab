@@ -877,19 +877,36 @@ class EnhancedStream {
    */
   private initParserWorker(): void {
     try {
-      this.parserWorker = new Worker(new URL('./streamingWorker.ts', import.meta.url), { type: 'module' });
-      // Send initial config to worker
-      this.parserWorker.postMessage({
-        type: 'config',
-        cloudevents: isCloudEventsEnabled(),
-      });
-      this.parserWorker.onerror = (err: any) => {
-        console.error('[EnhancedStream] Parser worker error:', err);
-        this.teardownWorker('error');
-        // Fallback to main-thread parsing on worker failure
-        this.useWorkerParsing = false;
-      };
-      console.log('[EnhancedStream] Parser worker initialized (flag-gated).');
+      // Initialize parser worker using a blob created from the worker source imported as raw text.
+      // This avoids Vite's worker-import handling (new URL(...)) which can trigger build-time hashing
+      // code paths (crypto.hash) in some Node/Docker environments.
+      (async () => {
+        try {
+          // Vite supports loading a file as raw text with the ?raw suffix.
+          // The imported module will expose the file content as the default export.
+          const mod = await import('./streamingWorker.ts?raw');
+          const src: string = (mod && (mod.default || mod)) as string;
+          const blob = new Blob([src], { type: 'application/javascript' });
+          const url = URL.createObjectURL(blob);
+          this.parserWorker = new Worker(url, { type: 'module' });
+          // Send initial config to worker
+          this.parserWorker.postMessage({
+            type: 'config',
+            cloudevents: isCloudEventsEnabled(),
+          });
+          this.parserWorker.onerror = (err: any) => {
+            console.error('[EnhancedStream] Parser worker error:', err);
+            this.teardownWorker('error');
+            // Fallback to main-thread parsing on worker failure
+            this.useWorkerParsing = false;
+          };
+          console.log('[EnhancedStream] Parser worker initialized (blob-based).');
+        } catch (e) {
+          console.warn('[EnhancedStream] Failed to initialize parser worker via raw import; falling back to main-thread parsing.', e);
+          this.parserWorker = null;
+          this.useWorkerParsing = false;
+        }
+      })();
     } catch (e) {
       console.warn('[EnhancedStream] Failed to initialize parser worker; falling back to main-thread parsing.', e);
       this.parserWorker = null;
