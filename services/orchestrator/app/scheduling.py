@@ -1,9 +1,10 @@
 import logging
 import os
 import uuid
-from typing import Dict, Any, Optional, List
+import time
+from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timezone
-from kubernetes import client, config
+from kubernetes import client, config, watch
 from kubernetes.client.rest import ApiException
 
 from services.orchestrator.app.manifest_validator import validate_agent_manifest, ValidationMode
@@ -475,7 +476,7 @@ class SchedulingService:
     def _parse_deployment_status(self, deployment: client.V1Deployment) -> Dict[str, Any]:
         """Parse Kubernetes Deployment status into a standardized format."""
         status = deployment.status
-        
+
         return {
             "status": "running" if status.ready_replicas else "pending",
             "replicas": status.replicas or 0,
@@ -483,7 +484,270 @@ class SchedulingService:
             "available_replicas": status.available_replicas or 0,
             "updated_replicas": status.updated_replicas or 0,
             "conditions": [
-                {"type": c.type, "status": c.status, "reason": c.reason, "message": c.message} 
+                {"type": c.type, "status": c.status, "reason": c.reason, "message": c.message}
                 for c in (status.conditions or [])
             ]
         }
+
+    def getPodLogs(self, job_id: str, tail_lines: int = 100) -> List[str]:
+        """
+        Retrieve logs from pods associated with a job or deployment.
+
+        Args:
+            job_id: The job or deployment ID
+            tail_lines: Number of lines to retrieve from the end (default: 100)
+
+        Returns:
+            List of log lines from all pods
+        """
+        self._ensure_initialized()
+
+        try:
+            # List pods with matching labels
+            label_selector = f"job-name={job_id}"
+            pods = self.core_v1_api.list_namespaced_pod(
+                namespace=self.namespace,
+                label_selector=label_selector
+            )
+
+            # If no pods found with job-name, try deployment-name
+            if not pods.items:
+                label_selector = f"deployment-name={job_id}"
+                pods = self.core_v1_api.list_namespaced_pod(
+                    namespace=self.namespace,
+                    label_selector=label_selector
+                )
+
+            all_logs = []
+            for pod in pods.items:
+                try:
+                    log_response = self.core_v1_api.read_namespaced_pod_log(
+                        name=pod.metadata.name,
+                        namespace=self.namespace,
+                        tail_lines=tail_lines
+                    )
+                    all_logs.append(f"=== Pod: {pod.metadata.name} ===")
+                    all_logs.extend(log_response.split('\n'))
+                except ApiException as e:
+                    logger.warning(f"Failed to get logs for pod {pod.metadata.name}: {e}")
+                    all_logs.append(f"=== Pod: {pod.metadata.name} (logs unavailable) ===")
+
+            return all_logs
+        except ApiException as e:
+            logger.error(f"Failed to retrieve logs for {job_id}: {e}")
+            return [f"Error retrieving logs: {str(e)}"]
+
+    def watchJobStatus(self, job_id: str, callback: Callable[[Dict[str, Any]], None], timeout_seconds: int = 300):
+        """
+        Watch a job's status and call callback on each update.
+
+        Args:
+            job_id: The job ID to watch
+            callback: Function to call with status updates
+            timeout_seconds: Maximum time to watch (default: 300s/5min)
+        """
+        self._ensure_initialized()
+
+        w = watch.Watch()
+        try:
+            # Watch job events
+            for event in w.stream(
+                self.batch_v1_api.list_namespaced_job,
+                namespace=self.namespace,
+                field_selector=f"metadata.name={job_id}",
+                timeout_seconds=timeout_seconds
+            ):
+                event_type = event['type']  # ADDED, MODIFIED, DELETED
+                job = event['object']
+
+                status = self._parse_job_status(job)
+                status['event_type'] = event_type
+
+                callback(status)
+
+                # Stop watching if job completed or failed
+                if status['status'] in ['succeeded', 'failed']:
+                    w.stop()
+                    break
+
+        except ApiException as e:
+            logger.error(f"Error watching job {job_id}: {e}")
+            callback({"status": "error", "message": str(e)})
+        finally:
+            w.stop()
+
+    def createCronJob(self, agent_manifest: Dict[str, Any], inputs: Dict[str, Any],
+                     cron_schedule: str, execution_id: Optional[str] = None) -> str:
+        """
+        Create a CronJob for scheduled agent execution.
+
+        Args:
+            agent_manifest: The agent's manifest
+            inputs: Input data for the agent
+            cron_schedule: Cron schedule string (e.g., "0 */6 * * *")
+            execution_id: Optional execution ID
+
+        Returns:
+            CronJob name
+        """
+        self._ensure_initialized()
+
+        agent_id = agent_manifest.get("id", "unknown-agent")
+        cronjob_name = execution_id if execution_id else f"{agent_id}-cron-{uuid.uuid4().hex[:8]}"
+
+        logger.info(f"Creating CronJob {cronjob_name} with schedule: {cron_schedule}")
+
+        # Validate schedule format
+        if not self._validate_cron_schedule(cron_schedule):
+            raise ValueError(f"Invalid cron schedule: {cron_schedule}")
+
+        # Create pod template
+        image = agent_manifest.get("image", "alpine:latest")
+        resources = agent_manifest.get("resources", {})
+        env_vars = agent_manifest.get("env", [])
+
+        resource_requests = self._parse_resource_requirements(resources, agent_manifest)
+        env_list = self._create_env_vars(env_vars, inputs)
+
+        # Create CronJob spec
+        cronjob_spec = client.V1CronJob(
+            api_version="batch/v1",
+            kind="CronJob",
+            metadata=client.V1ObjectMeta(
+                name=cronjob_name,
+                labels={
+                    "app": "mentatlab-agent",
+                    "agent-id": agent_id,
+                    "execution-type": "cronjob"
+                },
+                annotations={
+                    "mentatlab.io/agent-id": agent_id,
+                    "mentatlab.io/schedule": cron_schedule,
+                    "mentatlab.io/created-at": datetime.now(timezone.utc).isoformat(),
+                }
+            ),
+            spec=client.V1CronJobSpec(
+                schedule=cron_schedule,
+                job_template=client.V1JobTemplateSpec(
+                    spec=client.V1JobSpec(
+                        template=client.V1PodTemplateSpec(
+                            metadata=client.V1ObjectMeta(
+                                labels={
+                                    "app": "mentatlab-agent",
+                                    "agent-id": agent_id,
+                                    "cronjob-name": cronjob_name
+                                }
+                            ),
+                            spec=client.V1PodSpec(
+                                containers=[
+                                    client.V1Container(
+                                        name="agent",
+                                        image=image,
+                                        env=env_list,
+                                        resources=client.V1ResourceRequirements(
+                                            requests=resource_requests.get("requests", {}),
+                                            limits=resource_requests.get("limits", {})
+                                        )
+                                    )
+                                ],
+                                restart_policy="OnFailure"
+                            )
+                        ),
+                        backoff_limit=3
+                    )
+                ),
+                concurrency_policy="Forbid",  # Don't allow concurrent runs
+                failed_jobs_history_limit=3,
+                successful_jobs_history_limit=3
+            )
+        )
+
+        # Create the CronJob
+        self.batch_v1_api.create_namespaced_cron_job(
+            namespace=self.namespace,
+            body=cronjob_spec
+        )
+
+        logger.info(f"Created CronJob: {cronjob_name}")
+        return cronjob_name
+
+    def _validate_cron_schedule(self, schedule: str) -> bool:
+        """Validate cron schedule format."""
+        # Basic validation: should have 5 parts (minute hour day month weekday)
+        parts = schedule.strip().split()
+        return len(parts) == 5
+
+    def retryWithBackoff(self, operation: Callable, max_retries: int = 3,
+                        initial_delay: float = 1.0, backoff_factor: float = 2.0) -> Any:
+        """
+        Retry an operation with exponential backoff.
+
+        Args:
+            operation: Function to retry
+            max_retries: Maximum number of retry attempts
+            initial_delay: Initial delay in seconds
+            backoff_factor: Multiplier for delay after each retry
+
+        Returns:
+            Result of the operation
+
+        Raises:
+            Last exception if all retries fail
+        """
+        delay = initial_delay
+        last_exception = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                return operation()
+            except ApiException as e:
+                last_exception = e
+
+                # Don't retry on 4xx errors (client errors)
+                if 400 <= e.status < 500 and e.status != 429:  # Except rate limiting
+                    raise
+
+                if attempt < max_retries:
+                    logger.warning(f"Operation failed (attempt {attempt + 1}/{max_retries + 1}), retrying in {delay}s: {e}")
+                    time.sleep(delay)
+                    delay *= backoff_factor
+                else:
+                    logger.error(f"Operation failed after {max_retries + 1} attempts: {e}")
+
+        if last_exception:
+            raise last_exception
+
+    def listAllJobs(self, agent_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        List all jobs, optionally filtered by agent ID.
+
+        Args:
+            agent_id: Optional agent ID to filter by
+
+        Returns:
+            List of job status dictionaries
+        """
+        self._ensure_initialized()
+
+        label_selector = "app=mentatlab-agent"
+        if agent_id:
+            label_selector += f",agent-id={agent_id}"
+
+        try:
+            jobs = self.batch_v1_api.list_namespaced_job(
+                namespace=self.namespace,
+                label_selector=label_selector
+            )
+
+            return [
+                {
+                    "name": job.metadata.name,
+                    "agent_id": job.metadata.labels.get("agent-id"),
+                    "created_at": job.metadata.creation_timestamp.isoformat() if job.metadata.creation_timestamp else None,
+                    **self._parse_job_status(job)
+                }
+                for job in jobs.items
+            ]
+        except ApiException as e:
+            logger.error(f"Failed to list jobs: {e}")
+            return []

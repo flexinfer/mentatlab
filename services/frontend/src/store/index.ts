@@ -10,7 +10,19 @@ import { FileUploadState, UploadProgress } from '../components/multimodal/FileUp
 interface FlowState {
   flows: Map<string, any>; // Placeholder, replace with actual Flow type
   activeFlowId: string | null;
+
+  // Undo/Redo state
+  history: Array<Map<string, any>>; // History of flow states
+  historyIndex: number; // Current position in history
+  maxHistorySize: number; // Maximum number of history entries
+
+  // Actions
   updateFlow: (flowId: string, updates: any) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  clearHistory: () => void;
 }
 
 interface MediaState {
@@ -53,6 +65,15 @@ export interface StreamingState {
   setConnectionStatus: (status: StreamConnectionState) => void;
 }
 
+// Helper to deep clone a Map of flows
+function cloneFlowsMap(flows: Map<string, any>): Map<string, any> {
+  const cloned = new Map();
+  flows.forEach((value, key) => {
+    cloned.set(key, JSON.parse(JSON.stringify(value)));
+  });
+  return cloned;
+}
+
 // Core stores
 export const useFlowStore = create<FlowState>()(
   devtools(
@@ -62,11 +83,71 @@ export const useFlowStore = create<FlowState>()(
           // Flow state
           flows: new Map(),
           activeFlowId: null,
-          
+
+          // Undo/Redo state
+          history: [],
+          historyIndex: -1,
+          maxHistorySize: 50, // Keep last 50 states
+
           // Actions
           updateFlow: (flowId: string, updates: any) =>
             set((state: any) => {
-              state.flows.get(flowId).merge(updates);
+              // Save current state to history before making changes
+              const currentFlows = cloneFlowsMap(state.flows);
+
+              // Trim future history if we're not at the end
+              if (state.historyIndex < state.history.length - 1) {
+                state.history = state.history.slice(0, state.historyIndex + 1);
+              }
+
+              // Add current state to history
+              state.history.push(currentFlows);
+
+              // Trim history if it exceeds max size
+              if (state.history.length > state.maxHistorySize) {
+                state.history = state.history.slice(state.history.length - state.maxHistorySize);
+              }
+
+              // Update history index
+              state.historyIndex = state.history.length - 1;
+
+              // Apply the update
+              const flow = state.flows.get(flowId);
+              if (flow) {
+                Object.assign(flow, updates);
+              }
+            }),
+
+          undo: () =>
+            set((state: any) => {
+              if (state.historyIndex > 0) {
+                state.historyIndex -= 1;
+                state.flows = cloneFlowsMap(state.history[state.historyIndex]);
+              }
+            }),
+
+          redo: () =>
+            set((state: any) => {
+              if (state.historyIndex < state.history.length - 1) {
+                state.historyIndex += 1;
+                state.flows = cloneFlowsMap(state.history[state.historyIndex]);
+              }
+            }),
+
+          canUndo: () => {
+            const state = get();
+            return state.historyIndex > 0;
+          },
+
+          canRedo: () => {
+            const state = get();
+            return state.historyIndex < state.history.length - 1;
+          },
+
+          clearHistory: () =>
+            set((state: any) => {
+              state.history = [];
+              state.historyIndex = -1;
             }),
         }))
       ),
@@ -74,11 +155,17 @@ export const useFlowStore = create<FlowState>()(
         name: 'flow-store',
         partialize: (state) => ({
           flows: Array.from(state.flows.entries()),
-          activeFlowId: state.activeFlowId
+          activeFlowId: state.activeFlowId,
+          // Don't persist history to localStorage (too large)
         }),
         onRehydrateStorage: () => (state) => {
           if (state?.flows) {
             state.flows = new Map(state.flows);
+          }
+          // Initialize history with current state
+          if (state) {
+            state.history = [cloneFlowsMap(state.flows)];
+            state.historyIndex = 0;
           }
         }
       }
