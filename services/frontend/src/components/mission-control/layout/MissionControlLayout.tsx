@@ -21,11 +21,19 @@ import { getOrchestratorBaseUrl } from '@/config/orchestrator';
 // ADD: orchestrator run helper
 import { startDemoRunAndStream } from '../../../services/api/orchestrator';
 import GraphPanel from '../panels/GraphPanel';
+// ADD: keyboard shortcuts
+import { useKeyboardShortcuts, type KeyboardShortcut, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsDialog } from '@/components/ui/KeyboardShortcutsDialog';
+// ADD: flow store for undo/redo
+import { useFlowStore } from '@/store/index';
 
 export function MissionControlLayout() {
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
   // Currently mounted CogPak UI (mounts into the main canvas)
   const [cogpakUi, setCogpakUi] = React.useState<{ url: string; title: string } | null>(null);
+
+  // Flow store actions for undo/redo
+  const { undo, redo, canUndo, canRedo } = useFlowStore();
   // THEME: dark mode persisted
   const [dark, setDark] = React.useState<boolean>(() => {
     try { return (localStorage.getItem('theme') ?? 'light') === 'dark'; } catch { return false; }
@@ -80,6 +88,9 @@ export function MissionControlLayout() {
 
   // Settings Drawer open state
   const [settingsOpen, setSettingsOpen] = React.useState<boolean>(false);
+
+  // Keyboard shortcuts help dialog
+  const [shortcutsDialogOpen, setShortcutsDialogOpen] = React.useState<boolean>(false);
 
   // When a CogPak UI is requested, load its remoteEntry and attempt to mount into #cogpak-mount
   React.useEffect(() => {
@@ -271,6 +282,106 @@ export function MissionControlLayout() {
     }
   }, []);
 
+  // Keyboard shortcuts configuration
+  const shortcuts = React.useMemo<KeyboardShortcut[]>(() => [
+    {
+      ...commonShortcuts.commandPalette(() => {
+        console.log('[Shortcuts] Command palette (not yet implemented)');
+        // TODO: Implement command palette
+      }),
+      description: 'Navigation: Open command palette',
+    },
+    {
+      ...commonShortcuts.undo(() => {
+        if (canUndo()) {
+          undo();
+        }
+      }),
+      description: 'Edit: Undo last change',
+      enabled: canUndo(),
+    },
+    {
+      ...commonShortcuts.redo(() => {
+        if (canRedo()) {
+          redo();
+        }
+      }),
+      description: 'Edit: Redo last change',
+      enabled: canRedo(),
+    },
+    {
+      key: 'r',
+      ctrlKey: true,
+      description: 'Flow: Run current flow',
+      action: () => {
+        startOrchestratorRun();
+      },
+      preventDefault: true,
+    },
+    {
+      key: 's',
+      ctrlKey: true,
+      description: 'Flow: Save flow',
+      action: () => {
+        console.log('[Shortcuts] Save flow (not yet implemented)');
+        // TODO: Implement flow save
+      },
+      preventDefault: true,
+    },
+    {
+      key: '/',
+      ctrlKey: true,
+      description: 'UI: Toggle console panel',
+      action: () => {
+        console.log('[Shortcuts] Toggle console');
+        // TODO: Implement console toggle
+      },
+      preventDefault: true,
+    },
+    {
+      ...commonShortcuts.escape(() => {
+        if (shortcutsDialogOpen) {
+          setShortcutsDialogOpen(false);
+        } else if (settingsOpen) {
+          setSettingsOpen(false);
+        } else if (cogpakUi) {
+          setCogpakUi(null);
+        }
+      }),
+      description: 'UI: Close dialogs/overlays',
+    },
+    {
+      key: '?',
+      shiftKey: true,
+      description: 'Help: Show keyboard shortcuts',
+      action: () => {
+        setShortcutsDialogOpen(!shortcutsDialogOpen);
+      },
+      preventDefault: true,
+    },
+    {
+      key: 'd',
+      ctrlKey: true,
+      description: 'Flow: Start demo run',
+      action: () => {
+        startDemoRun();
+      },
+      preventDefault: true,
+    },
+    {
+      key: 't',
+      ctrlKey: true,
+      description: 'UI: Toggle dark mode',
+      action: () => {
+        setDark((d) => !d);
+      },
+      preventDefault: true,
+    },
+  ], [shortcutsDialogOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo]);
+
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts(shortcuts);
+
   return (
     <div className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[240px_1fr] bg-background text-foreground" style={{
       position: 'relative',
@@ -304,6 +415,14 @@ export function MissionControlLayout() {
             title="Open settings"
           >
             ⚙
+          </button>
+          {/* Keyboard Shortcuts Help */}
+          <button
+            className="ml-2 h-6 px-2 rounded border bg-card hover:bg-muted text-[11px]"
+            onClick={() => setShortcutsDialogOpen(true)}
+            title="Keyboard shortcuts (Shift+?)"
+          >
+            ?
           </button>
         </div>
       </header>
@@ -407,6 +526,13 @@ export function MissionControlLayout() {
 
       {/* Status Bar */}
       <StatusBar isEnabled={isEnabled} />
+
+      {/* Keyboard Shortcuts Help Dialog */}
+      <KeyboardShortcutsDialog
+        shortcuts={shortcuts}
+        isOpen={shortcutsDialogOpen}
+        onClose={() => setShortcutsDialogOpen(false)}
+      />
     </div>
   );
 }

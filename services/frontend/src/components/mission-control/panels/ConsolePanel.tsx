@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { FixedSizeList as List } from 'react-window';
 import { useRunConsole, ConsoleLevel, ConsoleType, ConsoleFilters } from './console/useRunConsole';
 import Badge from '@/components/ui/Badge';
 import CodeInline from '@/components/ui/CodeInline';
 import { PanelShell } from '@/components/ui/PanelShell';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { ScrollArea } from '@/components/ui/ScrollArea';
 import { cn } from '@/lib/cn';
 
 /**
@@ -64,14 +64,13 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
     applyFilters(f);
   }, [typeSet, levelSet, nodeFilter, query, applyFilters]);
 
-  // List + autoscroll handling
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // Virtualized list + autoscroll handling
+  const listRef = useRef<List>(null);
   const isUserAtBottomRef = useRef<boolean>(true);
 
   const scrollToBottom = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    if (!listRef.current || filtered.length === 0) return;
+    listRef.current.scrollToItem(filtered.length - 1, 'end');
   };
 
   useEffect(() => {
@@ -89,15 +88,22 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
     }
   }, [filtered, autoscroll]);
 
-  const onScroll = () => {
-    const el = scrollRef.current;
-    if (!el) return;
+  const onScroll = ({ scrollOffset, scrollDirection, scrollUpdateWasRequested }: any) => {
+    // Don't interfere with programmatic scrolls
+    if (scrollUpdateWasRequested) return;
+
+    const listEl = listRef.current;
+    if (!listEl) return;
+
+    // Calculate if we're at the bottom
+    const container = (listEl as any)._outerRef;
+    if (!container) return;
+
     const threshold = 8; // px tolerance
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+    const atBottom = container.scrollHeight - scrollOffset - container.clientHeight <= threshold;
     isUserAtBottomRef.current = atBottom;
 
     // If user scrolls away from bottom, pause autoscroll
-    // Inline comment: this implements "pause when user scrolls up; resume when toggled back or scrolled to bottom"
     if (!atBottom && autoscroll) {
       setAutoscroll(false);
     } else if (atBottom && !autoscroll) {
@@ -157,6 +163,41 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
       case 'error': return 'danger' as const;
       default: return 'default' as const;
     }
+  };
+
+  // Row renderer for virtualized list
+  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const it = filtered[index];
+    if (!it) return null;
+
+    return (
+      <div style={style} className="px-2 py-1">
+        <div className="flex items-center gap-2 hover:bg-muted/40 rounded transition-colors h-full px-2">
+          {/* Time */}
+          <span className="text-gray-400 min-w-[120px] tabular-nums">
+            {formatTime(it.ts)}
+          </span>
+          {/* Type */}
+          <Badge variant={typeVariant(it.type)} title={String(it.type)}>
+            {it.type}
+          </Badge>
+          {/* Level */}
+          {it.type === 'log' && it.level && (
+            <Badge variant={levelVariant(it.level)} title={String(it.level)}>
+              {it.level}
+            </Badge>
+          )}
+          {/* Node */}
+          {it.nodeId && (
+            <span className="text-gray-500">· {it.nodeId}</span>
+          )}
+          {/* Message/Data */}
+          <span className="flex-1 text-gray-800 dark:text-gray-200">
+            {renderMessageOrData(it)}
+          </span>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -275,49 +316,24 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
       }
       className="h-full w-full"
     >
-      {/* List */}
-      <ScrollArea orientation="vertical" className="flex-1">
-        <div
-          ref={scrollRef}
-          className="p-2 space-y-1 font-sans text-[11px] flex-1"
-          onScroll={onScroll}
-        >
-          {filtered.length === 0 && (
-            <div className="text-gray-500">No events.</div>
-          )}
-
-          {filtered.map((it) => {
-            return (
-              <div key={`${it.seq}-${it.id ?? ''}`} className="px-2 py-1 rounded hover:bg-muted/40 transition-colors">
-                <div className="flex items-center gap-2">
-                  {/* Time */}
-                  <span className="text-gray-400 min-w-[120px] tabular-nums">
-                    {formatTime(it.ts)}
-                  </span>
-                  {/* Type */}
-                  <Badge variant={typeVariant(it.type)} title={String(it.type)}>
-                    {it.type}
-                  </Badge>
-                  {/* Level */}
-                  {it.type === 'log' && it.level && (
-                    <Badge variant={levelVariant(it.level)} title={String(it.level)}>
-                      {it.level}
-                    </Badge>
-                  )}
-                  {/* Node */}
-                  {it.nodeId && (
-                    <span className="text-gray-500">· {it.nodeId}</span>
-                  )}
-                  {/* Message/Data */}
-                  <span className="flex-1 text-gray-800 dark:text-gray-200">
-                    {renderMessageOrData(it)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </ScrollArea>
+      {/* Virtualized List */}
+      <div className="flex-1 p-2 font-sans text-[11px]" style={{ height: 'calc(100% - 48px)' }}>
+        {filtered.length === 0 ? (
+          <div className="text-gray-500">No events.</div>
+        ) : (
+          <List
+            ref={listRef}
+            height={500} // Will be adjusted by parent container
+            itemCount={filtered.length}
+            itemSize={32} // Fixed row height
+            width="100%"
+            onScroll={onScroll}
+            style={{ height: '100%' }}
+          >
+            {Row}
+          </List>
+        )}
+      </div>
     </PanelShell>
   );
 }

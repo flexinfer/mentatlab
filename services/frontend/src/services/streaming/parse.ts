@@ -19,7 +19,10 @@
  * Notes:
  * - If given a MessageEvent, we JSON.parse(evt.data) when possible.
  * - We try multiple common homes for fields: data.ts / data.timestamp, data.node_id / data.node / data.id
+ * - Optionally uses Web Worker for parsing when enabled via feature flag
  */
+
+import { getStreamParserWorker } from './workerManager';
 
 export interface NormalizedRunEvent {
   seq: number;
@@ -111,4 +114,60 @@ function isMessageEvent(x: any): x is MessageEvent {
 function inferTypeFromData(data: any): string | undefined {
   if (!data) return undefined;
   return (data.type as string) || (data.kind as string) || (data.event as string);
+}
+
+/**
+ * Async version of parseRunEvent that optionally uses Web Worker
+ * Falls back to synchronous parsing if worker is not available
+ */
+export async function parseRunEventAsync(
+  input: MessageEvent | { id?: any; event?: string; data?: any }
+): Promise<NormalizedRunEvent> {
+  const worker = getStreamParserWorker();
+
+  // Use worker if available
+  if (worker.isAvailable()) {
+    try {
+      // Extract raw SSE format for worker
+      let rawData: string;
+      let eventType: string | undefined;
+
+      if (isMessageEvent(input)) {
+        rawData = typeof (input as MessageEvent).data === 'string'
+          ? (input as MessageEvent).data
+          : JSON.stringify((input as MessageEvent).data);
+        eventType = undefined; // Worker will infer from data
+      } else {
+        const obj = input as { id?: any; event?: string; data?: any };
+        // Reconstruct SSE format
+        const lines: string[] = [];
+        if (obj.id != null) lines.push(`id: ${obj.id}`);
+        if (obj.event) lines.push(`event: ${obj.event}`);
+        if (obj.data != null) {
+          const dataStr = typeof obj.data === 'string' ? obj.data : JSON.stringify(obj.data);
+          lines.push(`data: ${dataStr}`);
+        }
+        rawData = lines.join('\n');
+        eventType = obj.event;
+      }
+
+      const result = await worker.parse(rawData, eventType);
+      return result;
+    } catch (error) {
+      console.warn('[parseRunEventAsync] Worker parse failed, falling back to sync:', error);
+      // Fall back to sync parsing
+      return parseRunEvent(input);
+    }
+  }
+
+  // Fall back to synchronous parsing
+  return parseRunEvent(input);
+}
+
+/**
+ * Get parsing statistics
+ */
+export function getParsingStats() {
+  const worker = getStreamParserWorker();
+  return worker.getStats();
 }
