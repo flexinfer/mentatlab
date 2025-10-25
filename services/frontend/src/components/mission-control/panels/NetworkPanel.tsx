@@ -34,29 +34,57 @@ type Props = {
 type AgentNodeData = {
   id: string;
   label: string;
-  status?: 'idle' | 'active';
+  status?: 'idle' | 'active' | 'error' | 'slow';
   execs?: number;
   lastToolTokens?: number | null;
   lastToolAt?: number | null;
   lastActiveAt?: number | null;
+  health?: number; // 0-100
+  avgDuration?: number; // ms
+  errorCount?: number;
+  throughput?: number; // msgs/sec
 };
 
 // Custom Agent Node renderer for badges and glow
 function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean }) {
   const isHot = !!data.lastActiveAt && Date.now() - (data.lastActiveAt || 0) <= 600;
   const toolBadgeVisible = !!data.lastToolAt && Date.now() - (data.lastToolAt || 0) <= 3000;
+
+  // Health-based styling
+  const health = data.health ?? 100;
+  const healthColor =
+    health >= 80 ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-900/40' :
+    health >= 50 ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-900/40' :
+    'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-900/40';
+
+  const hasError = (data.errorCount ?? 0) > 0;
+  const isSlow = data.status === 'slow';
+
   return (
     <div
       className={[
-        'px-2 py-1 rounded-md border text-[11px] shadow-sm relative transition-transform',
-        'bg-card/90 dark:bg-slate-900/70 border-slate-200 dark:border-slate-800 text-foreground',
+        'px-2 py-1 rounded-md border text-[11px] shadow-sm relative transition-all duration-200',
+        hasError ? healthColor : 'bg-card/90 dark:bg-slate-900/70 border-slate-200 dark:border-slate-800',
+        'text-foreground',
         isHot ? 'ring-2 ring-indigo-400/70 scale-[1.02]' : 'ring-0',
         selected ? 'outline outline-1 outline-indigo-400' : '',
       ].join(' ')}
       style={{ minWidth: 120 }}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium truncate">{data.label}</span>
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          {/* Health indicator dot */}
+          <span
+            className={[
+              'w-2 h-2 rounded-full flex-shrink-0',
+              health >= 80 ? 'bg-green-500' :
+              health >= 50 ? 'bg-yellow-500' :
+              'bg-red-500'
+            ].join(' ')}
+            title={`Health: ${health}%`}
+          />
+          <span className="font-medium truncate">{data.label}</span>
+        </div>
         {toolBadgeVisible && (
           <span
             className="ml-1 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full border text-[10px]
@@ -67,7 +95,24 @@ function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean
           </span>
         )}
       </div>
-      <div className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400">execs: {data.execs ?? 0}</div>
+      <div className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+        <span>execs: {data.execs ?? 0}</span>
+        {(data.throughput ?? 0) > 0 && (
+          <span className="text-indigo-600 dark:text-indigo-400" title="Messages per second">
+            {data.throughput?.toFixed(1)}/s
+          </span>
+        )}
+      </div>
+      {hasError && (
+        <div className="mt-1 text-[10px] text-red-600 dark:text-red-400 font-semibold">
+          ⚠️ {data.errorCount} error{data.errorCount! > 1 ? 's' : ''}
+        </div>
+      )}
+      {isSlow && !hasError && (
+        <div className="mt-1 text-[10px] text-yellow-600 dark:text-yellow-400">
+          ⏱️ Slow response
+        </div>
+      )}
 
       {/* Handles (placeholder dots for symmetry/future connections) */}
       <div
