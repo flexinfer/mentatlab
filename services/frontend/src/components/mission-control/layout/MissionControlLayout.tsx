@@ -15,6 +15,8 @@ import { ReactFlowProvider } from 'reactflow';
 import { useStreamingStore } from '../../../store/index';
 import { StreamConnectionState } from '../../../types/streaming';
 import ContractOverlay from '../overlays/ContractOverlay';
+import LineageOverlay from '../overlays/LineageOverlay';
+import PolicyOverlay from '../overlays/PolicyOverlay';
 import PropertyInspector from '../../PropertyInspector';
 import NetworkPanel from '../panels/NetworkPanel';
 import { getOrchestratorBaseUrl } from '@/config/orchestrator';
@@ -91,6 +93,12 @@ export function MissionControlLayout() {
 
   // Keyboard shortcuts help dialog
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = React.useState<boolean>(false);
+
+  // Lineage overlay state
+  const [lineageOverlayOpen, setLineageOverlayOpen] = React.useState<boolean>(false);
+
+  // Policy overlay state
+  const [policyOverlayOpen, setPolicyOverlayOpen] = React.useState<boolean>(false);
 
   // When a CogPak UI is requested, load its remoteEntry and attempt to mount into #cogpak-mount
   React.useEffect(() => {
@@ -342,6 +350,10 @@ export function MissionControlLayout() {
       ...commonShortcuts.escape(() => {
         if (shortcutsDialogOpen) {
           setShortcutsDialogOpen(false);
+        } else if (lineageOverlayOpen) {
+          setLineageOverlayOpen(false);
+        } else if (policyOverlayOpen) {
+          setPolicyOverlayOpen(false);
         } else if (settingsOpen) {
           setSettingsOpen(false);
         } else if (cogpakUi) {
@@ -349,6 +361,24 @@ export function MissionControlLayout() {
         }
       }),
       description: 'UI: Close dialogs/overlays',
+    },
+    {
+      key: 'l',
+      ctrlKey: true,
+      description: 'View: Toggle lineage overlay',
+      action: () => {
+        setLineageOverlayOpen(!lineageOverlayOpen);
+      },
+      preventDefault: true,
+    },
+    {
+      key: 'p',
+      ctrlKey: true,
+      description: 'View: Toggle policy overlay',
+      action: () => {
+        setPolicyOverlayOpen(!policyOverlayOpen);
+      },
+      preventDefault: true,
     },
     {
       key: '?',
@@ -377,7 +407,7 @@ export function MissionControlLayout() {
       },
       preventDefault: true,
     },
-  ], [shortcutsDialogOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo]);
+  ], [shortcutsDialogOpen, lineageOverlayOpen, policyOverlayOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo]);
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts(shortcuts);
@@ -533,6 +563,22 @@ export function MissionControlLayout() {
         isOpen={shortcutsDialogOpen}
         onClose={() => setShortcutsDialogOpen(false)}
       />
+
+      {/* Lineage Overlay */}
+      {lineageOverlayOpen && (
+        <LineageOverlay
+          runId={activeRunId}
+          onClose={() => setLineageOverlayOpen(false)}
+        />
+      )}
+
+      {/* Policy Overlay */}
+      {policyOverlayOpen && (
+        <PolicyOverlay
+          runId={activeRunId}
+          onClose={() => setPolicyOverlayOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -7,6 +7,8 @@ This document summarizes the enhancements made to improve performance, usability
 
 ## ✅ Completed Enhancements (Priority 1 & 2)
 
+### Priority 1: Performance & UX (Quick Wins)
+
 ### 1. Console Panel Virtualization ⚡
 **Status**: ✅ Complete
 **Impact**: High Performance
@@ -263,13 +265,98 @@ scheduler.watchJobStatus(job, lambda s: print(s))
 logs = scheduler.getPodLogs(job)
 ```
 
+### Priority 2: Feature Completions
+
+#### 6. Lineage Overlay UI 🔗
+**Status**: ✅ Complete
+**Impact**: High Observability
+**New Files**:
+- `services/frontend/src/components/mission-control/overlays/LineageOverlay.tsx`
+
+**Features**:
+- **Full lineage graph visualization**: See all artifact transformations
+- **Provenance tracking**: Trace ancestors and descendants of any artifact
+- **Interactive exploration**: Click artifacts to navigate lineage chain
+- **Metadata display**: Size, MIME type, creation timestamps
+- **Keyboard shortcut**: `⌘L` / `Ctrl+L` to toggle
+
+**Enhanced LineageService**:
+```typescript
+// Build complete graph
+const graph = lineage.buildGraph(runId);
+// { nodes, edges, roots, leaves }
+
+// Get provenance chain
+const provenance = lineage.getProvenance(runId, artifactId);
+// { artifact, ancestors, descendants }
+```
+
+**Benefits**:
+- Understand data transformations
+- Debug data flow issues
+- Audit compliance and traceability
+- Visualize complex pipelines
+
+---
+
+#### 7. Policy Guardrails Overlay 🛡️
+**Status**: ✅ Complete
+**Impact**: High Compliance
+**New Files**:
+- `services/frontend/src/components/mission-control/overlays/PolicyOverlay.tsx`
+
+**Features**:
+- **Budget envelope tracking**: Monitor costs against configured budgets
+- **Policy violations**: Track PII, unsafe content, rate limits, etc.
+- **Real-time alerts**: Visual indicators for budget/policy issues
+- **Remediation suggestions**: Automatic recommendations for fixes
+- **Keyboard shortcut**: `⌘P` / `Ctrl+P` to toggle
+
+**Enhanced PolicyService**:
+```typescript
+// Set budget
+policies.setBudget({
+  id: 'default',
+  name: 'Production Budget',
+  maxCost: 100.0,
+  maxTokens: 1000000,
+});
+
+// Record violation
+policies.recordViolation(runId, {
+  runId, nodeId,
+  type: 'cost_exceeded',
+  severity: 'high',
+  message: 'Cost exceeded budget',
+  action: 'warn',
+});
+
+// Check budget
+const check = policies.checkBudget(runId, 'default');
+// { exceeded: false, usage: 12.50, limit: 100.0 }
+```
+
+**Violation Types**:
+- `cost_exceeded` - Budget overrun
+- `pii_detected` - Personal information detected
+- `unsafe_content` - Content safety violation
+- `rate_limit` - API rate limiting
+- `duration_exceeded` - Execution timeout
+
+**Benefits**:
+- Enforce cost controls
+- Ensure compliance (PII, content safety)
+- Prevent runaway costs
+- Audit trail for violations
+- Proactive remediation
+
 ---
 
 ## 🔜 Next Priority Enhancements
 
 ### Priority 2: Feature Completions (In Progress)
-- [ ] Lineage Overlay UI
-- [ ] Policy Guardrails Overlay
+- [x] Lineage Overlay UI ✅
+- [x] Policy Guardrails Overlay ✅
 - [ ] Network Visualization Enhancement
 - [ ] Metrics Dashboard Panel
 - [ ] Redis RunStore Persistence
@@ -345,20 +432,32 @@ def test_cronjob_creation():
 
 ## 🎉 Summary
 
-**5 major enhancements completed** focusing on:
+**7 major enhancements completed** focusing on:
 - ⚡ Performance (virtualization, web workers)
 - 🎨 UX (keyboard shortcuts, undo/redo)
 - 🚀 Production-readiness (K8s enhancements)
+- 🔍 Observability (lineage tracking, policy guardrails)
 
 **Total impact**:
 - 10-20x faster console rendering
 - Non-blocking SSE parsing
 - Full keyboard navigation
 - Production-ready K8s scheduling
+- Complete artifact lineage tracking
+- Budget & compliance enforcement
 - Better developer experience
+
+**New Keyboard Shortcuts**:
+- `⌘Z` / `Ctrl+Z` - Undo
+- `⌘⇧Z` / `Ctrl+Shift+Z` - Redo
+- `⌘L` / `Ctrl+L` - Toggle lineage overlay
+- `⌘P` / `Ctrl+P` - Toggle policy overlay
+- `⌘R` / `Ctrl+R` - Run flow
+- `⌘T` / `Ctrl+T` - Toggle dark mode
+- `?` - Show all shortcuts
 
 All enhancements are **backward compatible** and **progressively enabled** through feature flags.
 
 ---
 
-**Next Steps**: Implement Priority 2 features (Lineage, Policy, Metrics)
+**Next Steps**: Continue with remaining Priority 2 features (Network Viz, Metrics, Redis persistence)

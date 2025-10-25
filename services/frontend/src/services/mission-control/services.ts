@@ -282,8 +282,27 @@ export class FlightRecorderService {
 // LineageService
 //
 
+export interface ArtifactNode {
+  id: string; // artifactId
+  type: 'input' | 'output' | 'intermediate';
+  nodePin: string; // e.g., "node1.output1"
+  meta?: {
+    bytes?: number;
+    createdAt?: string;
+    mimeType?: string;
+  };
+}
+
+export interface LineageGraph {
+  nodes: ArtifactNode[];
+  edges: LineageEdge[];
+  roots: string[]; // artifact IDs with no parents
+  leaves: string[]; // artifact IDs with no children
+}
+
 export class LineageService {
   private edges = new Map<RunId, LineageEdge[]>();
+  private artifacts = new Map<RunId, Map<string, ArtifactNode>>();
 
   record(runId: RunId, edge: LineageEdge): void {
     const list = this.edges.get(runId) ?? [];
@@ -291,13 +310,162 @@ export class LineageService {
     this.edges.set(runId, list);
   }
 
+  recordArtifact(runId: RunId, artifact: ArtifactNode): void {
+    const artifacts = this.artifacts.get(runId) ?? new Map();
+    artifacts.set(artifact.id, artifact);
+    this.artifacts.set(runId, artifacts);
+  }
+
   graph(runId: RunId): LineageEdge[] {
     return this.edges.get(runId) ?? [];
   }
 
+  /**
+   * Build a complete lineage graph for a run
+   */
+  buildGraph(runId: RunId): LineageGraph {
+    const edges = this.edges.get(runId) ?? [];
+    const artifactMap = this.artifacts.get(runId) ?? new Map();
+
+    // Build nodes from edges and artifacts
+    const nodeSet = new Set<string>();
+    const nodes: ArtifactNode[] = [];
+
+    // Add known artifacts
+    artifactMap.forEach((artifact) => {
+      nodes.push(artifact);
+      nodeSet.add(artifact.id);
+    });
+
+    // Add inferred nodes from edges
+    edges.forEach((edge) => {
+      if (edge.artifactId && !nodeSet.has(edge.artifactId)) {
+        nodes.push({
+          id: edge.artifactId,
+          type: 'intermediate',
+          nodePin: edge.from,
+          meta: edge.meta,
+        });
+        nodeSet.add(edge.artifactId);
+      }
+    });
+
+    // Find roots (no incoming edges) and leaves (no outgoing edges)
+    const hasIncoming = new Set<string>();
+    const hasOutgoing = new Set<string>();
+
+    edges.forEach((edge) => {
+      if (edge.artifactId) {
+        hasOutgoing.add(edge.from);
+        hasIncoming.add(edge.to);
+      }
+    });
+
+    const roots = nodes
+      .filter((n) => !hasIncoming.has(n.nodePin))
+      .map((n) => n.id);
+
+    const leaves = nodes
+      .filter((n) => !hasOutgoing.has(n.nodePin))
+      .map((n) => n.id);
+
+    return { nodes, edges, roots, leaves };
+  }
+
+  /**
+   * Get ancestors (parent artifacts) of a given artifact
+   */
+  getAncestors(runId: RunId, artifactId: string): ArtifactNode[] {
+    const edges = this.edges.get(runId) ?? [];
+    const artifacts = this.artifacts.get(runId) ?? new Map();
+
+    const visited = new Set<string>();
+    const ancestors: ArtifactNode[] = [];
+
+    const traverse = (id: string) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+
+      // Find edges that produce this artifact
+      const parentEdges = edges.filter((e) => e.to.includes(id) || e.artifactId === id);
+
+      parentEdges.forEach((edge) => {
+        // Extract parent artifact from edge
+        const parentId = edge.artifactId;
+        if (parentId && parentId !== id) {
+          const artifact = artifacts.get(parentId);
+          if (artifact) {
+            ancestors.push(artifact);
+            traverse(parentId);
+          }
+        }
+      });
+    };
+
+    traverse(artifactId);
+    return ancestors;
+  }
+
+  /**
+   * Get descendants (child artifacts) of a given artifact
+   */
+  getDescendants(runId: RunId, artifactId: string): ArtifactNode[] {
+    const edges = this.edges.get(runId) ?? [];
+    const artifacts = this.artifacts.get(runId) ?? new Map();
+
+    const visited = new Set<string>();
+    const descendants: ArtifactNode[] = [];
+
+    const traverse = (id: string) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+
+      // Find edges that consume this artifact
+      const childEdges = edges.filter((e) => e.from.includes(id) || e.artifactId === id);
+
+      childEdges.forEach((edge) => {
+        // Extract child artifact from edge
+        const childId = edge.artifactId;
+        if (childId && childId !== id) {
+          const artifact = artifacts.get(childId);
+          if (artifact) {
+            descendants.push(artifact);
+            traverse(childId);
+          }
+        }
+      });
+    };
+
+    traverse(artifactId);
+    return descendants;
+  }
+
+  /**
+   * Get the full provenance chain for an artifact
+   */
+  getProvenance(runId: RunId, artifactId: string): {
+    ancestors: ArtifactNode[];
+    descendants: ArtifactNode[];
+    artifact?: ArtifactNode;
+  } {
+    const artifacts = this.artifacts.get(runId) ?? new Map();
+    const artifact = artifacts.get(artifactId);
+
+    return {
+      artifact,
+      ancestors: this.getAncestors(runId, artifactId),
+      descendants: this.getDescendants(runId, artifactId),
+    };
+  }
+
   clear(runId?: RunId): void {
-    if (runId) this.edges.delete(runId);
-    else this.edges.clear();
+    if (runId) {
+      this.edges.delete(runId);
+      this.artifacts.delete(runId);
+    } else {
+      this.edges.clear();
+      this.artifacts.clear();
+    }
   }
 }
 
@@ -342,7 +510,40 @@ export interface PolicyResult {
   actions?: ('scrub' | 'redact' | 'block' | 'warn')[];
 }
 
+export interface BudgetEnvelope {
+  id: string;
+  name: string;
+  maxCost: number; // USD
+  maxTokens?: number;
+  maxDuration?: number; // seconds
+  maxCalls?: number;
+}
+
+export interface PolicyViolation {
+  id: string;
+  timestamp: string;
+  runId: string;
+  nodeId: string;
+  type: 'cost_exceeded' | 'pii_detected' | 'unsafe_content' | 'rate_limit' | 'duration_exceeded';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  message: string;
+  action: 'allow' | 'warn' | 'block';
+  metadata?: any;
+}
+
 export class PolicyService {
+  private budgets = new Map<string, BudgetEnvelope>();
+  private violations = new Map<RunId, PolicyViolation[]>();
+  private costs = new Map<RunId, number>(); // Running cost per run
+
+  setBudget(budget: BudgetEnvelope): void {
+    this.budgets.set(budget.id, budget);
+  }
+
+  getBudget(id: string): BudgetEnvelope | undefined {
+    return this.budgets.get(id);
+  }
+
   evaluateEdge(ctx: PolicyContext): PolicyResult {
     const reasons: string[] = [];
     const actions: PolicyResult['actions'] = [];
@@ -358,6 +559,55 @@ export class PolicyService {
 
     const allow = actions.includes('block') ? false : true;
     return { allow, reasons, actions };
+  }
+
+  recordViolation(runId: RunId, violation: Omit<PolicyViolation, 'id' | 'timestamp'>): PolicyViolation {
+    const fullViolation: PolicyViolation = {
+      ...violation,
+      id: cryptoRandomId(),
+      timestamp: new Date().toISOString(),
+    };
+
+    const violations = this.violations.get(runId) ?? [];
+    violations.push(fullViolation);
+    this.violations.set(runId, violations);
+
+    return fullViolation;
+  }
+
+  getViolations(runId: RunId): PolicyViolation[] {
+    return this.violations.get(runId) ?? [];
+  }
+
+  recordCost(runId: RunId, cost: number): void {
+    const current = this.costs.get(runId) ?? 0;
+    this.costs.set(runId, current + cost);
+  }
+
+  getCost(runId: RunId): number {
+    return this.costs.get(runId) ?? 0;
+  }
+
+  checkBudget(runId: RunId, budgetId: string): { exceeded: boolean; usage: number; limit: number } {
+    const budget = this.budgets.get(budgetId);
+    if (!budget) {
+      return { exceeded: false, usage: 0, limit: 0 };
+    }
+
+    const usage = this.getCost(runId);
+    const exceeded = usage > budget.maxCost;
+
+    return { exceeded, usage, limit: budget.maxCost };
+  }
+
+  clearRun(runId: RunId): void {
+    this.violations.delete(runId);
+    this.costs.delete(runId);
+  }
+
+  clear(): void {
+    this.violations.clear();
+    this.costs.clear();
   }
 }
 
