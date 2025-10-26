@@ -54,3 +54,13 @@ export function isFastStoreEnabled(): boolean {
   const v = env?.VITE_FF_FAST_STORE ?? 'false';
   return String(v).toLowerCase() === 'true';
 }
+
+/**
+ * Getter: Whether to use virtualized console rendering with react-window.
+ * Backed by VITE_FF_CONSOLE_VIRTUALIZATION; defaults to false in production.
+ * Note: Requires react-window dependency which is CommonJS, so disabled by default.
+ */
+export function isConsoleVirtualizationEnabled(): boolean {
+  const v = env?.VITE_FF_CONSOLE_VIRTUALIZATION ?? (env.DEV ? 'true' : 'false');
+  return String(v).toLowerCase() === 'true';
+}

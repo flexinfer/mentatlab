@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echoagent
+  namespace: mentatlab
+  labels:
+    app: echoagent
+    component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echoagent
+  template:
+    metadata:
+      labels:
+        app: echoagent
+        component: agent
+    spec:
+      containers:
+        - name: echoagent
+          image: registry.harbor.lan/library/mentatlab-echoagent:latest
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi

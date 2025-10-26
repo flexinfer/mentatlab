@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: mentatlab
+  labels:
+    app: frontend
+    component: ui
+spec:
+  ports:
+    - port: 5173
+      targetPort: 5173
+      name: http
+  selector:
+    app: frontend
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: mentatlab
+  labels:
+    app: frontend
+    component: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        component: ui
+    spec:
+      containers:
+        - name: frontend
+          image: registry.harbor.lan/library/mentatlab-frontend:latest
+          ports:
+            - containerPort: 5173
+              name: http
+          env:
+            - name: PORT
+              value: "5173"
+            - name: VITE_GATEWAY_BASE_URL
+              value: "http://gateway:8080"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi

@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+  namespace: mentatlab
+  labels:
+    app: orchestrator
+    component: backend
+spec:
+  ports:
+    - port: 7070
+      targetPort: 7070
+      name: http
+  selector:
+    app: orchestrator
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: mentatlab
+  labels:
+    app: orchestrator
+    component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        component: backend
+    spec:
+      containers:
+        - name: orchestrator
+          image: registry.harbor.lan/library/mentatlab-orchestrator:latest
+          ports:
+            - containerPort: 7070
+              name: http
+          env:
+            - name: PORT
+              value: "7070"
+            - name: ORCH_RUNSTORE
+              value: "redis"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi

@@ -28,6 +28,7 @@ RUN pip install --no-cache-dir --upgrade pip \
      "boto3>=1.26.0" \
      "botocore>=1.29.0" \
      "jsonschema>=4.0.0" \
+     "redis>=5.0" \
      opentelemetry-api \
      opentelemetry-sdk \
      opentelemetry-instrumentation-fastapi \

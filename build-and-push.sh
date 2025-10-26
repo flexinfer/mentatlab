@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
 # Default registry target
-REGISTRY_TARGET="ghcr.io/flexinfer/mentatlab"
+REGISTRY_TARGET="registry.harbor.lan/library"
 
 # Parse command line arguments for registry target
 while [[ "$#" -gt 0 ]]; do
@@ -17,24 +17,36 @@ done
 
 echo "Building and pushing Docker images to registry: $REGISTRY_TARGET"
 
-# Services and their paths
-declare -A services
-services["orchestrator"]="services/orchestrator"
-services["gateway"]="services/gateway"
-services["echoagent"]="services/agents/echo"
-services["frontend"]="services/frontend"
+# Build orchestrator (needs repo root context for services/ imports)
+echo "--- Building orchestrator image ---"
+IMAGE_ORCHESTRATOR="$REGISTRY_TARGET/mentatlab-orchestrator:latest"
+docker build -t "$IMAGE_ORCHESTRATOR" -f services/orchestrator/Dockerfile .
+echo "--- Pushing orchestrator image ---"
+docker push "$IMAGE_ORCHESTRATOR"
+echo ""
 
-# Loop through services, build, and push images
-for service_name in "${!services[@]}"; do
-    service_path="${services[$service_name]}"
-    image_name="$REGISTRY_TARGET/$service_name:latest"
+# Build gateway (needs repo root context for services/ imports)
+echo "--- Building gateway image ---"
+IMAGE_GATEWAY="$REGISTRY_TARGET/mentatlab-gateway:latest"
+docker build -t "$IMAGE_GATEWAY" -f services/gateway/Dockerfile .
+echo "--- Pushing gateway image ---"
+docker push "$IMAGE_GATEWAY"
+echo ""
 
-    echo "--- Building $service_name image: $image_name ---"
-    docker build -t "$image_name" "$service_path"
+# Build frontend (builds from its own directory)
+echo "--- Building frontend image ---"
+IMAGE_FRONTEND="$REGISTRY_TARGET/mentatlab-frontend:latest"
+docker build -t "$IMAGE_FRONTEND" services/frontend
+echo "--- Pushing frontend image ---"
+docker push "$IMAGE_FRONTEND"
+echo ""
 
-    echo "--- Pushing $service_name image: $image_name ---"
-    docker push "$image_name"
-    echo ""
-done
+# Build echoagent (builds from its own directory)
+echo "--- Building echoagent image ---"
+IMAGE_ECHOAGENT="$REGISTRY_TARGET/mentatlab-echoagent:latest"
+docker build -t "$IMAGE_ECHOAGENT" services/agents/echo
+echo "--- Pushing echoagent image ---"
+docker push "$IMAGE_ECHOAGENT"
+echo ""
 
 echo "All Docker images built and pushed successfully!"
