@@ -22,11 +22,18 @@ async def validation_middleware(flow_dict, mode):
 
 router = APIRouter()
 
-# Load example flow at startup
+# Load example flows at startup (optional - only if examples directory exists)
 FLOWS_DIR = Path(__file__).resolve().parents[3] / "examples"
-_flows = {
-    "hello_chat": json.loads((FLOWS_DIR / "hello_chat.json").read_text())
-}
+_flows = {}
+
+# Try to load example flows if they exist
+try:
+    if FLOWS_DIR.exists() and (FLOWS_DIR / "hello_chat.json").exists():
+        _flows["hello_chat"] = json.loads((FLOWS_DIR / "hello_chat.json").read_text())
+except Exception as e:
+    # Examples not available - that's okay for production deployments
+    import logging
+    logging.warning(f"Could not load example flows: {e}")
 
 
 @router.get("/{flow_id}")

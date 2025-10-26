@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FixedSizeList as List } from 'react-window';
 import { useRunConsole, ConsoleLevel, ConsoleType, ConsoleFilters } from './console/useRunConsole';
 import Badge from '@/components/ui/Badge';
 import CodeInline from '@/components/ui/CodeInline';
@@ -64,13 +63,13 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
     applyFilters(f);
   }, [typeSet, levelSet, nodeFilter, query, applyFilters]);
 
-  // Virtualized list + autoscroll handling
-  const listRef = useRef<List>(null);
+  // Scroll container and autoscroll handling
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isUserAtBottomRef = useRef<boolean>(true);
 
   const scrollToBottom = () => {
-    if (!listRef.current || filtered.length === 0) return;
-    listRef.current.scrollToItem(filtered.length - 1, 'end');
+    if (!scrollContainerRef.current) return;
+    scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
   };
 
   useEffect(() => {
@@ -87,30 +86,6 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
       scrollToBottom();
     }
   }, [filtered, autoscroll]);
-
-  const onScroll = ({ scrollOffset, scrollDirection, scrollUpdateWasRequested }: any) => {
-    // Don't interfere with programmatic scrolls
-    if (scrollUpdateWasRequested) return;
-
-    const listEl = listRef.current;
-    if (!listEl) return;
-
-    // Calculate if we're at the bottom
-    const container = (listEl as any)._outerRef;
-    if (!container) return;
-
-    const threshold = 8; // px tolerance
-    const atBottom = container.scrollHeight - scrollOffset - container.clientHeight <= threshold;
-    isUserAtBottomRef.current = atBottom;
-
-    // If user scrolls away from bottom, pause autoscroll
-    if (!atBottom && autoscroll) {
-      setAutoscroll(false);
-    } else if (atBottom && !autoscroll) {
-      // Resume automatically when scrolled back to bottom
-      setAutoscroll(true);
-    }
-  };
 
   const toggleType = (t: ConsoleType) => {
     setTypeSet((prev) => {
@@ -163,41 +138,6 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
       case 'error': return 'danger' as const;
       default: return 'default' as const;
     }
-  };
-
-  // Row renderer for virtualized list
-  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const it = filtered[index];
-    if (!it) return null;
-
-    return (
-      <div style={style} className="px-2 py-1">
-        <div className="flex items-center gap-2 hover:bg-muted/40 rounded transition-colors h-full px-2">
-          {/* Time */}
-          <span className="text-gray-400 min-w-[120px] tabular-nums">
-            {formatTime(it.ts)}
-          </span>
-          {/* Type */}
-          <Badge variant={typeVariant(it.type)} title={String(it.type)}>
-            {it.type}
-          </Badge>
-          {/* Level */}
-          {it.type === 'log' && it.level && (
-            <Badge variant={levelVariant(it.level)} title={String(it.level)}>
-              {it.level}
-            </Badge>
-          )}
-          {/* Node */}
-          {it.nodeId && (
-            <span className="text-gray-500">· {it.nodeId}</span>
-          )}
-          {/* Message/Data */}
-          <span className="flex-1 text-gray-800 dark:text-gray-200">
-            {renderMessageOrData(it)}
-          </span>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -316,22 +256,56 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
       }
       className="h-full w-full"
     >
-      {/* Virtualized List */}
+      {/* Console Events List */}
       <div className="flex-1 p-2 font-sans text-[11px]" style={{ height: 'calc(100% - 48px)' }}>
         {filtered.length === 0 ? (
           <div className="text-gray-500">No events.</div>
         ) : (
-          <List
-            ref={listRef}
-            height={500} // Will be adjusted by parent container
-            itemCount={filtered.length}
-            itemSize={32} // Fixed row height
-            width="100%"
-            onScroll={onScroll}
-            style={{ height: '100%' }}
+          <div
+            ref={scrollContainerRef}
+            className="h-full overflow-y-auto"
+            onScroll={(e) => {
+              const container = e.currentTarget;
+              const threshold = 8;
+              const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
+              isUserAtBottomRef.current = atBottom;
+
+              if (!atBottom && autoscroll) {
+                setAutoscroll(false);
+              } else if (atBottom && !autoscroll) {
+                setAutoscroll(true);
+              }
+            }}
           >
-            {Row}
-          </List>
+            {filtered.map((it, index) => (
+              <div key={index} className="px-2 py-1">
+                <div className="flex items-center gap-2 hover:bg-muted/40 rounded transition-colors h-8 px-2">
+                  {/* Time */}
+                  <span className="text-gray-400 min-w-[120px] tabular-nums">
+                    {formatTime(it.ts)}
+                  </span>
+                  {/* Type */}
+                  <Badge variant={typeVariant(it.type)} title={String(it.type)}>
+                    {it.type}
+                  </Badge>
+                  {/* Level */}
+                  {it.type === 'log' && it.level && (
+                    <Badge variant={levelVariant(it.level)} title={String(it.level)}>
+                      {it.level}
+                    </Badge>
+                  )}
+                  {/* Node */}
+                  {it.nodeId && (
+                    <span className="text-gray-500">· {it.nodeId}</span>
+                  )}
+                  {/* Message/Data */}
+                  <span className="flex-1 text-gray-800 dark:text-gray-200">
+                    {renderMessageOrData(it)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </PanelShell>
