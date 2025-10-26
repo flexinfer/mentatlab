@@ -9,7 +9,7 @@ class AgentDefinition(BaseModel):
     type: str
     description: str
 
-@router.get("/api/v1/agents", response_model=List[AgentDefinition])
+@router.get("/agents", response_model=List[AgentDefinition])
 async def get_agents():
     return [
         {
@@ -19,7 +19,7 @@ async def get_agents():
         }
     ]
 
-@router.get("/api/v1/agents/{agent_type}/schema")
+@router.get("/agents/{agent_type}/schema")
 async def get_agent_schema(agent_type: str):
     if agent_type == "flexinfer.echo":
         return {

@@ -19,7 +19,7 @@ import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
 import PropertyInspector from '../../PropertyInspector';
 import NetworkPanel from '../panels/NetworkPanel';
-import { getOrchestratorBaseUrl } from '@/config/orchestrator';
+import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
 // ADD: orchestrator run helper
 import { startDemoRunAndStream } from '../../../services/api/orchestrator';
 import GraphPanel from '../panels/GraphPanel';
@@ -223,6 +223,13 @@ export function MissionControlLayout() {
           let rawText = await res.text().catch(() => '');
           return { res, rawText };
         };
+        // Second attempt: explicit Gateway base URL if configured/built-in
+        const tryGateway = async () => {
+          const base = getGatewayBaseUrl().replace(/\/+$/, '');
+          let res = await fetch(`${base}${endpoint}`, { credentials: 'same-origin' });
+          let rawText = await res.text().catch(() => '');
+          return { res, rawText };
+        };
         const tryBackend = async () => {
           const base = getOrchestratorBaseUrl().replace(/\/+$/, '');
           let res = await fetch(`${base}${endpoint}`, { credentials: 'same-origin' });
@@ -230,14 +237,33 @@ export function MissionControlLayout() {
           return { res, rawText };
         };
 
-        let { res, rawText } = await trySameOrigin();
-        // Fallback when same-origin returned non-200 or HTML
-        if (!res.ok || (rawText || '').trim().startsWith('<')) {
-          ({ res, rawText } = await tryBackend());
+        const attempts: Array<() => Promise<{ res: Response; rawText: string }>> = [
+          trySameOrigin,
+          // Prefer orchestrator's richer catalog when reachable
+          tryBackend,
+          // Fallback to gateway stub list
+          tryGateway,
+        ];
+
+        let res: Response | null = null;
+        let rawText = '';
+        let errors: string[] = [];
+        for (const attempt of attempts) {
+          try {
+            const out = await attempt();
+            res = out.res;
+            rawText = out.rawText;
+            // Accept JSON-ish responses only; skip HTML bodies from static servers
+            if (res.ok && !(rawText || '').trim().startsWith('<')) break;
+            errors.push(`${res.url} -> HTTP ${res.status}`);
+          } catch (e: any) {
+            errors.push(String(e?.message || e));
+          }
+          res = null;
         }
 
-        if (!res.ok) {
-          const msg = `endpoint ${res.url} returned HTTP ${res.status}${rawText ? ' - ' + rawText.slice(0, 300) : ''}`;
+        if (!res) {
+          const msg = `Load failed after attempts: ${errors.join(' | ')}`;
           if (mounted) {
             setError(msg);
             console.error('[CogPaksList] failed to load agents –', msg);

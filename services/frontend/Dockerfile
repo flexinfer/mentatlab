@@ -15,10 +15,18 @@ RUN npm ci
 # Copy application source
 COPY . .
 
-# Vite config: bake the gateway base URL at build time for client requests
-# Default to host-exposed gateway port per docker-compose requirement
-ENV VITE_GATEWAY_BASE_URL=http://localhost:8080
-ENV PORT=5173
+# Accept build-time configuration for Vite envs (embedded at build)
+ARG VITE_GATEWAY_BASE_URL
+ARG VITE_ORCHESTRATOR_URL
+ARG VITE_ORCHESTRATOR_BASE_URL
+ARG VITE_API_URL
+
+# Expose as environment so `vite build` can read them via import.meta.env
+ENV VITE_GATEWAY_BASE_URL=${VITE_GATEWAY_BASE_URL} \
+    VITE_ORCHESTRATOR_URL=${VITE_ORCHESTRATOR_URL} \
+    VITE_ORCHESTRATOR_BASE_URL=${VITE_ORCHESTRATOR_BASE_URL} \
+    VITE_API_URL=${VITE_API_URL} \
+    PORT=5173
 
 # Build the app (use vite directly; package.json build is a placeholder)
 RUN npx vite build
