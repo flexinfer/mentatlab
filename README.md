@@ -175,6 +175,11 @@ Service healthchecks:
 - Gateway: http://localhost:8080/healthz
 - Orchestrator: http://localhost:7070/healthz
 
+Frontend configuration for CogPaks (agents) list:
+- The UI calls the orchestrator at `/api/v1/agents`.
+- In dev (`vite dev`), `/api` is proxied to the orchestrator; set `VITE_PROXY_TARGET` if needed.
+- In preview/production (`vite build` + `vite preview`), there is no proxy. Make sure the build embeds an orchestrator base URL via `VITE_ORCHESTRATOR_URL` (Docker Compose passes this as a build arg by default).
+
 Create a run (via Gateway → Orchestrator):
 ```bash
 curl -X POST http://localhost:8080/api/v1/runs \

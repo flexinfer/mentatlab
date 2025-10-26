@@ -44,7 +44,7 @@ spec:
             - name: PORT
               value: "5173"
             - name: VITE_GATEWAY_BASE_URL
-              value: "http://gateway:8080"
+              value: "http://192.168.50.244:8080"
           resources:
             requests:
               cpu: 100m

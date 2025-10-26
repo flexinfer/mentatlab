@@ -13,7 +13,7 @@ spec:
       name: http
   selector:
     app: gateway
-  type: ClusterIP
+  type: LoadBalancer
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -45,6 +45,10 @@ spec:
               value: "8080"
             - name: ORCHESTRATOR_URL
               value: "http://orchestrator:7070"
+            - name: FRONTEND_URL
+              value: "http://192.168.50.243:5173"
+            - name: TRUSTED_HOSTS
+              value: "192.168.50.244,192.168.50.243,gateway,*.mentatlab.svc.cluster.local"
           resources:
             requests:
               cpu: 200m

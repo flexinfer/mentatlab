@@ -51,8 +51,14 @@ services:
     build:
       context: services/frontend
       dockerfile: Dockerfile
+      args:
+        # Embed URLs into the built frontend so preview can reach services
+        VITE_GATEWAY_BASE_URL: ${VITE_GATEWAY_BASE_URL:-http://localhost:8080}
+        VITE_ORCHESTRATOR_URL: ${VITE_ORCHESTRATOR_URL:-http://localhost:7070}
     environment:
       - VITE_GATEWAY_BASE_URL=http://localhost:8080
+      - VITE_ORCHESTRATOR_URL=http://localhost:7070
+      - VITE_PROXY_TARGET=http://orchestrator:7070
       - PORT=5173
     depends_on:
       gateway:

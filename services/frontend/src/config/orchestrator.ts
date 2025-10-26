@@ -1,11 +1,22 @@
 const env = import.meta.env as any;
 
 /**
- * Return the orchestrator base URL.
- * Reads VITE_ORCHESTRATOR_URL and falls back to http://127.0.0.1:7070 (matches orchestrator logs)
+ * Return the orchestrator base URL used by the frontend.
+ *
+ * Resolution order (first non-empty wins):
+ * - VITE_ORCHESTRATOR_URL
+ * - VITE_ORCHESTRATOR_BASE_URL (alias)
+ * - VITE_API_URL (legacy name used by some panels)
+ * - http://localhost:7070 (dev default)
  */
 export function getOrchestratorBaseUrl(): string {
-  return (env.VITE_ORCHESTRATOR_URL as string) || 'http://127.0.0.1:7070';
+  const fromEnv =
+    (env?.VITE_ORCHESTRATOR_URL as string) ||
+    (env?.VITE_ORCHESTRATOR_BASE_URL as string) ||
+    (env?.VITE_API_URL as string) ||
+    '';
+  const base = (fromEnv || 'http://localhost:7070').toString();
+  return base.replace(/\/+$/, '');
 }
 
 export const ORCHESTRATOR_BASE_URL = getOrchestratorBaseUrl();
