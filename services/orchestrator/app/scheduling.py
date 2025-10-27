@@ -18,7 +18,7 @@ class SchedulingService:
     
     def __init__(self):
         """Initialize the Kubernetes client."""
-        self.namespace = os.getenv("MENTATLAB_NAMESPACE", "default")
+        self.namespace = os.getenv("MENTATLAB_NAMESPACE", "mentatlab")
         self.k8s_client = None
         self.apps_v1_api = None
         self.batch_v1_api = None

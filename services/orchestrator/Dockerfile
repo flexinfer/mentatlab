@@ -12,8 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy only the services tree to preserve import paths like services.gateway.app.models
+# Copy service code and local agent manifests so /agents and /api/v1/agents work
 COPY services /app/services
+COPY agents /app/agents
 
 # Install Python dependencies declared in services/orchestrator/pyproject.toml
 # Installing directly via pip for deterministic container runtime (no dev extras)
@@ -28,6 +29,7 @@ RUN pip install --no-cache-dir --upgrade pip \
      "boto3>=1.26.0" \
      "botocore>=1.29.0" \
      "jsonschema>=4.0.0" \
+     pyyaml \
      "redis>=5.0" \
      opentelemetry-api \
      opentelemetry-sdk \

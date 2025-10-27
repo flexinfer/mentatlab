@@ -19,16 +19,35 @@ This directory contains Kubernetes manifests for deploying MentatLab to k3s.
 
 ## Quick Deploy
 
-Deploy all services:
+Deploy all services (build, push, apply, rollout):
 
 ```bash
 cd k8s
-./deploy.sh
+./deploy.sh -r registry.harbor.lan/library -t $(git rev-parse --short HEAD)
+```
+
+Common options:
+
+```bash
+./deploy.sh [options]
+
+Options:
+  -n, --namespace   Kubernetes namespace (default: mentatlab)
+  -r, --registry    Container registry (default: registry.harbor.lan/library)
+  -t, --tag         Image tag (default: git SHA or timestamp)
+  -i, --images      Comma list: orchestrator,gateway,frontend[,echoagent]
+  --apply-only      Apply manifests and set image if TAG given (no build/push)
+  --skip-build      Skip docker build
+  --skip-push       Skip docker push
+  --fast            Don’t wait for rollout
+  --dry-run         Print actions without executing
+  --frontend-gateway-url URL   Build-time VITE_GATEWAY_BASE_URL for frontend
+  --frontend-orch-url URL      Build-time VITE_ORCHESTRATOR_URL for frontend
 ```
 
 ## Manual Deployment
 
-Apply manifests in order:
+Apply manifests in order (idempotent):
 
 ```bash
 kubectl apply -f namespace.yaml
@@ -58,12 +77,28 @@ kubectl get pods -n mentatlab -w
 
 ## Access the Application
 
-Get the frontend LoadBalancer IP:
+Using Ingress (recommended):
+1) Point the hostname to your k3s node IP, e.g. add to `/etc/hosts`:
+   `192.168.50.243 mentatlab.local`
+2) Open: `http://mentatlab.local/`
+
+LoadBalancer (legacy):
 ```bash
 kubectl get service frontend -n mentatlab
 ```
+Then access: `http://<EXTERNAL-IP>:5173`
 
-Then access the UI at: `http://<EXTERNAL-IP>:5173`
+Note: In production, the browser must reach the API endpoints.
+Pass publicly reachable URLs for the frontend build when needed, for example:
+
+```bash
+./deploy.sh -r registry.harbor.lan/library -t $(git rev-parse --short HEAD) \
+  --frontend-gateway-url http://<gateway-lb-ip-or-dns>:8080 \
+  --frontend-orch-url http://<orchestrator-lb-ip-or-dns>:7070
+```
+
+Alternatively, put Gateway and Frontend behind a single Ingress and keep
+frontend API calls same-origin (recommended for CORS simplicity).
 
 ## View Logs
 

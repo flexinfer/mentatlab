@@ -275,6 +275,7 @@ def _run_local_agent_and_forward(agent_manifest: dict, inputs: dict, execution_i
         possible_paths = [
             repo_root / "agents" / agent_manifest.get("id") / "src" / "main.py",
             repo_root / "agents" / "psyche-sim" / "src" / "main.py",
+            repo_root / "agents" / "ctm-cogpack" / "src" / "main.py",
         ]
         for p in possible_paths:
             p_str = str(p)
@@ -488,7 +489,7 @@ async def schedule_agent_endpoint(request: AgentScheduleRequest, _req: Request):
             )
         # If this is the local psyche-sim agent, spawn a background thread to run it locally
         try:
-            if agent_id == "mentatlab.psyche-sim":
+            if agent_id in ("mentatlab.psyche-sim", "mentatlab.ctm-cogpack"):
                 t = threading.Thread(
                     target=_run_local_agent_and_forward,
                     args=(request.agent_manifest, request.inputs, request.execution_id, resource_id),

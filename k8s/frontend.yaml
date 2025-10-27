@@ -13,7 +13,7 @@ spec:
       name: http
   selector:
     app: frontend
-  type: LoadBalancer
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -43,6 +43,7 @@ spec:
           env:
             - name: PORT
               value: "5173"
+            # For reference; the image is typically built with the public Gateway URL
             - name: VITE_GATEWAY_BASE_URL
               value: "http://192.168.50.244:8080"
           resources:

@@ -12,6 +12,8 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, Response
 import httpx
+import os
+from urllib.parse import urlparse
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -116,6 +118,36 @@ def _orch_url(path: str) -> str:
     return f"{base}{path}"
 
 
+def _maybe_add_cf_access(headers: Dict[str, str], url: str) -> Dict[str, str]:
+    """Attach Cloudflare Access service token headers when configured and URL host matches.
+
+    Env:
+      CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET — token pair
+      CF_ACCESS_HOSTS — comma-separated hostnames to match (default: mentatlab.flexinfer.ai)
+      CF_ACCESS_ALWAYS — if 'true', always attach for any host
+    """
+    cid = os.getenv("CF_ACCESS_CLIENT_ID")
+    csec = os.getenv("CF_ACCESS_CLIENT_SECRET")
+    if not cid or not csec:
+        return headers
+    if os.getenv("CF_ACCESS_ALWAYS", "false").lower() == "true":
+        h = dict(headers)
+        h["CF-Access-Client-Id"] = cid
+        h["CF-Access-Client-Secret"] = csec
+        return h
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        host = ""
+    allow_list = [h.strip() for h in os.getenv("CF_ACCESS_HOSTS", "mentatlab.flexinfer.ai").split(",") if h.strip()]
+    if any(host == a or host.endswith("." + a) for a in allow_list):
+        h = dict(headers)
+        h["CF-Access-Client-Id"] = cid
+        h["CF-Access-Client-Secret"] = csec
+        return h
+    return headers
+
+
 def _forward_auth_and_content_headers(req: Request) -> Dict[str, str]:
     """
     Minimal header propagation for proxying:
@@ -174,7 +206,9 @@ async def create_run(request: Request) -> Response:
         body = await request.body()
         headers = _forward_auth_and_content_headers(request)
         client = _get_http_client(request)
-        resp = await client.post(_orch_url("/api/v1/runs"), content=body, headers=headers)
+        url = _orch_url("/api/v1/runs")
+        headers = _maybe_add_cf_access(headers, url)
+        resp = await client.post(url, content=body, headers=headers)
         # Return status and body transparently
         return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/json"))
     except httpx.RequestError as e:
@@ -190,7 +224,9 @@ async def list_runs(request: Request) -> Response:
     try:
         headers = _forward_auth_and_content_headers(request)
         client = _get_http_client(request)
-        resp = await client.get(_orch_url("/api/v1/runs"), headers=headers, params=dict(request.query_params))
+        url = _orch_url("/api/v1/runs")
+        headers = _maybe_add_cf_access(headers, url)
+        resp = await client.get(url, headers=headers, params=dict(request.query_params))
         if resp.status_code == 404:
             return JSONResponse(status_code=501, content={"error": "not_implemented", "detail": "List runs not available on orchestrator"})
         return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/json"))
@@ -206,7 +242,9 @@ async def get_run(run_id: str, request: Request) -> Response:
     try:
         headers = _forward_auth_and_content_headers(request)
         client = _get_http_client(request)
-        resp = await client.get(_orch_url(f"/api/v1/runs/{run_id}"), headers=headers, params=dict(request.query_params))
+        url = _orch_url(f"/api/v1/runs/{run_id}")
+        headers = _maybe_add_cf_access(headers, url)
+        resp = await client.get(url, headers=headers, params=dict(request.query_params))
         return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/json"))
     except httpx.RequestError as e:
         return JSONResponse(status_code=502, content={"error": "orchestrator_unreachable", "detail": str(e)})
@@ -221,7 +259,9 @@ async def cancel_run(run_id: str, request: Request) -> Response:
         body = await request.body()
         headers = _forward_auth_and_content_headers(request)
         client = _get_http_client(request)
-        resp = await client.post(_orch_url(f"/api/v1/runs/{run_id}/cancel"), content=body, headers=headers)
+        url = _orch_url(f"/api/v1/runs/{run_id}/cancel")
+        headers = _maybe_add_cf_access(headers, url)
+        resp = await client.post(url, content=body, headers=headers)
         return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/json"))
     except httpx.RequestError as e:
         return JSONResponse(status_code=502, content={"error": "orchestrator_unreachable", "detail": str(e)})
@@ -238,7 +278,9 @@ async def orchestrator_info(request: Request) -> Response:
     try:
         headers = _forward_auth_and_content_headers(request)
         client = _get_http_client(request)
-        resp = await client.get(_orch_url("/healthz"), headers=headers)
+        url = _orch_url("/healthz")
+        headers = _maybe_add_cf_access(headers, url)
+        resp = await client.get(url, headers=headers)
         return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/json"))
     except httpx.RequestError as e:
         return JSONResponse(status_code=502, content={"error": "orchestrator_unreachable", "detail": str(e)})
