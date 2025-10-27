@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import os
 import logging
+from kubernetes.client.rest import ApiException as K8sApiException
 import threading
 import subprocess
 import json
@@ -481,12 +482,29 @@ async def schedule_agent_endpoint(request: AgentScheduleRequest, _req: Request):
             "orchestrator.schedule_agent",
             {"agent_id": agent_id, "long_running": is_long_running},
         ):
-            resource_id = get_scheduling_service().scheduleAgent(
-                request.agent_manifest,
-                request.inputs,
-                request.execution_id,
-                request.skip_validation
-            )
+            try:
+                resource_id = get_scheduling_service().scheduleAgent(
+                    request.agent_manifest,
+                    request.inputs,
+                    request.execution_id,
+                    request.skip_validation
+                )
+            except K8sApiException as k8s_e:
+                logging.getLogger("orchestrator.schedule_agent").warning(
+                    f"K8s scheduling failed ({getattr(k8s_e, 'status', 'unknown')}): {getattr(k8s_e, 'reason', '')}. Falling back to local run."
+                )
+                # Create a synthetic resource id for the local run
+                local_res_id = f"{agent_id}-local-{uuid.uuid4().hex[:8]}"
+                try:
+                    t = threading.Thread(
+                        target=_run_local_agent_and_forward,
+                        args=(request.agent_manifest, request.inputs, request.execution_id, local_res_id),
+                        daemon=True
+                    )
+                    t.start()
+                except Exception:
+                    logging.getLogger("orchestrator.local-forward").exception("Local forward fallback failed")
+                return {"resource_id": local_res_id, "status": "scheduled-local"}
         # If this is the local psyche-sim agent, spawn a background thread to run it locally
         try:
             if agent_id in ("mentatlab.psyche-sim", "mentatlab.ctm-cogpack"):
