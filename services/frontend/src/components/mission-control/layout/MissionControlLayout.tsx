@@ -19,7 +19,7 @@ import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
 import PropertyInspector from '../../PropertyInspector';
 import NetworkPanel from '../panels/NetworkPanel';
-import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
+import { getOrchestratorBaseUrl } from '@/config/orchestrator';
 // ADD: orchestrator run helper
 import { startDemoRunAndStream } from '../../../services/api/orchestrator';
 import GraphPanel from '../panels/GraphPanel';
@@ -183,11 +183,11 @@ export function MissionControlLayout() {
 
   const openRemoteUi = (remoteEntry: string | undefined, title: string) => {
     if (!remoteEntry) return;
-    // Prefer VITE_API_URL if set; otherwise use getOrchestratorBaseUrl() (run-local-dev.sh exports 8081)
-    const backendBase = ((import.meta.env as any)?.VITE_API_URL as string) || getOrchestratorBaseUrl();
+    // Load via same-origin Ingress for static agent UIs
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const remoteUrl = /^https?:\/\//i.test(remoteEntry)
       ? remoteEntry
-      : `${backendBase.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
+      : `${origin.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
     const detail = { url: remoteUrl, title: title || 'CogPak UI' };
     console.log('[CogPaksList] dispatching openCogpak', detail);
     try {
@@ -197,114 +197,8 @@ export function MissionControlLayout() {
     }
   };
 
-  // Robust local agents fetch + UI
-  const [agents, setAgents] = React.useState<any[]>([]);
-  const [error, setError] = React.useState<string | null>(null);
+  // Main view state (network or flow)
   const [mainView, setMainView] = React.useState<'network' | 'flow'>('network');
-
-  React.useEffect(() => {
-    let mounted = true;
-    const endpoint = '/api/v1/agents';
-
-    const tryParseAgentsFromText = (rawText: string) => {
-      try {
-        const parsed = JSON.parse(rawText);
-        return Array.isArray(parsed) ? parsed : parsed && Array.isArray(parsed.agents) ? parsed.agents : null;
-      } catch {
-        return null;
-      }
-    };
-
-    const fetchAgents = async () => {
-      try {
-        // First attempt: same-origin (works when dev server proxies /api to backend)
-        const trySameOrigin = async () => {
-          let res = await fetch(endpoint, { credentials: 'same-origin' });
-          let rawText = await res.text().catch(() => '');
-          return { res, rawText };
-        };
-        // Second attempt: explicit Gateway base URL if configured/built-in
-        const tryGateway = async () => {
-          const base = getGatewayBaseUrl().replace(/\/+$/, '');
-          let res = await fetch(`${base}${endpoint}`, { credentials: 'same-origin' });
-          let rawText = await res.text().catch(() => '');
-          return { res, rawText };
-        };
-        const tryBackend = async () => {
-          const base = getOrchestratorBaseUrl().replace(/\/+$/, '');
-          let res = await fetch(`${base}${endpoint}`, { credentials: 'same-origin' });
-          let rawText = await res.text().catch(() => '');
-          return { res, rawText };
-        };
-
-        const attempts: Array<() => Promise<{ res: Response; rawText: string }>> = [
-          trySameOrigin,
-          // Prefer orchestrator's richer catalog when reachable
-          tryBackend,
-          // Fallback to gateway stub list
-          tryGateway,
-        ];
-
-        let res: Response | null = null;
-        let rawText = '';
-        let errors: string[] = [];
-        for (const attempt of attempts) {
-          try {
-            const out = await attempt();
-            res = out.res;
-            rawText = out.rawText;
-            // Accept JSON-ish responses only; skip HTML bodies from static servers
-            if (res.ok && !(rawText || '').trim().startsWith('<')) break;
-            errors.push(`${res.url} -> HTTP ${res.status}`);
-          } catch (e: any) {
-            errors.push(String(e?.message || e));
-          }
-          res = null;
-        }
-
-        if (!res) {
-          const msg = `Load failed after attempts: ${errors.join(' | ')}`;
-          if (mounted) {
-            setError(msg);
-            console.error('[CogPaksList] failed to load agents –', msg);
-          }
-          return;
-        }
-
-        // Try to parse JSON now that we have rawText (and not HTML)
-        const arr = tryParseAgentsFromText(rawText);
-        if (!arr) {
-          const snippet = (rawText || '').slice(0, 1000);
-          const msg = `JSON Parse error: response not JSON; response snippet: ${snippet}`;
-          if (mounted) {
-            setError(msg);
-            console.error('[CogPaksList] failed to load agents –', msg);
-          }
-          return;
-        }
-
-        if (mounted) setAgents(arr);
-      } catch (e: any) {
-        if (!mounted) return;
-        const msg = e?.message ?? String(e);
-        setError(msg);
-        console.error('[CogPaksList] failed to load agents –', msg);
-      }
-    };
-
-    fetchAgents();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  if (error) {
-    return <div className="px-2 text-red-500 text-xs">Error loading CogPaks: {error}</div>;
-  }
-
-  if (agents.length === 0) {
-    return <div className="px-2 text-gray-500 text-xs">No CogPaks found.</div>;
-  }
 
   // ADD: Start an orchestrator run (FastAPI backend) and subscribe to SSE
   const startOrchestratorRun = React.useCallback(async () => {
@@ -1095,7 +989,8 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
     setRunningAgents(prev => new Set(prev).add(agentId));
     
     try {
-      const base = getOrchestratorBaseUrl().replace(/\/+$/, '');
+      // Prefer same-origin gateway proxy for schedule
+      const base = '';
       
       // Prepare the request with the full agent manifest
       const requestBody = {
@@ -1127,7 +1022,7 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
 
       console.log(`Scheduling agent ${agentId} with manifest:`, requestBody);
       
-      const response = await fetch(`${base}/api/v1/agents/schedule`, {
+      const response = await fetch(`/api/v1/agents/schedule`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1135,10 +1030,14 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
         body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
-      
+      // Be resilient to non-JSON error bodies (e.g., HTML from proxies)
+      const rawText = await response.text().catch(() => '');
+      let data: any = {};
+      try { data = rawText ? JSON.parse(rawText) : {}; } catch { /* ignore non-JSON */ }
       if (!response.ok) {
-        throw new Error(data.detail || `Failed to schedule agent: ${response.status}`);
+        const snippet = rawText?.slice(0, 300) || '';
+        const detail = (data && (data.detail || data.error)) || snippet || 'unknown error';
+        throw new Error(`HTTP ${response.status} - ${detail}`);
       }
 
       console.log(`Agent ${agentId} scheduled successfully:`, data);
@@ -1170,11 +1069,11 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
       console.warn('[CogPaksList] Remote UI blocked by feature flag');
       return;
     }
-    // Prefer VITE_API_URL if set; otherwise use getOrchestratorBaseUrl() (run-local-dev.sh exports 8081)
-    const backendBase = ((import.meta.env as any)?.VITE_API_URL as string) || getOrchestratorBaseUrl();
+    // Load via same-origin Ingress for static agent UIs
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const remoteUrl = /^https?:\/\//i.test(remoteEntry)
       ? remoteEntry
-      : `${backendBase.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
+      : `${origin.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
     const detail = { url: remoteUrl, title: title || 'CogPak UI' };
     console.log('[CogPaksList] dispatching openCogpak', detail);
     try {

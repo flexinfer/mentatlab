@@ -1,0 +1,85 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mentatlab
+  namespace: mentatlab
+  labels:
+    app: mentatlab
+  annotations:
+    # Explicitly set class via annotation as well for broader controller compatibility
+    kubernetes.io/ingress.class: __INGRESS_CLASS__
+    # WebSocket/SSE are supported by common controllers (Traefik, NGINX)
+spec:
+  # Will be set by deploy.sh based on cluster IngressClass (default/traefik/nginx)
+  ingressClassName: __INGRESS_CLASS__
+  rules:
+    - host: mentatlab.lan
+      http:
+        paths:
+          # Gateway API (REST + SSE)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8080
+          # Gateway WebSockets (streaming)
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8080
+          # Orchestrator static agent UIs (/agents/* -> remoteEntry.js, assets)
+          - path: /agents
+            pathType: Prefix
+            backend:
+              service:
+                name: orchestrator
+                port:
+                  number: 7070
+          # Frontend app (catch-all)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 5173
+    - host: mentatlab.flexinfer.ai
+      http:
+        paths:
+          # Gateway API (REST + SSE)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8080
+          # Gateway WebSockets (streaming)
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8080
+          # Orchestrator static agent UIs (/agents/* -> remoteEntry.js, assets)
+          - path: /agents
+            pathType: Prefix
+            backend:
+              service:
+                name: orchestrator
+                port:
+                  number: 7070
+          # Frontend app (catch-all)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 5173

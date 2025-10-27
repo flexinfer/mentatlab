@@ -2,10 +2,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+const debugBuild = (process.env.VITE_DEBUG_BUILD === 'true' || process.env.DEBUG_BUILD === 'true');
+
 export default defineConfig({
   plugins: [react()],
   root: './',
   server: {
+    // Allow external hostnames in dev (useful if testing via tunnels)
+    allowedHosts: ['mentatlab.lan', 'mentatlab.flexinfer.ai'],
     // Proxy API calls (only used in local dev, not in production preview mode)
     proxy: {
       '/api': {
@@ -20,6 +24,8 @@ export default defineConfig({
   preview: {
     // In preview mode, don't proxy - let frontend use VITE_GATEWAY_BASE_URL
     proxy: {},
+    // IMPORTANT: allow published hostnames (Ingress/Cloudflare)
+    allowedHosts: ['mentatlab.lan', 'mentatlab.flexinfer.ai'],
   },
   optimizeDeps: {
     // Do not prebundle pixi.js; we alias it to a stub below
@@ -27,6 +33,8 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    sourcemap: debugBuild,
+    minify: debugBuild ? false : 'esbuild',
   },
   publicDir: 'public',
   resolve: {

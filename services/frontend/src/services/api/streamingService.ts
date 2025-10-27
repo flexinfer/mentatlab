@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { EnhancedStream } from '../streamingService.enhanced';
 import { StreamingMessage, StreamConnectionState, StreamMessageHandler, ConnectionStateHandler } from '../../types/streaming'; // All imported from types/streaming
 import { MediaType, MediaChunk, MediaReference } from '../../types/media'; // Corrected import for MediaType and MediaChunk
-import { getOrchestratorBaseUrl } from '@/config/orchestrator';
+import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
 
 /**
  * Service for interacting with multimodal streaming endpoints.
@@ -118,11 +118,13 @@ export class StreamingService {
 }
 
 // Export a singleton instance for convenience
-// Prefer Gateway URL for streaming transports (VITE_GATEWAY_URL). Fall back to orchestrator if not set.
-const gatewayBase = (import.meta.env.VITE_GATEWAY_URL as string)
-  || (import.meta.env.VITE_ORCHESTRATOR_URL as string)
-  || getOrchestratorBaseUrl();
-const normalizedGateway = String(gatewayBase || '').replace(/\/+$/, '');
+// Prefer Gateway base URL for streaming transports. Fall back to orchestrator only if explicitly configured.
+const gatewayBase =
+  (import.meta.env.VITE_GATEWAY_BASE_URL as string) ||
+  (import.meta.env.VITE_GATEWAY_URL as string) ||
+  getGatewayBaseUrl();
+const normalizedGateway = String(gatewayBase || getOrchestratorBaseUrl()).replace(/\/+$/, '');
+// Build a ws(s) URL that matches the http(s) scheme
 const wsBase = (import.meta.env.VITE_WS_URL as string) || normalizedGateway.replace(/^http/, 'ws');
 
 // Default endpoints point at Gateway streaming paths for local-dev.

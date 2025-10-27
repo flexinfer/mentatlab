@@ -13,7 +13,7 @@ spec:
       name: http
   selector:
     app: gateway
-  type: LoadBalancer
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -43,12 +43,27 @@ spec:
           env:
             - name: PORT
               value: "8080"
-            - name: ORCHESTRATOR_URL
+            # match services/gateway/app/main.py ORCHESTRATOR_BASE_URL env
+            - name: ORCHESTRATOR_BASE_URL
               value: "http://orchestrator:7070"
+            # CORS: allow the frontend Ingress host (adjust to your DNS)
             - name: FRONTEND_URL
-              value: "http://192.168.50.243:5173"
+              value: "https://mentatlab.flexinfer.ai"
             - name: TRUSTED_HOSTS
-              value: "192.168.50.244,192.168.50.243,gateway,*.mentatlab.svc.cluster.local"
+              value: "mentatlab.lan,mentatlab.flexinfer.ai,gateway,frontend,*.mentatlab.svc.cluster.local,localhost,127.0.0.1"
+            # Optional: Cloudflare Access service token for outbound requests (added automatically by deploy.sh if env set)
+            - name: CF_ACCESS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-access
+                  key: CF_ACCESS_CLIENT_ID
+                  optional: true
+            - name: CF_ACCESS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-access
+                  key: CF_ACCESS_CLIENT_SECRET
+                  optional: true
           resources:
             requests:
               cpu: 200m

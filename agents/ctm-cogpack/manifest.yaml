@@ -4,6 +4,8 @@ image: mentatlab/ctm-cogpack:local-dev
 description: Continuous Thought Machine (CTM) Cogpack — tick-based temporal processing agent with neuron-level MLPs
 runtime: python3.12
 longRunning: false
+env:
+  - "VLLM_BASE_URL=http://vllm-optimized-lb.ai.svc.cluster.local:8000"
 ui:
   remoteEntry: agents/ctm-cogpack/ui/remoteEntry.js
   title: Continuous Thought Machine

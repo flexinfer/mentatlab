@@ -47,6 +47,15 @@ spec:
               value: "redis"
             - name: REDIS_URL
               value: "redis://redis:6379/0"
+            - name: MENTATLAB_NAMESPACE
+              value: "mentatlab"
+            - name: GATEWAY_BASE_URL
+              value: "http://gateway:8080"
+            - name: VLLM_BASE_URL
+              value: "http://vllm-optimized-lb.ai.svc.cluster.local:8000"
+            # Allow browser origin via Ingress host
+            - name: FRONTEND_URL
+              value: "http://mentatlab.lan"
           resources:
             requests:
               cpu: 200m
