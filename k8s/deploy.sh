@@ -153,6 +153,7 @@ run kubectl apply -f "$SCRIPT_DIR/namespace.yaml"
   fi
 run kubectl apply -f "$SCRIPT_DIR/redis.yaml"
 run kubectl apply -f "$SCRIPT_DIR/orchestrator.yaml"
+run kubectl apply -f "$SCRIPT_DIR/orchestrator-rbac.yaml"
 run kubectl apply -f "$SCRIPT_DIR/gateway.yaml"
 run kubectl apply -f "$SCRIPT_DIR/frontend.yaml"
 if [[ -f "$SCRIPT_DIR/echoagent.yaml" ]]; then
