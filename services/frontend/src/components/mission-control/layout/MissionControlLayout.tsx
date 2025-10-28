@@ -1089,6 +1089,11 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
 
   return (
     <div>
+      {!allowRemoteUi && (
+        <div className="px-2 py-1 mb-2 text-[11px] rounded border bg-muted/40 text-gray-600 dark:text-gray-300">
+          Remote CogPak UI is disabled (set VITE_FF_ALLOW_REMOTE_COGPAK_UI=true to enable).
+        </div>
+      )}
       {scheduleError && (
         <div className="px-2 mb-2 text-red-500 text-xs">{scheduleError}</div>
       )}
