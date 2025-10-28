@@ -1,6 +1,6 @@
 import React from 'react';
 import { FeatureFlags } from '../../../config/features';
-import FlowCanvas from '../../FlowCanvas';
+import { StreamingCanvas } from '../../StreamingCanvas';
 import { Button } from '../../ui/button';
 import TimelinePanel from '../panels/TimelinePanel';
  // ADD: Issues panel import
@@ -17,9 +17,10 @@ import { StreamConnectionState } from '../../../types/streaming';
 import ContractOverlay from '../overlays/ContractOverlay';
 import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
-import PropertyInspector from '../../PropertyInspector';
+import InspectorPanel from '../panels/InspectorPanel';
 import NetworkPanel from '../panels/NetworkPanel';
 import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
+import { openCogpakUi, resolveRemoteEntry } from '@/utils/remoteUi';
 // ADD: orchestrator run helper
 import { startDemoRunAndStream } from '../../../services/api/orchestrator';
 import GraphPanel from '../panels/GraphPanel';
@@ -183,18 +184,7 @@ export function MissionControlLayout() {
 
   const openRemoteUi = (remoteEntry: string | undefined, title: string) => {
     if (!remoteEntry) return;
-    // Prefer Gateway base for relative remoteEntry so it works in dev/preview/prod
-    const base = getGatewayBaseUrl();
-    const remoteUrl = /^https?:\/\//i.test(remoteEntry)
-      ? remoteEntry
-      : `${String(base).replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
-    const detail = { url: remoteUrl, title: title || 'CogPak UI' };
-    console.log('[CogPaksList] dispatching openCogpak', detail);
-    try {
-      window.dispatchEvent(new CustomEvent('openCogpak', { detail }));
-    } catch (err) {
-      console.error('Failed to dispatch openCogpak event', err);
-    }
+    openCogpakUi(remoteEntry, title);
   };
 
   // Main view state (network or flow)
@@ -411,7 +401,7 @@ export function MissionControlLayout() {
               <NetworkPanel runId={activeRunId} />
             ) : (
               <ReactFlowProvider>
-                <FlowCanvas />
+                <StreamingCanvas />
                 {/* Mounted CogPak UI overlay (mounts remoteEntry into #cogpak-mount) */}
                 <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
               </ReactFlowProvider>
@@ -513,7 +503,7 @@ function RightDock({ uiConfig, setUiConfig, isEnabled }: { uiConfig: Partial<Rec
     >
       <div className="h-9 border-b flex items-center px-3 text-xs font-medium bg-muted/50">Inspector</div>
       <div className="flex-1 overflow-auto p-3 text-xs text-gray-600 dark:text-gray-300">
-        <PropertyInspector />
+        <InspectorPanel runId={activeRunId} />
       </div>
     </div>
   );
@@ -1086,18 +1076,7 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
       console.warn('[CogPaksList] Remote UI blocked by feature flag');
       return;
     }
-    // Prefer Gateway base for relative remoteEntry so it works in dev/preview/prod
-    const base = getGatewayBaseUrl();
-    const remoteUrl = /^https?:\/\//i.test(remoteEntry)
-      ? remoteEntry
-      : `${String(base).replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
-    const detail = { url: remoteUrl, title: title || 'CogPak UI' };
-    console.log('[CogPaksList] dispatching openCogpak', detail);
-    try {
-      window.dispatchEvent(new CustomEvent('openCogpak', { detail }));
-    } catch (err) {
-      console.error('Failed to dispatch openCogpak event', err);
-    }
+    openCogpakUi(remoteEntry, title);
   };
 
   if (error) {
