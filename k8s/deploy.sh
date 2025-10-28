@@ -21,6 +21,7 @@ FRONTEND_GATEWAY_URL="${FRONTEND_GATEWAY_URL:-}"
 FRONTEND_ORCH_URL="${FRONTEND_ORCH_URL:-}"
 FRONTEND_DEBUG=false
 APPLY_ONLY=false
+SKIP_INGRESS=false
 SKIP_BUILD=false
 SKIP_PUSH=false
 FAST=false
@@ -68,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --frontend-gateway-url) FRONTEND_GATEWAY_URL="$2"; shift 2;;
     --frontend-orch-url) FRONTEND_ORCH_URL="$2"; shift 2;;
     --debug-frontend) FRONTEND_DEBUG=true; shift;;
+    --skip-ingress) SKIP_INGRESS=true; shift;;
     -h|--help) usage; exit 0;;
     *) err "Unknown arg: $1"; usage; exit 1;;
   esac
@@ -92,7 +94,14 @@ build_image() {
   local extra_args=("$@")
   local img="$REGISTRY/mentatlab-$name:$TAG"
 
-  $SKIP_BUILD || run docker build -t "$img" -f "$df" "$ctx" "${extra_args[@]}"
+  # When using set -u, expanding an empty array triggers an error. Guard the expansion.
+  if ! $SKIP_BUILD; then
+    if ((${#extra_args[@]})); then
+      run docker build -t "$img" -f "$df" "$ctx" "${extra_args[@]}"
+    else
+      run docker build -t "$img" -f "$df" "$ctx"
+    fi
+  fi
   if ! $SKIP_PUSH; then run docker push "$img"; fi
 }
 
@@ -159,7 +168,7 @@ run kubectl apply -f "$SCRIPT_DIR/frontend.yaml"
 if [[ -f "$SCRIPT_DIR/echoagent.yaml" ]]; then
   run kubectl apply -f "$SCRIPT_DIR/echoagent.yaml"
 fi
-if [[ -f "$SCRIPT_DIR/ingress.yaml" ]]; then
+if [[ -f "$SCRIPT_DIR/ingress.yaml" && "$SKIP_INGRESS" != true ]]; then
   # Detect ingress class: prefer default, then traefik, then first available
   DEFAULT_CLASS=$(kubectl get ingressclass -o jsonpath='{.items[?(@.metadata.annotations["ingressclass.kubernetes.io/is-default-class"]=="true")].metadata.name}' 2>/dev/null || true)
   ALL_CLASSES=$(kubectl get ingressclass -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
@@ -177,15 +186,15 @@ if [[ -f "$SCRIPT_DIR/ingress.yaml" ]]; then
     fi
   fi
   if [[ -z "$INGRESS_CLASS" ]]; then
-    warn "No IngressClass found; applying as-is (controller will select default if configured)"
-    run kubectl apply -f "$SCRIPT_DIR/ingress.yaml"
+    warn "No IngressClass found; applying as-is (controller may choose default)."
+    ( run kubectl apply -f "$SCRIPT_DIR/ingress.yaml" ) || warn "Ingress apply failed; continuing"
   else
     log "Using IngressClass: $INGRESS_CLASS"
-    # Apply ingress with substituted class. Avoid eval to prevent word-splitting bugs.
+    # Apply ingress with substituted class. Do not abort deploy on failure.
     if $DRY_RUN; then
       echo "+ sed 's/__INGRESS_CLASS__/$INGRESS_CLASS/g' '$SCRIPT_DIR/ingress.yaml' | kubectl apply -f -"
     else
-      sed "s/__INGRESS_CLASS__/$INGRESS_CLASS/g" "$SCRIPT_DIR/ingress.yaml" | kubectl apply -f -
+      ( sed "s/__INGRESS_CLASS__/$INGRESS_CLASS/g" "$SCRIPT_DIR/ingress.yaml" | kubectl apply -f - ) || warn "Ingress apply failed; continuing"
     fi
   fi
 fi

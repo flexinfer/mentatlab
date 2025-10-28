@@ -176,6 +176,8 @@ export function MissionControlLayout() {
     try {
       const mod = await import('../../../services/api/streamingService');
       await mod.default.connect();
+      // Breadcrumb for field diagnostics
+      try { (window as any).__mentat = { ...(window as any).__mentat, lastLiveConnectAt: Date.now() }; } catch {}
       // EnhancedStream will start a FlightRecorder run automatically on connect
     } catch (e) {
       console.error('[MissionControl] Live connect failed', e);
@@ -416,11 +418,28 @@ export function MissionControlLayout() {
               Streaming overlays enabled
             </div>
           )}
+          {/* Optional network diagnostics: add ?debug_net=1 to URL */}
+          {(() => {
+            try {
+              const qp = new URLSearchParams(window.location.search);
+              if (qp.get('debug_net') !== '1') return null;
+              const gw = require('../../../config/orchestrator').getGatewayBaseUrl();
+              const orch = require('../../../config/orchestrator').getOrchestratorBaseUrl();
+              const cs = (useStreamingStore.getState() as any).connectionStatus;
+              return (
+                <div className="absolute top-2 right-2 text-[10px] px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-900/50 pointer-events-auto">
+                  <div>GW: {String(gw)}</div>
+                  <div>ORCH: {String(orch)}</div>
+                  <div>Conn: {String(cs)}</div>
+                </div>
+              );
+            } catch { return null; }
+          })()}
           {/* contract overlay removed from global overlays — moved to per-panel transparency */}
         </div>
 
         {/* Right Dock */}
-        <RightDock uiConfig={uiConfig} setUiConfig={setUiConfig} isEnabled={isEnabled} />
+        <RightDock runId={activeRunId} uiConfig={uiConfig} setUiConfig={setUiConfig} isEnabled={isEnabled} />
         {/* Bottom Dock */}
         <BottomDock
           runId={activeRunId}
@@ -496,14 +515,14 @@ export function MissionControlLayout() {
 /**
  * Right Dock: Inspector, Media Preview, Properties (placeholder)
  */
-function RightDock({ uiConfig, setUiConfig, isEnabled }: { uiConfig: Partial<Record<keyof typeof FeatureFlags, boolean>>; setUiConfig: React.Dispatch<React.SetStateAction<Partial<Record<keyof typeof FeatureFlags, boolean>>>>; isEnabled: (f: keyof typeof FeatureFlags) => boolean }) {
+function RightDock({ runId, uiConfig, setUiConfig, isEnabled }: { runId: string | null; uiConfig: Partial<Record<keyof typeof FeatureFlags, boolean>>; setUiConfig: React.Dispatch<React.SetStateAction<Partial<Record<keyof typeof FeatureFlags, boolean>>>>; isEnabled: (f: keyof typeof FeatureFlags) => boolean }) {
   return (
     <div className="pointer-events-auto absolute top-2 right-2 bottom-32 w-[360px] rounded-lg border text-foreground shadow-sm overflow-hidden flex flex-col bg-card/70 backdrop-blur"
       style={{ position: 'absolute', top: 8, right: 8, bottom: 128, width: 360, zIndex: 40 }}
     >
       <div className="h-9 border-b flex items-center px-3 text-xs font-medium bg-muted/50">Inspector</div>
       <div className="flex-1 overflow-auto p-3 text-xs text-gray-600 dark:text-gray-300">
-        <InspectorPanel runId={activeRunId} />
+        <InspectorPanel runId={runId} />
       </div>
     </div>
   );
@@ -1040,8 +1059,22 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
           const mod = await import('../../../services/api/streamingService');
           const StreamingServiceCtor: any = (mod as any).StreamingService;
           const base = window.location.origin.replace(/\/+$/, '');
-          const ws = wsUrl && /^wss?:/.test(wsUrl) ? wsUrl : `${base}${(wsUrl || `/ws/streams/${sid}`).replace(/^\/+/, '/')}`.replace(/^http/, 'ws');
-          const sse = sseUrl && /^https?:/.test(sseUrl) ? sseUrl : `${base}${(sseUrl || `/api/v1/streams/${sid}/sse`).replace(/^\/+/, '/')}`;
+          const httpToWs = (u: string) => {
+            try {
+              const url = new URL(u);
+              url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+              return url.toString();
+            } catch {
+              return u.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+            }
+          };
+          const wsAbs = wsUrl && /^wss?:/.test(wsUrl)
+            ? wsUrl
+            : `${base}${(wsUrl || `/ws/streams/${sid}`).replace(/^\/+/, '/')}`;
+          const ws = httpToWs(wsAbs);
+          const sse = sseUrl && /^https?:/.test(sseUrl)
+            ? sseUrl
+            : `${base}${(sseUrl || `/api/v1/streams/${sid}/sse`).replace(/^\/+/, '/')}`;
           const client = new StreamingServiceCtor(sid, ws, sse);
           await client.connect();
         }

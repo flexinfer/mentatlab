@@ -1,4 +1,6 @@
 // stores/index.ts
+// Ensure Immer is configured for Map/Set drafts before creating any stores
+import './immerSetup';
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
@@ -299,45 +301,51 @@ export const useMediaStore = create<MediaState>()(
 );
 
 export const useStreamingStore = create<StreamingState>()(
-  devtools(
-    immer((set: (fn: (state: StreamingState) => void) => void) => ({ // Explicitly type 'set'
-      // Streaming state
-      activeStreams: new Map<string, StreamSession>(), // Explicitly type the Map
-      connectionStatus: StreamConnectionState.DISCONNECTED, // Use enum member
-      
-      // Actions
-      registerStream: (streamId: string, config: any) => set((state: StreamingState) => {
-        const newActiveStreams = new Map(state.activeStreams);
-        newActiveStreams.set(streamId, {
-          id: streamId,
-          config: config,
-          status: StreamConnectionState.CONNECTING,
-          buffer: [],
-          errors: [], // Initialize errors array
-        });
-        state.activeStreams = newActiveStreams;
-      }),
-      updateStreamStatus: (streamId: string, status: StreamConnectionState) => set((state: StreamingState) => {
-        const stream = state.activeStreams.get(streamId);
-        if (stream) {
-          state.activeStreams.set(streamId, { ...stream, status: status });
-        }
-      }),
-      addStreamMessage: (streamId: string, message: StreamingMessage) => set((state: StreamingState) => {
-        const stream = state.activeStreams.get(streamId);
-        if (stream) {
-          state.activeStreams.set(streamId, { ...stream, buffer: [...stream.buffer, message] });
-        }
-      }),
-      addStreamError: (streamId: string, error: ErrorMessage) => set((state: StreamingState) => { // New action
-        const stream = state.activeStreams.get(streamId);
-        if (stream) {
-          state.activeStreams.set(streamId, { ...stream, errors: [...stream.errors, error] });
-        }
-      }),
-      setConnectionStatus: (status: StreamConnectionState) => set((state) => {
-        state.connectionStatus = status;
-      }),
-    }))
-  )
+  devtools((set, get) => ({
+    // Streaming state
+    activeStreams: new Map<string, StreamSession>(),
+    connectionStatus: StreamConnectionState.DISCONNECTED,
+
+    // Actions (no Immer – use plain immutable updates)
+    registerStream: (streamId: string, config: any) => {
+      const next = new Map(get().activeStreams);
+      next.set(streamId, {
+        id: streamId,
+        config,
+        status: StreamConnectionState.CONNECTING,
+        buffer: [],
+        errors: [],
+      });
+      set({ activeStreams: next });
+    },
+
+    updateStreamStatus: (streamId: string, status: StreamConnectionState) => {
+      const current = get().activeStreams;
+      const existing = current.get(streamId);
+      if (!existing) return;
+      const next = new Map(current);
+      next.set(streamId, { ...existing, status });
+      set({ activeStreams: next });
+    },
+
+    addStreamMessage: (streamId: string, message: StreamingMessage) => {
+      const current = get().activeStreams;
+      const existing = current.get(streamId);
+      if (!existing) return;
+      const next = new Map(current);
+      next.set(streamId, { ...existing, buffer: [...existing.buffer, message] });
+      set({ activeStreams: next });
+    },
+
+    addStreamError: (streamId: string, error: ErrorMessage) => {
+      const current = get().activeStreams;
+      const existing = current.get(streamId);
+      if (!existing) return;
+      const next = new Map(current);
+      next.set(streamId, { ...existing, errors: [...existing.errors, error] });
+      set({ activeStreams: next });
+    },
+
+    setConnectionStatus: (status: StreamConnectionState) => set({ connectionStatus: status }),
+  }))
 );
