@@ -1,7 +1,6 @@
 import React from 'react';
 import type { Flow } from '../../../types/graph';
 import { linter } from '../../../services/mission-control/services';
-import { loadFlow } from '../../../loadFlow';
 
 type IssuesPanelProps = {
   flow?: Flow;
@@ -12,10 +11,16 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
   const [issues, setIssues] = React.useState(() => [] as ReturnType<typeof linter.analyze>);
   const [status, setStatus] = React.useState<'idle' | 'running' | 'done'>('idle');
 
-  const runLint = React.useCallback(async () => {
+  const runLint = React.useCallback(() => {
     setStatus('running');
     try {
-      const targetFlow = flow ?? (await loadFlow('example-flow'));
+      const targetFlow: Flow =
+        flow ?? {
+          apiVersion: 'v1',
+          kind: 'Flow',
+          meta: { id: 'empty', name: 'Empty', version: '0.0.0', createdAt: new Date().toISOString(), description: 'Empty flow' },
+          graph: { nodes: [], edges: [] },
+        };
       const results = linter.analyze(targetFlow);
       setIssues(results);
       setStatus('done');

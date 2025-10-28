@@ -12,15 +12,15 @@ After starting the frontend dev server, the default route loads the new Mission 
 
 - Default: [services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx](services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx)
 - Routes:
-  - Mission Control (default): [/](services/frontend/src/App.tsx:157)
-  - Streaming View: [/streaming](services/frontend/src/App.tsx:160)
-  - Legacy Builder (deprecated): [/legacy](services/frontend/src/App.tsx:161)
+  - Mission Control (default): [/](services/frontend/src/App.tsx:120)
+  - Streaming View: [/streaming](services/frontend/src/App.tsx:121)
+  - Legacy Builder: removed as of Oct 28, 2025
 
 Quick start:
 - Start frontend: `npm run dev` in [services/frontend](services/frontend/README.md:1)
 - Open the app at the dev URL (Vite default: http://localhost:5173/)
 - The canvas-first Mission Control layout loads with:
-  - Canvas center (FlowCanvas)
+  - Canvas center (StreamingCanvas)
   - RightDock (Inspector, Media Preview)
   - BottomDock (Console, Run Queue, Timeline, Issues)
   - StatusBar (flags and connection state)

@@ -40,12 +40,12 @@ jest.mock('../../../../store/index', () => ({
 }));
 
 // Mock heavy UI components imported by the layout
-jest.mock('../../../../components/FlowCanvas', () => () => <div data-testid="mock-flow-canvas" />);
+jest.mock('../../../../components/StreamingCanvas', () => ({ StreamingCanvas: () => <div data-testid="mock-streaming-canvas" /> }));
 jest.mock('../../../../components/ui/button', () => ({ Button: ({ children }: any) => <button>{children}</button> }));
 jest.mock('../../../../components/mission-control/panels/TimelinePanel', () => () => <div />);
 jest.mock('../../../../components/mission-control/panels/IssuesPanel', () => ({ onCountChange }: any) => <div />);
 jest.mock('../../../../components/mission-control/panels/ConsolePanel', () => () => <div />);
-jest.mock('../../../../PropertyInspector', () => () => <div />);
+jest.mock('../../../../components/mission-control/panels/InspectorPanel', () => () => <div />);
 
 // Mock reactflow provider to simply render children
 jest.mock('reactflow', () => ({
