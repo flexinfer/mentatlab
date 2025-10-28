@@ -1,6 +1,6 @@
 id: mentatlab.ctm-cogpack
 version: 0.1.0
-image: mentatlab/ctm-cogpack:local-dev
+image: registry.harbor.lan/library/mentatlab-ctm-cogpack:latest
 description: Continuous Thought Machine (CTM) Cogpack — tick-based temporal processing agent with neuron-level MLPs
 runtime: python3.12
 longRunning: false

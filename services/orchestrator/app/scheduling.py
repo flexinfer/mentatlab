@@ -4,6 +4,7 @@ import uuid
 import time
 from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timezone
+import re
 from kubernetes import client, config, watch
 from kubernetes.client.rest import ApiException
 
@@ -117,18 +118,42 @@ class SchedulingService:
         
         is_long_running = agent_manifest.get("longRunning", False)
         
-        if execution_id:
-            resource_id = f"{agent_id}-{execution_id}"
-        else:
-            resource_id = f"{agent_id}-{uuid.uuid4().hex[:8]}"
+        # Sanitize k8s resource name (RFC 1123 label)
+        def _sanitize_name(val: str, default: str) -> str:
+            v = (val or default).lower()
+            # replace invalid chars with '-'
+            v = re.sub(r"[^a-z0-9.-]", "-", v)
+            # compress consecutive '-'
+            v = re.sub(r"-+", "-", v)
+            # ensure starts/ends with alnum
+            v = re.sub(r"^[^a-z0-9]+", "", v)
+            v = re.sub(r"[^a-z0-9]+$", "", v)
+            # clamp length (k8s max 253)
+            if not v:
+                v = default
+            return v[:253]
+
+        # Label-safe value (63 chars, allow '_', '.', '-')
+        def _label_value(val: str, default: str) -> str:
+            v = (val or default)
+            v = re.sub(r"[^A-Za-z0-9_.-]", "-", v)
+            v = re.sub(r"^-+", "", v)
+            v = re.sub(r"-+$", "", v)
+            if not v:
+                v = default
+            return v[:63]
+
+        raw_exec = execution_id if execution_id else uuid.uuid4().hex[:8]
+        resource_id = _sanitize_name(f"{agent_id}-{raw_exec}", f"{agent_id}-{uuid.uuid4().hex[:8]}")
+        label_resource_id = _label_value(resource_id, resource_id)
         
         logger.info(f"Scheduling agent {agent_id} (longRunning={is_long_running}) as {resource_id}")
         
         try:
             if is_long_running:
-                return self._create_deployment(agent_manifest, processed_inputs, resource_id, created_references)
+                return self._create_deployment(agent_manifest, processed_inputs, resource_id, created_references, label_resource_id)
             else:
-                return self._create_job(agent_manifest, processed_inputs, resource_id, created_references)
+                return self._create_job(agent_manifest, processed_inputs, resource_id, created_references, label_resource_id)
         except ApiException as e:
             logger.error(f"Failed to schedule agent {agent_id}: {e}")
             # Clean up created references on failure
@@ -193,7 +218,7 @@ class SchedulingService:
             logger.error(f"Failed to cleanup {job_id}: {e}")
             return False
     
-    def _create_job(self, agent_manifest: Dict[str, Any], inputs: Dict[str, Any], job_id: str, references: Optional[List[StorageReference]] = None) -> str:
+    def _create_job(self, agent_manifest: Dict[str, Any], inputs: Dict[str, Any], job_id: str, references: Optional[List[StorageReference]] = None, label_job_id: Optional[str] = None) -> str:
         """Create a Kubernetes Job for a short-lived agent."""
         agent_id = agent_manifest.get("id", "unknown-agent")
         image = agent_manifest.get("image", "alpine:latest")
@@ -207,6 +232,8 @@ class SchedulingService:
         env_list = self._create_env_vars(env_vars, inputs)
         
         # Create Job specification
+        if not label_job_id:
+            label_job_id = job_id[:63]
         job_spec = client.V1Job(
             api_version="batch/v1",
             kind="Job",
@@ -228,7 +255,7 @@ class SchedulingService:
                         labels={
                             "app": "mentatlab-agent",
                             "agent-id": agent_id,
-                            "job-name": job_id
+                            "job-name": label_job_id
                         }
                     ),
                     spec=client.V1PodSpec(
@@ -259,7 +286,7 @@ class SchedulingService:
         logger.info(f"Created Kubernetes Job: {job_id} for agent {agent_id}")
         return job_id
     
-    def _create_deployment(self, agent_manifest: Dict[str, Any], inputs: Dict[str, Any], deployment_name: str, references: Optional[List[StorageReference]] = None) -> str:
+    def _create_deployment(self, agent_manifest: Dict[str, Any], inputs: Dict[str, Any], deployment_name: str, references: Optional[List[StorageReference]] = None, label_deploy_name: Optional[str] = None) -> str:
         """Create a Kubernetes Deployment for a long-running agent."""
         agent_id = agent_manifest.get("id", "unknown-agent")
         image = agent_manifest.get("image", "alpine:latest")
@@ -273,6 +300,8 @@ class SchedulingService:
         env_list = self._create_env_vars(env_vars, inputs)
         
         # Create Deployment specification
+        if not label_deploy_name:
+            label_deploy_name = deployment_name[:63]
         deployment_spec = client.V1Deployment(
             api_version="apps/v1",
             kind="Deployment",
@@ -294,7 +323,7 @@ class SchedulingService:
                     match_labels={
                         "app": "mentatlab-agent",
                         "agent-id": agent_id,
-                        "deployment-name": deployment_name
+                        "deployment-name": label_deploy_name
                     }
                 ),
                 template=client.V1PodTemplateSpec(
@@ -302,7 +331,7 @@ class SchedulingService:
                         labels={
                             "app": "mentatlab-agent",
                             "agent-id": agent_id,
-                            "deployment-name": deployment_name
+                            "deployment-name": label_deploy_name
                         }
                     ),
                     spec=client.V1PodSpec(

@@ -35,11 +35,43 @@ export function getGatewayBaseUrl(): string {
     (env?.VITE_GATEWAY_URL as string) ||
     '';
 
-  if (fromEnv) return String(fromEnv).replace(/\/+$/, '');
+  // If we have a usable runtime origin (browser), prefer it for production
+  // when the build-time URL appears to be cluster-internal (e.g., http://gateway:8080).
+  const origin = (typeof window !== 'undefined' && window.location?.origin)
+    ? window.location.origin.replace(/\/+$/, '')
+    : '';
 
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin.replace(/\/+$/, '');
+  const isClusterInternal = (u: string): boolean => {
+    try {
+      if (!u) return false;
+      const url = new URL(u);
+      const h = String(url.hostname || '').toLowerCase();
+      const isIp = /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(h);
+      const looksSvc = h.endsWith('.svc') || h.endsWith('.svc.cluster.local');
+      const isBareSvc = (h === 'gateway' || h === 'orchestrator' || h === 'redis');
+      const isLocalHost = (h === 'localhost');
+      return !isLocalHost && (isIp || looksSvc || isBareSvc);
+    } catch {
+      return false;
+    }
+  };
+
+  if (fromEnv) {
+    const norm = String(fromEnv).replace(/\/+$/, '');
+    // If build-time URL points at an internal host but we are in a browser
+    // (public runtime), prefer the current origin so that /api and /ws resolve
+    // via the Ingress/controller.
+    if (origin && isClusterInternal(norm)) return origin;
+    return norm;
   }
+
+  // Dev: if the page is served by Vite dev server, default to localhost:8080
+  if (origin) {
+    const port = String((new URL(origin)).port || '');
+    const isViteDev = /^(5173|5174|5175)$/.test(port);
+    return isViteDev ? 'http://localhost:8080' : origin;
+  }
+
   return 'http://127.0.0.1:8080';
 }
 

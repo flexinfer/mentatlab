@@ -36,8 +36,15 @@ import os
 import datetime
 import asyncio
 from typing import Any, Dict, Optional, List
-import torch
-import torch.nn as nn
+import ast
+import urllib.request
+import urllib.error
+try:
+    import torch
+    import torch.nn as nn
+except Exception:  # Optional torch import for minimal images
+    torch = None
+    nn = None
 
 # CTM modules
 from ctm.config import CTMConfig, load_config_from_env
@@ -53,18 +60,114 @@ from ctm.telemetry import TelemetryBus
 AGENT_MODEL = "ctm/0.1.0"
 
 
+def _parse_maybe_json_or_python_dict(s: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(s, str) or not s.strip():
+        return None
+    try:
+        v = json.loads(s)
+        if isinstance(v, dict):
+            return v
+    except Exception:
+        pass
+    try:
+        v = ast.literal_eval(s)
+        if isinstance(v, dict):
+            return v
+    except Exception:
+        pass
+    return None
+
+
+def _http_post_json(url: str, payload: Dict[str, Any], timeout: float = 20.0) -> tuple[int, str]:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = resp.read().decode("utf-8", errors="ignore")
+        return resp.status or 0, body
+
+
+def _vllm_generate_text(base: str, prompt: str, model: Optional[str] = None) -> Optional[str]:
+    if not base:
+        return None
+    b = base.rstrip('/')
+    # Try OpenAI-style chat.completions
+    payload = {
+        "model": model or "",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 256,
+    }
+    try:
+        status, body = _http_post_json(f"{b}/v1/chat/completions", payload)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            choices = obj.get("choices") or []
+            if choices and choices[0].get("message", {}).get("content"):
+                return str(choices[0]["message"]["content"]).strip()
+    except Exception:
+        pass
+    # Try OpenAI-style completions
+    try:
+        payload2 = {
+            "model": model or "",
+            "prompt": prompt,
+            "temperature": 0.7,
+            "max_tokens": 256,
+        }
+        status, body = _http_post_json(f"{b}/v1/completions", payload2)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            choices = obj.get("choices") or []
+            if choices and (choices[0].get("text") is not None):
+                return str(choices[0]["text"]).strip()
+    except Exception:
+        pass
+    # Try vLLM non-OpenAI generate
+    try:
+        payload3 = {"prompt": prompt, "temperature": 0.7, "max_tokens": 256}
+        status, body = _http_post_json(f"{b}/generate", payload3)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            if isinstance(obj, dict) and obj.get("text"):
+                return str(obj["text"]).strip()
+            if isinstance(obj, dict) and obj.get("outputs"):
+                outs = obj["outputs"]
+                if outs and outs[0].get("text"):
+                    return str(outs[0]["text"]).strip()
+    except Exception:
+        pass
+    return None
+
+
 def read_input() -> Optional[Dict[str, Any]]:
-    """Read a single JSON object from stdin (single-line preferred)."""
+    """Read a single JSON object from stdin (single-line preferred),
+    falling back to INPUT_SPEC/INPUT_CONTEXT env vars when stdin is empty.
+    """
+    # 1) stdin path
     try:
         raw = sys.stdin.read()
-        if not raw:
-            return None
-        raw = raw.strip()
-        if not raw:
-            return None
-        return json.loads(raw)
+        if raw:
+            raw = raw.strip()
+            if raw:
+                return json.loads(raw)
     except Exception:
-        return None
+        pass
+    # 2) env fallback path
+    try:
+        spec_s = os.environ.get("INPUT_SPEC", "")
+        ctx_s = os.environ.get("INPUT_CONTEXT", "")
+        spec = _parse_maybe_json_or_python_dict(spec_s) if spec_s else None
+        ctx = _parse_maybe_json_or_python_dict(ctx_s) if ctx_s else None
+        if spec or ctx:
+            incoming: Dict[str, Any] = {}
+            if spec:
+                incoming["spec"] = spec
+            if ctx:
+                incoming["context"] = ctx
+            return incoming
+    except Exception:
+        pass
+    return None
 
 
 def _now_iso() -> str:
@@ -139,6 +242,8 @@ class CTMProcessor:
     
     def __init__(self, config: CTMConfig):
         self.config = config
+        if torch is None:
+            raise RuntimeError("PyTorch is not available in this image. Install torch or use a compatible image.")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # Initialize CTM components
@@ -500,15 +605,16 @@ def main() -> int:
         if isinstance(spec, dict):
             mode = spec.get("mode")
         
+        # Determine if we should use vLLM backend
+        vllm_base = os.environ.get("VLLM_BASE_URL", "").strip()
+        use_vllm = _env_flag_true(os.environ.get("CTM_USE_VLLM", "1")) and bool(vllm_base)
+        vllm_model = os.environ.get("VLLM_MODEL", "")
+
         if mode == "stream":
-            # Run streaming mode
-            config = load_config_from_env()
-            processor = CTMProcessor(config)
-            
             prompt = spec.get("prompt", "CTM streaming test") if isinstance(spec, dict) else "CTM test"
             agent_id = spec.get("agent_id", "mentatlab.ctm-cogpack") if isinstance(spec, dict) else "mentatlab.ctm-cogpack"
             stream_id = spec.get("stream_id", str(uuid.uuid4())) if isinstance(spec, dict) else str(uuid.uuid4())
-            
+
             # Header status
             header = {
                 "id": str(uuid.uuid4()),
@@ -520,27 +626,72 @@ def main() -> int:
                 "sequence": 0,
             }
             _emit_stream_message(header)
-            
-            # Run async streaming
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            final_text, final_tick = loop.run_until_complete(
-                processor.run_streaming(prompt, agent_id, stream_id)
-            )
-            loop.close()
-            
+
+            if use_vllm or torch is None:
+                # vLLM-based streaming: one-shot completion then chunk into stream events
+                text = _vllm_generate_text(vllm_base, prompt, vllm_model) or "CTM(vLLM): no response"
+                # Chunk into sentences/parts
+                parts = [p.strip() for p in text.replace("\n", " ").split(".") if p.strip()]
+                seq = 1
+                for i, part in enumerate(parts[:10]):
+                    msg = {
+                        "id": str(uuid.uuid4()),
+                        "type": "text:stream",
+                        "timestamp": _now_iso(),
+                        "agent_id": agent_id,
+                        "stream_id": stream_id,
+                        "content": part + ("." if not part.endswith(".") else ""),
+                        "isComplete": i == len(parts[:10]) - 1,
+                        "sequence": seq,
+                        "model": {"name": AGENT_MODEL, "provider": "ctm", "component": "vllm"}
+                    }
+                    _emit_stream_message(msg)
+                    seq += 1
+                    # status updates
+                    st = {
+                        "id": str(uuid.uuid4()),
+                        "type": "stream:status",
+                        "timestamp": _now_iso(),
+                        "agent_id": agent_id,
+                        "stream_id": stream_id,
+                        "status": "completed" if i == len(parts[:10]) - 1 else "active",
+                        "progress": {"current": i + 1, "total": len(parts[:10]), "percentage": int(((i + 1) / max(1, len(parts[:10]))) * 100)},
+                        "sequence": seq,
+                    }
+                    _emit_stream_message(st)
+                    seq += 1
+                    time.sleep(0.05)
+                final_text = text
+                final_tick = len(parts[:10])
+            else:
+                # Torch-based CTM simulation
+                config = load_config_from_env()
+                processor = CTMProcessor(config)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                final_text, final_tick = loop.run_until_complete(
+                    processor.run_streaming(prompt, agent_id, stream_id)
+                )
+                loop.close()
+
             # Create result with streaming summary
             result_payload = {
                 "text": final_text,
                 "stream_summary": {
                     "stream_id": stream_id,
                     "final_tick": final_tick,
-                    "mode": "stream"
+                    "mode": "stream",
+                    "backend": "vllm" if (use_vllm or torch is None) else "ctm"
                 }
             }
         else:
             # Non-streaming mode
-            result_payload = process(spec or {}, context)
+            if use_vllm or torch is None:
+                prompt = "" if not isinstance(spec, dict) else str(spec.get("prompt") or "")
+                text = _vllm_generate_text(vllm_base, prompt, vllm_model) or "CTM(vLLM): no response"
+                result_payload = {"text": text, "backend": "vllm"}
+            else:
+                result_payload = process(spec or {}, context)
         
         end_time = time.time()
         output = make_output(result_payload, start_time, end_time)

@@ -4,6 +4,17 @@ import { StreamingMessage, StreamConnectionState, StreamMessageHandler, Connecti
 import { MediaType, MediaChunk, MediaReference } from '../../types/media'; // Corrected import for MediaType and MediaChunk
 import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
 
+function httpToWs(u: string): string {
+  try {
+    const url = new URL(u);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return url.toString();
+  } catch {
+    // Fallback: naive replace keeps relative quirks out of the way
+    return u.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+  }
+}
+
 /**
  * Service for interacting with multimodal streaming endpoints.
  * This service wraps the EnhancedStream logic.
@@ -125,7 +136,7 @@ const gatewayBase =
   getGatewayBaseUrl();
 const normalizedGateway = String(gatewayBase || getOrchestratorBaseUrl()).replace(/\/+$/, '');
 // Build a ws(s) URL that matches the http(s) scheme
-const wsBase = (import.meta.env.VITE_WS_URL as string) || normalizedGateway.replace(/^http/, 'ws');
+const wsBase = (import.meta.env.VITE_WS_URL as string) || httpToWs(normalizedGateway);
 
 // Default endpoints point at Gateway streaming paths for local-dev.
 export const streamingService = new StreamingService(

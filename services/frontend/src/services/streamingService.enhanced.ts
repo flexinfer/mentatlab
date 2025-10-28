@@ -403,6 +403,19 @@ class EnhancedStream {
               const tokens = Number(anyMsg?.data?.tokens ?? 0);
               if (node) this.recordCheckpoint('tool:call', { node, tokens });
             }
+
+            // Heuristics for agents that send inner data.type (psyche‑sim, etc.)
+            const innerType = String(anyMsg?.data?.type || '').toLowerCase();
+            if (innerType === 'text:stream') {
+              const comp = anyMsg?.data?.model?.component || anyMsg?.data?.component || 'Ego';
+              this.recordCheckpoint('node:exec', { node: String(comp), step: Number(anyMsg?.sequence ?? 0) });
+            } else if (innerType === 'progress') {
+              const op = String(anyMsg?.data?.operation || 'ego.process');
+              const node = op.includes('.') ? op.split('.')[0] : op;
+              this.recordCheckpoint('node:exec', { node, step: Number(anyMsg?.data?.progress ?? 0) });
+            } else if (innerType === 'stream:status') {
+              this.recordCheckpoint('node:exec', { node: 'Ego', step: 0 });
+            }
           } catch { /* tolerate malformed messages */ }
           break;
         }

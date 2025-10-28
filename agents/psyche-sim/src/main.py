@@ -32,6 +32,11 @@ import uuid
 import os
 import datetime
 from typing import Any, Dict, Optional
+import ast
+import urllib.request
+import urllib.error
+import urllib.request
+import urllib.error
 # Add structured NDJSON emit helper imports
 try:
     from agents.common.emit import log_info, log_error, checkpoint, emit_event, set_correlation_id
@@ -44,18 +49,56 @@ except Exception:
 AGENT_MODEL = "psyche-sim/0.1.0"
 
 
+def _parse_maybe_json_or_python_dict(s: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(s, str) or not s.strip():
+        return None
+    # Try JSON first
+    try:
+        v = json.loads(s)
+        if isinstance(v, dict):
+            return v
+    except Exception:
+        pass
+    # Fallback: Python literal dict (single quotes) from str(value)
+    try:
+        v = ast.literal_eval(s)
+        if isinstance(v, dict):
+            return v
+    except Exception:
+        pass
+    return None
+
+
 def read_input() -> Optional[Dict[str, Any]]:
-    """Read a single JSON object from stdin (single-line preferred)."""
+    """Read a single JSON object from stdin (single-line preferred),
+    falling back to INPUT_SPEC/INPUT_CONTEXT env vars when stdin is empty.
+    """
+    # 1) stdin path
     try:
         raw = sys.stdin.read()
-        if not raw:
-            return None
-        raw = raw.strip()
-        if not raw:
-            return None
-        return json.loads(raw)
+        if raw:
+            raw = raw.strip()
+            if raw:
+                return json.loads(raw)
     except Exception:
-        return None
+        pass
+
+    # 2) env fallback path (from orchestrator passing inputs as env vars)
+    try:
+        spec_s = os.environ.get("INPUT_SPEC", "")
+        ctx_s = os.environ.get("INPUT_CONTEXT", "")
+        spec = _parse_maybe_json_or_python_dict(spec_s) if spec_s else None
+        ctx = _parse_maybe_json_or_python_dict(ctx_s) if ctx_s else None
+        if spec or ctx:
+            incoming: Dict[str, Any] = {}
+            if spec:
+                incoming["spec"] = spec
+            if ctx:
+                incoming["context"] = ctx
+            return incoming
+    except Exception:
+        pass
+    return None
 
 
 def _now_iso() -> str:
@@ -132,7 +175,7 @@ def _emit_stream_message(msg: Dict[str, Any]) -> None:
         pass
 
 
-def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_delay: float = 0.25):
+def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_delay: float = 0.25, final_override: Optional[str] = None):
     """
     Emit a structured simulation of a small network of subconscious subcomponents.
     - Subcomponents produce short comments about the prompt.
@@ -273,9 +316,12 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
             pass
         sequence += 1
         time.sleep(chunk_delay)
-    # Finalize: ego produces the final integrated response
-    final_response = f"Ego final synthesis (score={ego_state['integration_score']}): " \
-                     f"{' // '.join([h['integration'][:60] for h in ego_state['history']])}"
+    # Finalize: ego produces the final integrated response (optionally overridden by vLLM)
+    if isinstance(final_override, str) and final_override.strip():
+        final_response = final_override.strip()
+    else:
+        final_response = f"Ego final synthesis (score={ego_state['integration_score']}): " \
+                         f"{' // '.join([h['integration'][:60] for h in ego_state['history']])}"
     final_msg = {
         **base,
         "id": str(uuid.uuid4()),
@@ -331,6 +377,165 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         pass
     # small pause
     time.sleep(0.02)
+
+
+def _http_post_json(url: str, payload: Dict[str, Any], timeout: float = 20.0) -> tuple[int, str]:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = resp.read().decode("utf-8", errors="ignore")
+        return resp.status or 0, body
+
+
+def _vllm_generate_text(base: str, prompt: str, model: Optional[str] = None) -> Optional[str]:
+    if not base:
+        return None
+    b = base.rstrip('/')
+    # Try OpenAI-style chat.completions
+    payload = {
+        "model": model or "",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 256,
+    }
+    try:
+        status, body = _http_post_json(f"{b}/v1/chat/completions", payload)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            choices = obj.get("choices") or []
+            if choices and choices[0].get("message", {}).get("content"):
+                return str(choices[0]["message"]["content"]).strip()
+    except Exception:
+        pass
+    # Try OpenAI-style completions
+    try:
+        payload2 = {
+            "model": model or "",
+            "prompt": prompt,
+            "temperature": 0.7,
+            "max_tokens": 256,
+        }
+        status, body = _http_post_json(f"{b}/v1/completions", payload2)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            choices = obj.get("choices") or []
+            if choices and (choices[0].get("text") is not None):
+                return str(choices[0]["text"]).strip()
+    except Exception:
+        pass
+    # Try vLLM non-OpenAI generate
+    try:
+        payload3 = {"prompt": prompt, "temperature": 0.7, "max_tokens": 256}
+        status, body = _http_post_json(f"{b}/generate", payload3)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            if isinstance(obj, dict) and obj.get("text"):
+                return str(obj["text"]).strip()
+            if isinstance(obj, dict) and obj.get("outputs"):
+                outs = obj["outputs"]
+                if outs and outs[0].get("text"):
+                    return str(outs[0]["text"]).strip()
+    except Exception:
+        pass
+    return None
+
+
+def _vllm_stream_chat(base: str, prompt: str, model: Optional[str] = None):
+    """Yield text deltas from vLLM OpenAI-style streaming when available."""
+    if not base:
+        return
+    b = base.rstrip('/')
+    payload = {
+        "model": model or "",
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": True,
+        "temperature": 0.7,
+        "max_tokens": 1024,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(f"{b}/v1/chat/completions", data=data, headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            for raw in resp:
+                try:
+                    line = raw.decode("utf-8", errors="ignore").strip()
+                except Exception:
+                    continue
+                if not line or not line.startswith("data:"):
+                    continue
+                chunk = line[5:].strip()
+                if chunk == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(chunk)
+                    delta = ((obj.get("choices") or [{}])[0].get("delta") or {}).get("content")
+                    if isinstance(delta, str) and delta:
+                        yield delta
+                except Exception:
+                    continue
+    except Exception:
+        return
+
+
+def _http_post_json(url: str, payload: Dict[str, Any], timeout: float = 20.0) -> tuple[int, str]:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = resp.read().decode("utf-8", errors="ignore")
+        return resp.status or 0, body
+
+
+def _vllm_generate_text(base: str, prompt: str, model: Optional[str] = None) -> Optional[str]:
+    if not base:
+        return None
+    b = base.rstrip('/')
+    # Try OpenAI-style chat.completions
+    payload = {
+        "model": model or "",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 256,
+    }
+    try:
+        status, body = _http_post_json(f"{b}/v1/chat/completions", payload)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            choices = obj.get("choices") or []
+            if choices and choices[0].get("message", {}).get("content"):
+                return str(choices[0]["message"]["content"]).strip()
+    except Exception:
+        pass
+    # Try OpenAI-style completions
+    try:
+        payload2 = {
+            "model": model or "",
+            "prompt": prompt,
+            "temperature": 0.7,
+            "max_tokens": 256,
+        }
+        status, body = _http_post_json(f"{b}/v1/completions", payload2)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            choices = obj.get("choices") or []
+            if choices and (choices[0].get("text") is not None):
+                return str(choices[0]["text"]).strip()
+    except Exception:
+        pass
+    # Try vLLM non-OpenAI generate
+    try:
+        payload3 = {"prompt": prompt, "temperature": 0.7, "max_tokens": 256}
+        status, body = _http_post_json(f"{b}/generate", payload3)
+        if 200 <= status < 300:
+            obj = json.loads(body)
+            if isinstance(obj, dict) and obj.get("text"):
+                return str(obj["text"]).strip()
+            if isinstance(obj, dict) and obj.get("outputs"):
+                outs = obj["outputs"]
+                if outs and outs[0].get("text"):
+                    return str(outs[0]["text"]).strip()
+    except Exception:
+        pass
+    return None
 
 
 def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -519,6 +724,11 @@ def main() -> int:
             else:
                 text_chunks = ["Psyche Simulation streaming message 1.", "...message 2...", "Final chunk."]
 
+            # vLLM integration: if enabled, stream deltas from the model as text:stream
+            vllm_base = os.environ.get("VLLM_BASE_URL", "").strip()
+            use_vllm = _env_flag_true(os.environ.get("PSYCHE_USE_VLLM", "1")) and bool(vllm_base)
+            vllm_model = os.environ.get("VLLM_MODEL", "")
+
             # Allow override of chunk_delay
             chunk_delay = 0.25
             if isinstance(spec, dict) and "chunk_delay" in spec:
@@ -547,8 +757,88 @@ def main() -> int:
                 checkpoint("initializing", 0.05, {"agent_id": agent_id, "stream_id": stream_id})
             except Exception:
                 pass
-            # Simulate streaming chunks
-            _simulate_streaming(agent_id=agent_id, stream_id=stream_id, text_chunks=text_chunks, chunk_delay=chunk_delay)
+            if use_vllm and isinstance(spec, dict):
+                prompt_val = spec.get("prompt") or ""
+                # Announce start
+                start_evt = {
+                    "id": str(uuid.uuid4()),
+                    "type": "stream_start",
+                    "timestamp": _now_iso(),
+                    "agent_id": agent_id,
+                    "stream_id": stream_id,
+                    "data": {"message": "psyche vLLM stream initiated"},
+                    "sequence": 1,
+                }
+                _emit_stream_message(start_evt)
+                seq = 2
+                acc = []
+                for delta in _vllm_stream_chat(vllm_base, str(prompt_val), vllm_model) or []:
+                    acc.append(delta)
+                    msg = {
+                        "id": str(uuid.uuid4()),
+                        "type": "text:stream",
+                        "timestamp": _now_iso(),
+                        "agent_id": agent_id,
+                        "stream_id": stream_id,
+                        "content": delta,
+                        "isComplete": False,
+                        "sequence": seq,
+                        "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": "vllm"},
+                    }
+                    _emit_stream_message(msg)
+                    seq += 1
+                    status = {
+                        "id": str(uuid.uuid4()),
+                        "type": "stream:status",
+                        "timestamp": _now_iso(),
+                        "agent_id": agent_id,
+                        "stream_id": stream_id,
+                        "status": "active",
+                        "progress": {"current": seq, "total": 0, "percentage": 0},
+                        "sequence": seq,
+                    }
+                    _emit_stream_message(status)
+                    seq += 1
+                final_text = ("".join(acc)).strip()
+                if final_text:
+                    final_msg = {
+                        "id": str(uuid.uuid4()),
+                        "type": "text:stream",
+                        "timestamp": _now_iso(),
+                        "agent_id": agent_id,
+                        "stream_id": stream_id,
+                        "content": final_text,
+                        "isComplete": True,
+                        "sequence": seq,
+                        "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": "vllm"},
+                    }
+                    _emit_stream_message(final_msg)
+                    seq += 1
+                status_done = {
+                    "id": str(uuid.uuid4()),
+                    "type": "stream:status",
+                    "timestamp": _now_iso(),
+                    "agent_id": agent_id,
+                    "stream_id": stream_id,
+                    "status": "completed",
+                    "progress": {"current": seq, "total": seq, "percentage": 100},
+                    "sequence": seq,
+                }
+                _emit_stream_message(status_done)
+                end_evt = {
+                    "id": str(uuid.uuid4()),
+                    "type": "stream_end",
+                    "timestamp": _now_iso(),
+                    "agent_id": agent_id,
+                    "stream_id": stream_id,
+                    "data": {"message": "psyche vLLM stream ended"},
+                    "sequence": seq + 1,
+                }
+                _emit_stream_message(end_evt)
+            else:
+                # Simulated streaming with optional model-crafted final line
+                final_override = _vllm_generate_text(vllm_base, spec.get("prompt", "")) if vllm_base else None
+                _simulate_streaming(agent_id=agent_id, stream_id=stream_id, text_chunks=text_chunks, chunk_delay=chunk_delay, final_override=final_override)
             # Small pause to ensure consumer can process
             time.sleep(0.05)
 

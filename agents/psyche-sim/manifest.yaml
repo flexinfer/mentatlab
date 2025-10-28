@@ -1,6 +1,6 @@
 id: mentatlab.psyche-sim
 version: 0.1.0
-image: mentatlab/psyche-sim:local-dev
+image: registry.harbor.lan/library/mentatlab-psyche-sim:latest
 runtime: python3.12
 description: "Psyche-inspired sample Cog‑Pak — headless, stdin→stdout contract for MentatLab"
 inputs:

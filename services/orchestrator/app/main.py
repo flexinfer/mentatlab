@@ -366,8 +366,9 @@ def _run_local_agent_and_forward(agent_manifest: dict, inputs: dict, execution_i
             except Exception:
                 pass
 
-            # End the stream on gateway
+            # End the stream on gateway. Add a short grace so UI can subscribe after /schedule returns.
             try:
+                _time.sleep(0.5)
                 requests.delete(f"{gw_base}/api/v1/streams/{stream_id}", timeout=2)
             except Exception:
                 # If delete not available, attempt to publish a final stream_end envelope

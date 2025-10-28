@@ -8,6 +8,11 @@ metadata:
   annotations:
     # Explicitly set class via annotation as well for broader controller compatibility
     kubernetes.io/ingress.class: __INGRESS_CLASS__
+    # Disable CDN/proxy/browser caching for HTML/JS to avoid stale UI after deploys
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header Cache-Control "no-store, no-cache, must-revalidate, max-age=0" always;
+      add_header Pragma "no-cache" always;
+      add_header Expires "0" always;
     # WebSocket/SSE are supported by common controllers (Traefik, NGINX)
 spec:
   # Will be set by deploy.sh based on cluster IngressClass (default/traefik/nginx)
