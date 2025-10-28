@@ -19,6 +19,13 @@ export default defineConfig({
         // keep path unchanged; backend expects /api/v1/agents etc.
         rewrite: (p) => p,
       },
+      // Ensure agent UIs (remoteEntry.js) under /agents/* resolve to the Orchestrator in dev
+      '/agents': {
+        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:7070',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (p) => p,
+      },
     },
   },
   preview: {

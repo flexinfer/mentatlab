@@ -300,6 +300,18 @@ async def root():
 
 app.include_router(router_flows.router, prefix="/flows")
 
+# Serve static agent UI assets via gateway by proxying to orchestrator /agents/*
+@app.get("/agents/{path:path}")
+async def proxy_agents_static(path: str, request: Request) -> Response:
+    try:
+        client = _get_http_client(request)
+        url = _orch_url(f"/agents/{path}")
+        resp = await client.get(url)
+        media = resp.headers.get("content-type", "application/javascript" if path.endswith('.js') else "application/octet-stream")
+        return Response(content=resp.content, status_code=resp.status_code, media_type=media)
+    except httpx.RequestError as e:
+        return JSONResponse(status_code=502, content={"error": "orchestrator_unreachable", "detail": str(e)})
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -50,3 +50,5 @@ async def proxy_agents_schedule(request: Request) -> Response:
         return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/json"))
     except httpx.RequestError as e:
         return JSONResponse(status_code=502, content={"error": "orchestrator_unreachable", "detail": str(e)})
+
+# Note: static /agents/* proxy is registered at the app level without /api prefix in main.py
