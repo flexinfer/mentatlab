@@ -19,7 +19,7 @@ import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
 import PropertyInspector from '../../PropertyInspector';
 import NetworkPanel from '../panels/NetworkPanel';
-import { getOrchestratorBaseUrl } from '@/config/orchestrator';
+import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
 // ADD: orchestrator run helper
 import { startDemoRunAndStream } from '../../../services/api/orchestrator';
 import GraphPanel from '../panels/GraphPanel';
@@ -183,11 +183,11 @@ export function MissionControlLayout() {
 
   const openRemoteUi = (remoteEntry: string | undefined, title: string) => {
     if (!remoteEntry) return;
-    // Load via same-origin Ingress for static agent UIs
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    // Prefer Gateway base for relative remoteEntry so it works in dev/preview/prod
+    const base = getGatewayBaseUrl();
     const remoteUrl = /^https?:\/\//i.test(remoteEntry)
       ? remoteEntry
-      : `${origin.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
+      : `${String(base).replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
     const detail = { url: remoteUrl, title: title || 'CogPak UI' };
     console.log('[CogPaksList] dispatching openCogpak', detail);
     try {
@@ -1041,6 +1041,23 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
       }
 
       console.log(`Agent ${agentId} scheduled successfully:`, data);
+      // Attach live stream if orchestrator returned a stream id
+      try {
+        const sid: string | undefined = (data && (data.stream_id as string)) || undefined;
+        const wsUrl: string | undefined = (data && (data.ws_url as string)) || undefined;
+        const sseUrl: string | undefined = (data && (data.sse_url as string)) || undefined;
+        if (sid) {
+          const mod = await import('../../../services/api/streamingService');
+          const StreamingServiceCtor: any = (mod as any).StreamingService;
+          const base = window.location.origin.replace(/\/+$/, '');
+          const ws = wsUrl && /^wss?:/.test(wsUrl) ? wsUrl : `${base}${(wsUrl || `/ws/streams/${sid}`).replace(/^\/+/, '/')}`.replace(/^http/, 'ws');
+          const sse = sseUrl && /^https?:/.test(sseUrl) ? sseUrl : `${base}${(sseUrl || `/api/v1/streams/${sid}/sse`).replace(/^\/+/, '/')}`;
+          const client = new StreamingServiceCtor(sid, ws, sse);
+          await client.connect();
+        }
+      } catch (e) {
+        console.warn('[MissionControl] Failed to attach live stream', e);
+      }
       
       // Simulate agent completion after 10 seconds
       setTimeout(() => {
@@ -1069,11 +1086,11 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
       console.warn('[CogPaksList] Remote UI blocked by feature flag');
       return;
     }
-    // Load via same-origin Ingress for static agent UIs
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    // Prefer Gateway base for relative remoteEntry so it works in dev/preview/prod
+    const base = getGatewayBaseUrl();
     const remoteUrl = /^https?:\/\//i.test(remoteEntry)
       ? remoteEntry
-      : `${origin.replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
+      : `${String(base).replace(/\/+$/, '')}/${remoteEntry.replace(/^\/+/, '')}`;
     const detail = { url: remoteUrl, title: title || 'CogPak UI' };
     console.log('[CogPaksList] dispatching openCogpak', detail);
     try {

@@ -233,7 +233,7 @@ def get_scheduling_service() -> SchedulingService:
     return _scheduling_service
 
 # Helper: run local agent process and forward NDJSON stdout to Gateway streaming API.
-def _run_local_agent_and_forward(agent_manifest: dict, inputs: dict, execution_id: Optional[str], resource_id: str) -> None:
+def _run_local_agent_and_forward(agent_manifest: dict, inputs: dict, execution_id: Optional[str], resource_id: str, precreated_stream: Optional[Dict[str, Any]] = None) -> None:
     """
     Best-effort local dev helper:
     - Creates a gateway stream via POST /api/v1/streams/init
@@ -250,13 +250,20 @@ def _run_local_agent_and_forward(agent_manifest: dict, inputs: dict, execution_i
         logger.info(f"Local forward: initializing gateway stream for agent {agent_id} (resource={resource_id})")
 
         try:
-            resp = requests.post(f"{gw_base}/api/v1/streams/init", json={"agent_id": agent_id, "pin_name": "output"}, timeout=5)
-            resp.raise_for_status()
-            stream_info = resp.json()
-            stream_id = stream_info.get("stream_id")
-            ws_url = stream_info.get("ws_url")
-            sse_url = stream_info.get("sse_url")
-            logger.info(f"Local forward: created stream {stream_id} (ws={ws_url} sse={sse_url})")
+            if precreated_stream and precreated_stream.get("stream_id"):
+                stream_info = precreated_stream
+                stream_id = stream_info.get("stream_id")
+                ws_url = stream_info.get("ws_url")
+                sse_url = stream_info.get("sse_url")
+                logger.info(f"Local forward: using precreated stream {stream_id}")
+            else:
+                resp = requests.post(f"{gw_base}/api/v1/streams/init", json={"agent_id": agent_id, "pin_name": "output"}, timeout=5)
+                resp.raise_for_status()
+                stream_info = resp.json()
+                stream_id = stream_info.get("stream_id")
+                ws_url = stream_info.get("ws_url")
+                sse_url = stream_info.get("sse_url")
+                logger.info(f"Local forward: created stream {stream_id} (ws={ws_url} sse={sse_url})")
         except Exception as e:
             logger.warning(f"Local forward: failed to init gateway stream: {e}")
             return
@@ -482,6 +489,15 @@ async def schedule_agent_endpoint(request: AgentScheduleRequest, _req: Request):
             "orchestrator.schedule_agent",
             {"agent_id": agent_id, "long_running": is_long_running},
         ):
+            # Pre-create a stream for UI to attach to
+            stream_info: Dict[str, Any] = {}
+            try:
+                gw_base = os.getenv("GATEWAY_BASE_URL", "http://gateway:8080")
+                r = requests.post(f"{gw_base}/api/v1/streams/init", json={"agent_id": agent_id, "pin_name": "output"}, timeout=5)
+                r.raise_for_status()
+                stream_info = r.json() or {}
+            except Exception as e:
+                logging.getLogger("orchestrator.schedule_agent").warning(f"Failed to pre-create stream: {e}")
             try:
                 resource_id = get_scheduling_service().scheduleAgent(
                     request.agent_manifest,
@@ -498,26 +514,26 @@ async def schedule_agent_endpoint(request: AgentScheduleRequest, _req: Request):
                 try:
                     t = threading.Thread(
                         target=_run_local_agent_and_forward,
-                        args=(request.agent_manifest, request.inputs, request.execution_id, local_res_id),
+                        args=(request.agent_manifest, request.inputs, request.execution_id, local_res_id, stream_info if stream_info else None),
                         daemon=True
                     )
                     t.start()
                 except Exception:
                     logging.getLogger("orchestrator.local-forward").exception("Local forward fallback failed")
-                return {"resource_id": local_res_id, "status": "scheduled-local"}
+                return {"resource_id": local_res_id, "status": "scheduled-local", "stream_id": stream_info.get("stream_id"), "ws_url": stream_info.get("ws_url"), "sse_url": stream_info.get("sse_url")}            
         # If this is the local psyche-sim agent, spawn a background thread to run it locally
         try:
             if agent_id in ("mentatlab.psyche-sim", "mentatlab.ctm-cogpack"):
                 t = threading.Thread(
                     target=_run_local_agent_and_forward,
-                    args=(request.agent_manifest, request.inputs, request.execution_id, resource_id),
+                    args=(request.agent_manifest, request.inputs, request.execution_id, resource_id, stream_info if stream_info else None),
                     daemon=True
                 )
                 t.start()
                 logging.getLogger("orchestrator.local-forward").info(f"Started local forward thread for {resource_id}")
         except Exception:
             logging.getLogger("orchestrator.local-forward").exception("Failed to start local forwarding thread")
-        return {"resource_id": resource_id, "status": "scheduled"}
+        return {"resource_id": resource_id, "status": "scheduled", "stream_id": stream_info.get("stream_id"), "ws_url": stream_info.get("ws_url"), "sse_url": stream_info.get("sse_url")}
     except ValueError as e:
         # Validation errors
         raise HTTPException(status_code=400, detail=str(e))
