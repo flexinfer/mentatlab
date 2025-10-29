@@ -15,6 +15,8 @@ export const FeatureFlags = {
   // Runtime connection control: when false, UI shows streaming surfaces without attempting WS connect
   // Default ON in dev so the live connect control is available immediately
   CONNECT_WS: (env.VITE_CONNECT_WS ?? 'true') === 'true',
+  // Auto-connect live stream on page load (off by default in prod)
+  AUTO_CONNECT: (env.VITE_FF_AUTO_CONNECT ?? 'false') === 'true',
   // Visual contract checking overlay
   CONTRACT_OVERLAY: (env.VITE_FF_CONTRACT_OVERLAY ?? (env.DEV ? 'true' : 'false')) === 'true',
   // Orchestrator Runs panel (dev/demo only)
@@ -45,6 +47,18 @@ export function isCloudEventsEnabled(): boolean {
  */
 export function isStreamWorkerEnabled(): boolean {
   const v = env?.VITE_FF_STREAM_WORKER ?? 'false';
+  return String(v).toLowerCase() === 'true';
+}
+
+// Whether to start a local simulation when transports fail
+export function isSimFallbackEnabled(): boolean {
+  const v = env?.VITE_FF_STREAM_SIM ?? 'false';
+  return String(v).toLowerCase() === 'true';
+}
+
+// Whether to auto-record a run into the flight recorder on connect
+export function isAutoRecordEnabled(): boolean {
+  const v = env?.VITE_FF_STREAM_AUTORECORD ?? 'false';
   return String(v).toLowerCase() === 'true';
 }
 

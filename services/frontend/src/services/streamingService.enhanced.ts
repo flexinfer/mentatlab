@@ -32,7 +32,7 @@ import { MediaType, MediaChunk, MediaReference } from '../types/media';
 import { useStreamingStore, type StreamingState } from '../store/index'; // Use the Map-based streaming store with exported StreamingState
 import { StreamMessageHandler, ConnectionStateHandler } from '../types/streaming'; // Import from types/streaming
 // ADD: Feature flags and Mission Control flight recorder
-import { FeatureFlags, isCloudEventsEnabled, isStreamWorkerEnabled } from '../config/features';
+import { FeatureFlags, isCloudEventsEnabled, isStreamWorkerEnabled, isSimFallbackEnabled, isAutoRecordEnabled } from '../config/features';
 import { flightRecorder } from './mission-control/services';
 
 interface ReconnectionConfig {
@@ -119,9 +119,13 @@ class EnhancedStream {
         const QUICK_DEADLINE_MS = 1500;
         await this.connectSSE(QUICK_DEADLINE_MS);
       } catch (sseError) {
-        console.error('[EnhancedStream] SSE connection also failed. Starting local simulation:', sseError);
-        // Start simulation fallback so UI still gets a live network
-        this.beginSimulationFallback();
+        console.error('[EnhancedStream] SSE connection also failed.', sseError);
+        // Start simulation fallback only if explicitly enabled
+        if (isSimFallbackEnabled()) {
+          this.beginSimulationFallback();
+        } else {
+          this.setConnectionState(StreamConnectionState.ERROR);
+        }
         return;
       }
     }
@@ -153,7 +157,7 @@ class EnhancedStream {
           this.sendNegotiation();
           this.flushMessageBuffer();
 // ADD: Start recorder run on first successful connection
-          if (FeatureFlags.NEW_STREAMING && !this.runStarted) {
+          if (FeatureFlags.NEW_STREAMING && isAutoRecordEnabled() && !this.runStarted) {
             try {
               flightRecorder.startRun(this.streamId);
               this.runStarted = true;
@@ -240,7 +244,7 @@ class EnhancedStream {
           this.reconnectAttempts = 0;
           this.setConnectionState(StreamConnectionState.CONNECTED);
 // ADD: Start recorder run on first successful SSE connection
-          if (FeatureFlags.NEW_STREAMING && !this.runStarted) {
+          if (FeatureFlags.NEW_STREAMING && isAutoRecordEnabled() && !this.runStarted) {
             try {
               flightRecorder.startRun(this.streamId);
               this.runStarted = true;
@@ -806,7 +810,7 @@ class EnhancedStream {
     if (this.simTimerId != null) return;
     // Consider ourselves "connected" from the UI perspective
     this.setConnectionState(StreamConnectionState.CONNECTED);
-    if (FeatureFlags.NEW_STREAMING && !this.runStarted) {
+    if (FeatureFlags.NEW_STREAMING && isAutoRecordEnabled() && !this.runStarted) {
       try {
         flightRecorder.startRun(this.streamId, 'simulated');
         this.runStarted = true;

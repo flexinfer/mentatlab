@@ -10,7 +10,7 @@ services/frontend/node_modules/
 # Misc
 .env
 services/gateway/.pdm-python
-logs/frontend.log
+logs/
 compose-logs.txt
 
 # Test/tooling outputs
@@ -27,3 +27,4 @@ examples/psyche-simulation/venv
 examples/psyche-simulation/patches
 examples/psyche-simulation/*.log
 examples/psyche-simulation/logs
+logs/frontend.log

@@ -619,8 +619,9 @@ export default function NetworkPanel({ runId }: Props) {
 
   const empty = nodes.length === 0;
 
-  // Auto-attempt live connection on mount (will fall back to simulation if WS/SSE unavailable)
+  // Auto-attempt live connection only when explicitly enabled
   React.useEffect(() => {
+    if (!FeatureFlags.AUTO_CONNECT) return;
     (async () => {
       try { await connectLive(); } catch {}
     })();
