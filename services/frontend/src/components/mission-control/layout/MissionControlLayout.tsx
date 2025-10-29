@@ -29,6 +29,8 @@ import { useKeyboardShortcuts, type KeyboardShortcut, commonShortcuts } from '@/
 import { KeyboardShortcutsDialog } from '@/components/ui/KeyboardShortcutsDialog';
 // ADD: flow store for undo/redo
 import { useFlowStore } from '@/store/index';
+// NEW: stream registry to stop live clients when needed
+import { streamRegistry } from '@/services/streaming/streamRegistry';
 
 export function MissionControlLayout() {
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
@@ -147,14 +149,17 @@ export function MissionControlLayout() {
     };
   }, [cogpakUi, uiConfig]);
 
-  // Auto-select latest run when streaming recorder starts runs (e.g., EnhancedStream)
+  // Auto-select latest meaningful run (ignore simulated/transport runs)
   React.useEffect(() => {
     if (!isEnabled('NEW_STREAMING') || activeRunId) return;
     const interval = setInterval(() => {
-      const runs = flightRecorder.listRuns();
-      if (runs.length && !activeRunId) {
-        setActiveRunId(runs[0].runId);
-      }
+      try {
+        const runs = flightRecorder.listRuns();
+        const filtered = (runs || []).filter((r: any) => r?.type && r.type !== 'simulated');
+        if (filtered.length && !activeRunId) {
+          setActiveRunId(filtered[0].runId);
+        }
+      } catch { /* ignore */ }
     }, 1000);
     return () => clearInterval(interval);
   }, [activeRunId]);
@@ -1077,6 +1082,7 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
             : `${base}${(sseUrl || `/api/v1/streams/${sid}/sse`).replace(/^\/+/, '/')}`;
           const client = new StreamingServiceCtor(sid, ws, sse);
           await client.connect();
+          try { streamRegistry.register(sid, client); } catch {}
         }
       } catch (e) {
         console.warn('[MissionControl] Failed to attach live stream', e);

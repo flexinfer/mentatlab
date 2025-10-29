@@ -40,7 +40,7 @@ Frontend Architecture
   • Contract overlay: [ContractOverlay.tsx](services/frontend/src/components/mission-control/overlays/ContractOverlay.tsx)
   • Console panel: [ConsolePanel.tsx](services/frontend/src/components/mission-control/panels/ConsolePanel.tsx)
   • Issues panel: [IssuesPanel.tsx](services/frontend/src/components/mission-control/panels/IssuesPanel.tsx)
-  • Flow canvas: [FlowCanvas.tsx](services/frontend/src/components/FlowCanvas.tsx)
+  • Flow canvas: [StreamingCanvas.tsx](services/frontend/src/components/StreamingCanvas.tsx)
   • Theme tokens: [index.css](services/frontend/src/index.css)
   • Feature flags: [features.ts](services/frontend/src/config/features.ts)
   • Linter services: [services.ts](services/frontend/src/services/mission-control/services.ts)

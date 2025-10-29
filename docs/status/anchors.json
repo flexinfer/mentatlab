@@ -54,7 +54,7 @@
   },
   "frontend.flow.canvas": {
     "doc": "docs/architecture.md#frontend-architecture",
-    "code": "[services/frontend/src/components/FlowCanvas.tsx](services/frontend/src/components/FlowCanvas.tsx:1)",
+    "code": "[services/frontend/src/components/StreamingCanvas.tsx](services/frontend/src/components/StreamingCanvas.tsx:1)",
     "tags": ["ui", "canvas"],
     "status": "done",
     "exists": true

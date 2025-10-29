@@ -3,6 +3,7 @@ import { EnhancedStream } from '../streamingService.enhanced';
 import { StreamingMessage, StreamConnectionState, StreamMessageHandler, ConnectionStateHandler } from '../../types/streaming'; // All imported from types/streaming
 import { MediaType, MediaChunk, MediaReference } from '../../types/media'; // Corrected import for MediaType and MediaChunk
 import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
+import { streamRegistry } from '@/services/streaming/streamRegistry';
 
 function httpToWs(u: string): string {
   try {
@@ -146,5 +147,8 @@ export const streamingService = new StreamingService(
   // SSE endpoint for a default stream id
   `${normalizedGateway}/api/v1/streams/default-stream-id/sse`
 );
+
+// Register default client so it can be closed when user cancels/stops
+try { streamRegistry.register('default-stream-id', streamingService as any); } catch {}
 
 export default streamingService;

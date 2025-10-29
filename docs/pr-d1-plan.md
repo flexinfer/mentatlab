@@ -84,7 +84,7 @@ Templates to Use
 
 Cross-References
 - UI files to anchor:
-  - [FlowCanvas.tsx](services/frontend/src/components/FlowCanvas.tsx)
+  - [StreamingCanvas.tsx](services/frontend/src/components/StreamingCanvas.tsx)
   - [index.css](services/frontend/src/index.css)
   - [features.ts](services/frontend/src/config/features.ts)
 - Services:

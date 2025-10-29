@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Edge, Node as RFNode } from 'reactflow';
 import { getRun, cancelRun, type Run as ApiRun, type PlanEdge as ApiPlanEdge } from '@/services/api/runs';
+import { streamRegistry } from '@/services/streaming/streamRegistry';
 import { subscribeRunEvents } from '@/services/streaming/orchestratorSSE';
 import { parseRunEvent, type NormalizedRunEvent } from '@/services/streaming/parse';
 import type { NodeCardData, NodeStatus } from './NodeCard';
@@ -266,6 +267,10 @@ export function useRunGraph(runId: string | null | undefined): UseRunGraphState 
       await cancelRun(runId);
       // optimistic: mark run as failed (canceled)
       setRunStatus('failed');
+      // Stop any active live streams so the network/graph quiets immediately
+      try { streamRegistry.stopAll(); } catch {}
+      // Also close our SSE subscription to stop further updates
+      try { sseCloseRef.current?.(); } catch {}
     } catch (e) {
       console.error('[useRunGraph] cancelRun failed', e);
     }
