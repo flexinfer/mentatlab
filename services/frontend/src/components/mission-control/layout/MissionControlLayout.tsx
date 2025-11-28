@@ -3,10 +3,10 @@ import { FeatureFlags } from '../../../config/features';
 import { StreamingCanvas } from '../../StreamingCanvas';
 import { Button } from '../../ui/button';
 import TimelinePanel from '../panels/TimelinePanel';
- // ADD: Issues panel import
- import IssuesPanel from '../panels/IssuesPanel';
- // ADD: Console panel import
- import ConsolePanel from '../panels/ConsolePanel';
+// ADD: Issues panel import
+import IssuesPanel from '../panels/IssuesPanel';
+// ADD: Console panel import
+import ConsolePanel from '../panels/ConsolePanel';
 // ADD: Runs panel import (dev)
 import RunsPanel from '../panels/RunsPanel';
 import { flightRecorder } from '../../../services/mission-control/services';
@@ -131,7 +131,7 @@ export function MissionControlLayout() {
               v.mount(container, null);
               return;
             }
-          } catch {}
+          } catch { }
         }
         container.innerHTML = '<pre>Loaded remoteEntry but could not find mount() function.</pre>';
       } catch (err) {
@@ -144,7 +144,7 @@ export function MissionControlLayout() {
 
     document.body.appendChild(script);
     return () => {
-      try { document.body.removeChild(script); } catch {}
+      try { document.body.removeChild(script); } catch { }
       if (container) container.innerHTML = '';
     };
   }, [cogpakUi, uiConfig]);
@@ -182,7 +182,7 @@ export function MissionControlLayout() {
       const mod = await import('../../../services/api/streamingService');
       await mod.default.connect();
       // Breadcrumb for field diagnostics
-      try { (window as any).__mentat = { ...(window as any).__mentat, lastLiveConnectAt: Date.now() }; } catch {}
+      try { (window as any).__mentat = { ...(window as any).__mentat, lastLiveConnectAt: Date.now() }; } catch { }
       // EnhancedStream will start a FlightRecorder run automatically on connect
     } catch (e) {
       console.error('[MissionControl] Live connect failed', e);
@@ -330,91 +330,100 @@ export function MissionControlLayout() {
   useKeyboardShortcuts(shortcuts);
 
   return (
-    <div className="h-screen w-screen grid grid-rows-[48px_1fr_28px] grid-cols-[240px_1fr] bg-background text-foreground" style={{
-      position: 'relative',
-      height: '100vh',
-      width: '100vw',
-    }}>
-      {/* Top Bar */}
-      <header className="row-start-1 col-span-2 flex items-center justify-between px-4 border-b bg-card/70 backdrop-blur">
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-semibold">MentatLab</span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-900/40">
+    <div className="h-screen w-screen relative overflow-hidden bg-background text-foreground font-sans selection:bg-primary/30">
+      {/* Background Canvas Layer */}
+      <div className="absolute inset-0 z-0">
+        {mainView === 'network' ? (
+          <NetworkPanel runId={activeRunId} />
+        ) : (
+          <ReactFlowProvider>
+            <StreamingCanvas />
+            {/* Mounted CogPak UI overlay (mounts remoteEntry into #cogpak-mount) */}
+            <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
+          </ReactFlowProvider>
+        )}
+      </div>
+
+      {/* Top Bar - Floating Glass */}
+      <header className="absolute top-4 left-4 right-4 h-14 z-50 flex items-center justify-between px-4 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl animate-slide-down">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg shadow-primary/20">
+              <span className="text-white font-bold text-lg">M</span>
+            </div>
+            <span className="text-lg font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
+              MentatLab
+            </span>
+          </div>
+          <div className="h-6 w-px bg-white/10 mx-2" />
+          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 shadow-[0_0_10px_rgba(124,58,237,0.1)]">
             Mission Control
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs">
-          <FlagPill label="MULTIMODAL_UPLOAD" enabled={isEnabled('MULTIMODAL_UPLOAD')} />
-          <FlagPill label="NEW_STREAMING" enabled={isEnabled('NEW_STREAMING')} />
-          <FlagPill label="S3_STORAGE" enabled={isEnabled('S3_STORAGE')} />
-          {/* Dark Mode Toggle */}
-          <button
-            className="ml-2 h-6 px-2 rounded border bg-card hover:bg-muted text-[11px]"
-            onClick={() => setDark((d) => !d)}
-            title="Toggle theme"
-          >
-            {dark ? '☾ Dark' : '☀ Light'}
-          </button>
-          {/* Settings Drawer Toggle */}
-          <button
-            className="ml-2 h-6 px-2 rounded border bg-card hover:bg-muted text-[11px]"
-            onClick={() => setSettingsOpen(true)}
-            title="Open settings"
-          >
-            ⚙
-          </button>
-          {/* Keyboard Shortcuts Help */}
-          <button
-            className="ml-2 h-6 px-2 rounded border bg-card hover:bg-muted text-[11px]"
-            onClick={() => setShortcutsDialogOpen(true)}
-            title="Keyboard shortcuts (Shift+?)"
-          >
-            ?
-          </button>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 p-1 rounded-lg bg-white/5 border border-white/5">
+            <FlagPill label="MULTIMODAL" enabled={isEnabled('MULTIMODAL_UPLOAD')} />
+            <FlagPill label="STREAMING" enabled={isEnabled('NEW_STREAMING')} />
+            <FlagPill label="S3" enabled={isEnabled('S3_STORAGE')} />
+          </div>
+
+          <div className="flex items-center gap-2 pl-2 border-l border-white/10">
+            <button
+              className="p-2 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-white transition-colors"
+              onClick={() => setDark((d) => !d)}
+              title="Toggle theme"
+            >
+              {dark ? '☾' : '☀'}
+            </button>
+            <button
+              className="p-2 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-white transition-colors"
+              onClick={() => setSettingsOpen(true)}
+              title="Open settings"
+            >
+              ⚙
+            </button>
+            <button
+              className="p-2 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-white transition-colors"
+              onClick={() => setShortcutsDialogOpen(true)}
+              title="Keyboard shortcuts (Shift+?)"
+            >
+              ?
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Left Nav */}
-      <aside className="row-start-2 col-start-1 border-r bg-card/70 backdrop-blur">
-        {/* Workspace sidebar: Workspaces / CogPaks / Flows */}
-        <nav className="p-2 text-xs space-y-2">
+      {/* Left Nav - Floating Glass Panel */}
+      <aside className="absolute top-20 left-4 bottom-4 w-64 z-40 flex flex-col gap-4 pointer-events-none">
+        <nav className="flex-1 p-4 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl overflow-y-auto pointer-events-auto animate-slide-right">
           <SectionTitle>Workspaces</SectionTitle>
-          <ul className="space-y-1 text-gray-600 dark:text-gray-300">
-            <li className="px-2 py-1 rounded hover:bg-muted cursor-pointer">Default</li>
+          <ul className="space-y-1 mt-2 mb-6">
+            <li className="px-3 py-2 rounded-lg bg-white/5 text-sm font-medium text-white border border-white/10 cursor-pointer hover:bg-white/10 transition-colors">
+              Default
+            </li>
           </ul>
 
-          <SectionTitle className="mt-3">CogPaks</SectionTitle>
-          <CogPaksList allowRemoteUi={isEnabled('ALLOW_REMOTE_COGPAK_UI')} onSelectNetwork={() => setMainView('network')} />
+          <SectionTitle>CogPaks</SectionTitle>
+          <div className="mt-2 mb-6">
+            <CogPaksList allowRemoteUi={isEnabled('ALLOW_REMOTE_COGPAK_UI')} onSelectNetwork={() => setMainView('network')} />
+          </div>
 
-          <SectionTitle className="mt-3">Flows</SectionTitle>
-          <ul className="space-y-1 text-gray-600 dark:text-gray-300">
-            <li className="px-2 py-1 rounded hover:bg-muted cursor-pointer" onClick={() => setMainView('flow')}>example-flow</li>
+          <SectionTitle>Flows</SectionTitle>
+          <ul className="space-y-1 mt-2">
+            <li
+              className="px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-muted-foreground hover:text-white cursor-pointer transition-colors flex items-center gap-2"
+              onClick={() => setMainView('flow')}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-primary/50" />
+              example-flow
+            </li>
           </ul>
         </nav>
       </aside>
 
-      {/* Canvas */}
-      <main
-        className="row-start-2 col-start-2 relative overflow-hidden"
-        style={{ position: 'relative', overflow: 'hidden' }}
-      >
-        <div
-          className="absolute inset-0"
-          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 0 }}
-        >
-          {/* Canvas center of gravity */}
-          <div style={{ height: '100%', width: '100%' }}>
-            {mainView === 'network' ? (
-              <NetworkPanel runId={activeRunId} />
-            ) : (
-              <ReactFlowProvider>
-                <StreamingCanvas />
-                {/* Mounted CogPak UI overlay (mounts remoteEntry into #cogpak-mount) */}
-                <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
-              </ReactFlowProvider>
-            )}
-          </div>
-        </div>
+      {/* Main Content Area - Now handled by background layer, but keeping overlays container */}
+      <div className="absolute inset-0 pointer-events-none z-10">
 
         {/* Overlays */}
         <div className="pointer-events-none absolute inset-0" style={{ zIndex: 10 }}>
@@ -486,7 +495,7 @@ export function MissionControlLayout() {
             </div>
           </div>
         )}
-      </main>
+      </div>
 
       {/* Status Bar */}
       <StatusBar isEnabled={isEnabled} />
@@ -522,12 +531,14 @@ export function MissionControlLayout() {
  */
 function RightDock({ runId, uiConfig, setUiConfig, isEnabled }: { runId: string | null; uiConfig: Partial<Record<keyof typeof FeatureFlags, boolean>>; setUiConfig: React.Dispatch<React.SetStateAction<Partial<Record<keyof typeof FeatureFlags, boolean>>>>; isEnabled: (f: keyof typeof FeatureFlags) => boolean }) {
   return (
-    <div className="pointer-events-auto absolute top-2 right-2 bottom-32 w-[360px] rounded-lg border text-foreground shadow-sm overflow-hidden flex flex-col bg-card/70 backdrop-blur"
-      style={{ position: 'absolute', top: 8, right: 8, bottom: 128, width: 360, zIndex: 40 }}
-    >
-      <div className="h-9 border-b flex items-center px-3 text-xs font-medium bg-muted/50">Inspector</div>
-      <div className="flex-1 overflow-auto p-3 text-xs text-gray-600 dark:text-gray-300">
-        <InspectorPanel runId={runId} />
+    <div className="pointer-events-none absolute top-20 right-4 bottom-64 w-80 z-40 flex flex-col gap-4">
+      <div className="flex-1 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col pointer-events-auto animate-slide-left">
+        <div className="h-10 border-b border-white/10 flex items-center px-4 text-xs font-medium bg-white/5 text-white">
+          Inspector
+        </div>
+        <div className="flex-1 overflow-auto p-3 text-xs text-gray-300">
+          <InspectorPanel runId={runId} />
+        </div>
       </div>
     </div>
   );
@@ -557,7 +568,7 @@ function BottomDock({
     try {
       const stored = localStorage.getItem('mc_bottom_active_tab') as any;
       if (stored) return stored;
-    } catch {}
+    } catch { }
     // Prefer Network by default when available
     if (isEnabledLocal('NETWORK_PANEL')) return 'Network';
     if (isEnabledLocal('NEW_STREAMING')) return 'Timeline';
@@ -566,7 +577,7 @@ function BottomDock({
   const [activeTab, setActiveTabRaw] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph'>(initialTab);
   const setActiveTab = (t: typeof activeTab) => {
     setActiveTabRaw(t);
-    try { localStorage.setItem('mc_bottom_active_tab', t); } catch {}
+    try { localStorage.setItem('mc_bottom_active_tab', t); } catch { }
   };
   // Live connect state (disable button when connecting/connected)
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
@@ -622,100 +633,101 @@ function BottomDock({
 
   return (
     <div
-      className="pointer-events-auto absolute left-2 right-[376px] bottom-2 h-56 rounded-lg border text-foreground shadow-sm overflow-hidden flex flex-col bg-card/70 backdrop-blur"
-      style={{ position: 'absolute', left: 8, right: 376, bottom: 8, height: 224, zIndex: 35 }}
+      className="pointer-events-none absolute left-72 right-[340px] bottom-4 h-56 z-30 flex flex-col justify-end"
     >
-      <div className="h-8 border-b bg-muted/50 text-xs">
-        <div className="h-full flex items-center justify-between px-3">
-          <div className="flex items-center gap-2">
-            {isEnabledLocal('MISSION_CONSOLE') && (
-              <TabBadge label="Console" active={activeTab === 'Console'} onClick={() => setActiveTab('Console')} />
-            )}
-            <TabBadge label="Run Queue" active={activeTab === 'Run Queue'} onClick={() => setActiveTab('Run Queue')} />
-            {isEnabledLocal('NEW_STREAMING') && (
-              <TabBadge label="Timeline" active={activeTab === 'Timeline'} onClick={() => setActiveTab('Timeline')} badge={timelineCount} />
-            )}
-            {isEnabledLocal('NETWORK_PANEL') && (
-              <TabBadge label="Network" active={activeTab === 'Network'} onClick={() => setActiveTab('Network')} />
-            )}
-            {isEnabledLocal('ORCHESTRATOR_PANEL') && (
-              <TabBadge label="Runs" active={activeTab === 'Runs'} onClick={() => setActiveTab('Runs')} />
-            )}
-            <TabBadge label="Issues" active={activeTab === 'Issues'} onClick={() => setActiveTab('Issues')} badge={issuesCount} />
-            {/* NEW: Graph tab (feature flagged) */}
-            {isEnabledLocal('MISSION_GRAPH') && (
-              <TabBadge label="Graph" active={activeTab === 'Graph'} onClick={() => setActiveTab('Graph')} />
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {isEnabledLocal('MULTIMODAL_UPLOAD') && (
-              <Button
-                variant="outline"
-                className="h-6 px-2 text-[11px]"
-                onClick={() => console.log('[UI] Add Artifact clicked')}
-              >
-                + Add Artifact
-              </Button>
-            )}
-            {isEnabledLocal('CONNECT_WS') && (
-              <Button
-                variant="outline"
-                className="h-6 px-2 text-[11px] disabled:opacity-60"
-                onClick={onStartLive}
-                disabled={liveDisabled}
-                title={liveDisabled ? 'Already connected/connecting' : 'Connect live stream'}
-              >
-                {connectionStatus === StreamConnectionState.CONNECTING || connectionStatus === StreamConnectionState.RECONNECTING
-                  ? '🔄 Connecting…'
-                  : connectionStatus === StreamConnectionState.CONNECTED
-                  ? '✅ Live'
-                  : '🔌 Connect Live'}
-              </Button>
-            )}
-            {isEnabledLocal('NEW_STREAMING') && (
-              <Button variant="outline" className="h-6 px-2 text-[11px]" onClick={onStartDemo}>
-                ▶ Start Demo Run
-              </Button>
-            )}
-            {/* ADD: Start Orchestrator Run button (visible when Orchestrator panel is enabled) */}
-            {isEnabledLocal('ORCHESTRATOR_PANEL') && (
-              <Button
-                variant="outline"
-                className="h-6 px-2 text-[11px]"
-                onClick={onStartOrchestratorRun}
-                title="Create a backend run and stream live events"
-              >
-                ▶ Start Orchestrator Run
-              </Button>
-            )}
+      <div className="pointer-events-auto h-full rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+        <div className="h-10 border-b border-white/10 bg-white/5 text-xs">
+          <div className="h-full flex items-center justify-between px-4">
+            <div className="flex items-center gap-2">
+              {isEnabledLocal('MISSION_CONSOLE') && (
+                <TabBadge label="Console" active={activeTab === 'Console'} onClick={() => setActiveTab('Console')} />
+              )}
+              <TabBadge label="Run Queue" active={activeTab === 'Run Queue'} onClick={() => setActiveTab('Run Queue')} />
+              {isEnabledLocal('NEW_STREAMING') && (
+                <TabBadge label="Timeline" active={activeTab === 'Timeline'} onClick={() => setActiveTab('Timeline')} badge={timelineCount} />
+              )}
+              {isEnabledLocal('NETWORK_PANEL') && (
+                <TabBadge label="Network" active={activeTab === 'Network'} onClick={() => setActiveTab('Network')} />
+              )}
+              {isEnabledLocal('ORCHESTRATOR_PANEL') && (
+                <TabBadge label="Runs" active={activeTab === 'Runs'} onClick={() => setActiveTab('Runs')} />
+              )}
+              <TabBadge label="Issues" active={activeTab === 'Issues'} onClick={() => setActiveTab('Issues')} badge={issuesCount} />
+              {/* NEW: Graph tab (feature flagged) */}
+              {isEnabledLocal('MISSION_GRAPH') && (
+                <TabBadge label="Graph" active={activeTab === 'Graph'} onClick={() => setActiveTab('Graph')} />
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {isEnabledLocal('MULTIMODAL_UPLOAD') && (
+                <Button
+                  variant="outline"
+                  className="h-7 px-3 text-[11px] bg-white/5 border-white/10 hover:bg-white/10 hover:text-white transition-colors"
+                  onClick={() => console.log('[UI] Add Artifact clicked')}
+                >
+                  + Add Artifact
+                </Button>
+              )}
+              {isEnabledLocal('CONNECT_WS') && (
+                <Button
+                  variant="outline"
+                  className="h-7 px-3 text-[11px] disabled:opacity-60 bg-white/5 border-white/10 hover:bg-white/10 hover:text-white transition-colors"
+                  onClick={onStartLive}
+                  disabled={liveDisabled}
+                  title={liveDisabled ? 'Already connected/connecting' : 'Connect live stream'}
+                >
+                  {connectionStatus === StreamConnectionState.CONNECTING || connectionStatus === StreamConnectionState.RECONNECTING
+                    ? '🔄 Connecting…'
+                    : connectionStatus === StreamConnectionState.CONNECTED
+                      ? '✅ Live'
+                      : '🔌 Connect Live'}
+                </Button>
+              )}
+              {isEnabledLocal('NEW_STREAMING') && (
+                <Button variant="outline" className="h-7 px-3 text-[11px] bg-white/5 border-white/10 hover:bg-white/10 hover:text-white transition-colors" onClick={onStartDemo}>
+                  ▶ Start Demo Run
+                </Button>
+              )}
+              {/* ADD: Start Orchestrator Run button (visible when Orchestrator panel is enabled) */}
+              {isEnabledLocal('ORCHESTRATOR_PANEL') && (
+                <Button
+                  variant="outline"
+                  className="h-7 px-3 text-[11px] bg-primary/20 border-primary/30 text-primary hover:bg-primary/30 hover:text-white transition-colors"
+                  onClick={onStartOrchestratorRun}
+                  title="Create a backend run and stream live events"
+                >
+                  ▶ Start Orchestrator Run
+                </Button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-auto p-0 text-xs text-gray-700 dark:text-gray-300">
-        {activeTab === 'Console' && isEnabledLocal('MISSION_CONSOLE') && (
-          <ConsolePanel runId={runId} selectedNodeId={selectedNodeId} />
-        )}
-        {activeTab === 'Run Queue' && (
-          <div className="p-2 font-mono text-[11px] text-gray-600 dark:text-gray-400">
-            › Run Queue placeholder. Queue controls will appear here.
-          </div>
-        )}
-        {activeTab === 'Runs' && isEnabledLocal('ORCHESTRATOR_PANEL') && <RunsPanelComponent />}
-        {activeTab === 'Timeline' && isEnabledLocal('NEW_STREAMING') && <TimelinePanel runId={runId} />}
-        {activeTab === 'Timeline' && !FeatureFlags.NEW_STREAMING && (
-          <div className="p-2 font-mono text-[11px] text-gray-600">
-            › Streaming disabled. Enable NEW_STREAMING flag to view Timeline.
-          </div>
-        )}
-        {activeTab === 'Network' && isEnabledLocal('NETWORK_PANEL') && <NetworkPanel runId={runId} />}
-        {activeTab === 'Issues' && <IssuesPanel onCountChange={setIssuesCount} />}
-        {/* NEW: Graph content (feature flagged) */}
-        {activeTab === 'Graph' && isEnabledLocal('MISSION_GRAPH') && (
-          <div className="h-full">
-            <GraphPanel runId={runId} />
-          </div>
-        )}
+        <div className="flex-1 overflow-auto p-0 text-xs text-gray-300">
+          {activeTab === 'Console' && isEnabledLocal('MISSION_CONSOLE') && (
+            <ConsolePanel runId={runId} selectedNodeId={selectedNodeId} />
+          )}
+          {activeTab === 'Run Queue' && (
+            <div className="p-4 font-mono text-[11px] text-gray-400">
+              › Run Queue placeholder. Queue controls will appear here.
+            </div>
+          )}
+          {activeTab === 'Runs' && isEnabledLocal('ORCHESTRATOR_PANEL') && <RunsPanelComponent />}
+          {activeTab === 'Timeline' && isEnabledLocal('NEW_STREAMING') && <TimelinePanel runId={runId} />}
+          {activeTab === 'Timeline' && !FeatureFlags.NEW_STREAMING && (
+            <div className="p-4 font-mono text-[11px] text-gray-400">
+              › Streaming disabled. Enable NEW_STREAMING flag to view Timeline.
+            </div>
+          )}
+          {activeTab === 'Network' && isEnabledLocal('NETWORK_PANEL') && <NetworkPanel runId={runId} />}
+          {activeTab === 'Issues' && <IssuesPanel onCountChange={setIssuesCount} />}
+          {/* NEW: Graph content (feature flagged) */}
+          {activeTab === 'Graph' && isEnabledLocal('MISSION_GRAPH') && (
+            <div className="h-full">
+              <GraphPanel runId={runId} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -967,10 +979,10 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
           agent?.name?.toLowerCase().includes('psyche') ||
           agent?.name?.toLowerCase().includes('ctm')
         );
-        
+
         // If no filtered agents, use all agents
         const finalAgents = filteredAgents.length > 0 ? filteredAgents : arr;
-        
+
         if (mounted) setAgents(finalAgents);
       } catch (e: any) {
         if (!mounted) return;
@@ -1001,11 +1013,11 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
 
     setScheduleError(null);
     setRunningAgents(prev => new Set(prev).add(agentId));
-    
+
     try {
       // Prefer same-origin gateway proxy for schedule
       const base = '';
-      
+
       // Prepare the request with the full agent manifest
       const requestBody = {
         agent_manifest: {
@@ -1035,7 +1047,7 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
       };
 
       console.log(`Scheduling agent ${agentId} with manifest:`, requestBody);
-      
+
       const response = await fetch(`/api/v1/agents/schedule`, {
         method: 'POST',
         headers: {
@@ -1082,12 +1094,12 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
             : `${base}${(sseUrl || `/api/v1/streams/${sid}/sse`).replace(/^\/+/, '/')}`;
           const client = new StreamingServiceCtor(sid, ws, sse);
           await client.connect();
-          try { streamRegistry.register(sid, client); } catch {}
+          try { streamRegistry.register(sid, client); } catch { }
         }
       } catch (e) {
         console.warn('[MissionControl] Failed to attach live stream', e);
       }
-      
+
       // Simulate agent completion after 10 seconds
       setTimeout(() => {
         setRunningAgents(prev => {
@@ -1099,7 +1111,7 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
     } catch (error) {
       console.error(`Failed to schedule agent ${agentId}:`, error);
       setScheduleError(`Failed to schedule ${agentId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
+
       // Remove from running set on error
       setRunningAgents(prev => {
         const newSet = new Set(prev);
@@ -1144,13 +1156,12 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
           const key = agent?.manifest_path || agent?.id || title;
           const isRunning = runningAgents.has(agentId);
           const isSelected = selectedAgent === agentId;
-          
+
           return (
             <li
               key={key}
-              className={`flex flex-col px-2 py-1 rounded cursor-pointer transition-colors ${
-                isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-muted'
-              } ${isRunning ? 'animate-pulse' : ''}`}
+              className={`flex flex-col px-2 py-1 rounded cursor-pointer transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-muted'
+                } ${isRunning ? 'animate-pulse' : ''}`}
               title={agent?.description || ''}
               onClick={() => setSelectedAgent(isSelected ? null : agentId)}
             >
@@ -1182,7 +1193,7 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
                   )}
                 </div>
               </div>
-              
+
               {isSelected && (
                 <div className="mt-2 flex items-center gap-2">
                   <button
@@ -1191,11 +1202,10 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
                       scheduleAgent(agentId);
                     }}
                     disabled={isRunning}
-                    className={`text-[11px] px-3 py-1 rounded transition-colors ${
-                      isRunning
-                        ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    }`}
+                    className={`text-[11px] px-3 py-1 rounded transition-colors ${isRunning
+                      ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
                   >
                     {isRunning ? 'Running...' : '▶ Run'}
                   </button>

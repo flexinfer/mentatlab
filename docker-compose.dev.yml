@@ -2,46 +2,56 @@ version: '3.8'
 
 services:
   gateway:
+    platform: linux/amd64
     build:
-      context: ./services/gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/gateway/Dockerfile
     ports:
       - "8080:8080"
     environment:
-      - ORCHESTRATOR_URL=http://orchestrator:8081
+      # Match FastAPI app setting in services/gateway/app/main.py
+      - ORCHESTRATOR_BASE_URL=http://orchestrator:7070
+      - TRUSTED_HOSTS=gateway,orchestrator,localhost,127.0.0.1
       - UVICORN_HOST=0.0.0.0
       - UVICORN_PORT=8080
       - UVICORN_RELOAD=true
-    volumes:
-      - ./services/gateway:/app
+    # Avoid live-mounting to keep module layout intact inside container
     depends_on:
       - orchestrator
     networks:
       - mentat-network
 
   orchestrator:
+    platform: linux/amd64
     build:
-      context: ./services/orchestrator
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/orchestrator/Dockerfile
     ports:
       - "8081:8081"
     environment:
       - UVICORN_HOST=0.0.0.0
       - UVICORN_PORT=8081
       - UVICORN_RELOAD=true
-    volumes:
-      - ./services/orchestrator:/app
+      - GATEWAY_BASE_URL=http://gateway:8080
+    # Avoid live-mounting to keep module layout intact inside container
     networks:
       - mentat-network
 
   frontend:
+    platform: linux/amd64
     build:
       context: ./services/frontend
       dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:8080
+      # Provide browser-consumed URLs for dev; the browser will call host:ports
+      - VITE_GATEWAY_URL=http://localhost:8080
+      - VITE_GATEWAY_BASE_URL=http://localhost:8080
+      - VITE_ORCHESTRATOR_URL=http://localhost:8081
+      - VITE_API_URL=http://localhost:8081
+      - VITE_WS_URL=ws://localhost:8080
+      - VITE_CONNECT_WS=true
     volumes:
       - ./services/frontend:/app
       - /app/node_modules
@@ -51,6 +61,7 @@ services:
       - mentat-network
 
   echo-agent:
+    platform: linux/amd64
     build:
       context: ./services/agents/echo
       dockerfile: Dockerfile
@@ -58,8 +69,7 @@ services:
       - "8082:8082"
     environment:
       - PORT=8082
-    volumes:
-      - ./services/agents/echo:/app
+    # No live-mount needed for basic testing
     networks:
       - mentat-network
 

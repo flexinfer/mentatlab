@@ -21,6 +21,14 @@ from pydantic import BaseModel
 # NEW: httpx for SSE proxy
 import httpx
 
+# Local fallback when importing helpers from main creates circular imports.
+_ORCH_BASE_ENV = os.getenv("ORCHESTRATOR_BASE_URL", "http://localhost:7070").rstrip("/")
+
+def _orch_url_fallback(path: str) -> str:
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{_ORCH_BASE_ENV}{path}"
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -41,6 +49,25 @@ CE_DEFAULT_TYPE = os.getenv("GATEWAY_CE_DEFAULT_TYPE", "stream.data")
 CE_RESPONSE_HEADER = (os.getenv("GATEWAY_CE_RESPONSE_HEADER") or "").strip() or None
 # Time provider currently only supports "system" (RFC3339 via system clock); reserved for future extensibility
 CE_TIME_PROVIDER = os.getenv("GATEWAY_CE_TIME_PROVIDER", "system")
+
+def _forward_sse_headers(request: Request) -> Dict[str, str]:
+    """
+    Build minimal header set for proxying SSE to the orchestrator.
+    - Forward Authorization when present
+    - Copy Last-Event-ID (or last-event-id) for resume semantics
+    - Ensure Accept advertises text/event-stream
+    """
+    headers: Dict[str, str] = {
+        "accept": "text/event-stream",
+        "cache-control": "no-cache",
+    }
+    auth = request.headers.get("authorization")
+    if auth:
+        headers["authorization"] = auth
+    le = request.headers.get("last-event-id") or request.headers.get("Last-Event-ID")
+    if le:
+        headers["last-event-id"] = le
+    return headers
 
 def wrap_cloudevent(payload: dict, event_type: Optional[str], source: str, specversion: str) -> dict:
     """
@@ -751,7 +778,12 @@ async def sse_run_events(run_id: str, request: Request):
     - Streams bytes transparently without altering frames
     - Does not attempt reconnect; client handles it
     """
-    url = _orch_url(f"/api/v1/runs/{run_id}/events")
+    # Lazy import to avoid circular reference with main.py
+    try:
+        from services.gateway.app.main import _orch_url as _join
+    except Exception:
+        _join = _orch_url_fallback
+    url = _join(f"/api/v1/runs/{run_id}/events")
     headers = _forward_sse_headers(request)
     params = dict(request.query_params)
 
@@ -761,31 +793,20 @@ async def sse_run_events(run_id: str, request: Request):
         # Fall back with an explicit error; matches 502 guidance (infra issue)
         raise HTTPException(status_code=502, detail="orchestrator_unreachable: http client not initialized")
 
-    # Preflight to honor non-200 statuses transparently (before starting StreamingResponse)
-    try:
-        pre = await client.get(url, headers=headers, params=params)
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=502, detail=f"orchestrator_unreachable: {str(e)}")
-    if pre.status_code != 200:
-        # Forward body+status as-is
-        return StreamingResponse(
-            content=iter((pre.content,)),  # single chunk
-            media_type=pre.headers.get("content-type", "application/json"),
-            status_code=pre.status_code,
-        )
-
     async def upstream_iter():
-        # Open a fresh streaming connection for actual event flow
-        async with client.stream("GET", url, headers=headers, params=params) as r:
-            # If upstream errors after preflight (rare), surface its body as an SSE 'error' frame
-            if r.status_code != 200:
-                body = await r.aread()
-                # Emit a minimal SSE error frame without changing status (stream already started)
-                yield b"event: error\ndata: " + json.dumps({"status": r.status_code, "error": body.decode(errors="ignore")}).encode() + b"\n\n"
-                return
-            async for chunk in r.aiter_bytes():
-                # Transparent passthrough; do not modify bytes
-                yield chunk
+        try:
+            # Open streaming connection and passthrough bytes
+            async with client.stream("GET", url, headers=headers, params=params) as r:
+                if r.status_code != 200:
+                    body = await r.aread()
+                    yield b"event: error\ndata: " + json.dumps({"status": r.status_code, "error": body.decode(errors="ignore")}).encode() + b"\n\n"
+                    return
+                async for chunk in r.aiter_bytes():
+                    yield chunk
+        except httpx.RequestError as e:
+            # Surface transport errors as SSE error frame so the client can retry
+            payload = {"status": 502, "error": f"orchestrator_unreachable: {str(e)}"}
+            yield b"event: error\ndata: " + json.dumps(payload).encode() + b"\n\n"
 
     # SSE response headers recommended for proxies/CDN compatibility
     resp_headers = {
