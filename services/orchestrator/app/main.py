@@ -244,7 +244,8 @@ def _run_local_agent_and_forward(agent_manifest: dict, inputs: dict, execution_i
     """
     try:
         agent_id = agent_manifest.get("id", "unknown-agent")
-        gw_base = os.getenv("GATEWAY_BASE_URL", "http://127.0.0.1:8080")  # default to local gateway used by run-local-dev.sh
+        # Prefer in-network service default; docker/k8s safe. run-local-dev.sh also exports this.
+        gw_base = os.getenv("GATEWAY_BASE_URL", "http://gateway:8080")
         logger = logging.getLogger("orchestrator.local-forward")
 
         logger.info(f"Local forward: initializing gateway stream for agent {agent_id} (resource={resource_id})")

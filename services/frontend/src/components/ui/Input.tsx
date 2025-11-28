@@ -3,7 +3,7 @@ import { cn } from '../../lib/cn';
 
 export type InputSize = 'sm' | 'md' | 'lg';
 
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
   size?: InputSize;
   className?: string;
 }
@@ -19,7 +19,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ size = 'm
     <input
       ref={ref}
       className={cn(
-        'w-full rounded-md border bg-transparent px-3 outline-none ring-0 focus-visible:ring-2 focus-visible:ring-blue-500',
+        'w-full rounded-lg border border-white/10 bg-white/5 px-3 outline-none ring-0 focus-visible:ring-2 focus-visible:ring-primary/50 text-foreground placeholder:text-muted-foreground transition-all duration-200',
         sizeMap[size],
         className
       )}
