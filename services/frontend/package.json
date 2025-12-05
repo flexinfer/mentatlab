@@ -13,7 +13,8 @@
     "e2e": "playwright test",
     "e2e:up": "cd ../../ && docker-compose up --build -d orchestrator redis",
     "e2e:down": "cd ../../ && docker-compose down",
-    "e2e:run": "npm run e2e:up && playwright test || (npm run e2e:down && exit 1); npm run e2e:down"
+    "e2e:run": "npm run e2e:up && playwright test || (npm run e2e:down && exit 1); npm run e2e:down",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
