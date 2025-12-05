@@ -10,12 +10,12 @@ variables:
 
 # --- Linting ---
 
-lint-python:
+lint-go:
   stage: lint
-  image: python:3.11-slim
+  image: golang:1.23-alpine
   script:
-    - pip install flake8
-    - flake8 services/orchestrator services/gateway services/agents/echo
+    - go vet ./services/gateway-go/...
+    - go vet ./services/orchestrator-go/...
 
 lint-frontend:
   stage: lint
@@ -27,23 +27,12 @@ lint-frontend:
 
 # --- Testing ---
 
-test-orchestrator:
+test-go:
   stage: test
-  image: python:3.11-slim
+  image: golang:1.23-alpine
   script:
-    - cd services/orchestrator
-    - pip install -r requirements.txt
-    - pip install pytest
-    - pytest
-
-test-gateway:
-  stage: test
-  image: python:3.11-slim
-  script:
-    - cd services/gateway
-    - pip install -r requirements.txt
-    - pip install pytest
-    - pytest
+    - go test -v ./services/gateway-go/...
+    - go test -v ./services/orchestrator-go/...
 
 test-frontend:
   stage: test

@@ -83,19 +83,19 @@ fi
 
 echo "--- Building & pushing images ---"
 
-# Build orchestrator (needs repo root context for services/ imports)
-echo "--- Building orchestrator image ---"
-IMAGE_ORCHESTRATOR="$REGISTRY_TARGET/mentatlab-orchestrator:latest"
-docker build -t "$IMAGE_ORCHESTRATOR" -f services/orchestrator/Dockerfile .
-echo "--- Pushing orchestrator image ---"
+# Build orchestrator-go
+echo "--- Building orchestrator-go image ---"
+IMAGE_ORCHESTRATOR="$REGISTRY_TARGET/mentatlab-orchestrator-go:latest"
+docker build -t "$IMAGE_ORCHESTRATOR" -f services/orchestrator-go/Dockerfile services/orchestrator-go
+echo "--- Pushing orchestrator-go image ---"
 docker push "$IMAGE_ORCHESTRATOR"
 echo ""
 
-# Build gateway (needs repo root context for services/ imports)
-echo "--- Building gateway image ---"
-IMAGE_GATEWAY="$REGISTRY_TARGET/mentatlab-gateway:latest"
-docker build -t "$IMAGE_GATEWAY" -f services/gateway/Dockerfile .
-echo "--- Pushing gateway image ---"
+# Build gateway-go
+echo "--- Building gateway-go image ---"
+IMAGE_GATEWAY="$REGISTRY_TARGET/mentatlab-gateway-go:latest"
+docker build -t "$IMAGE_GATEWAY" -f services/gateway-go/Dockerfile services/gateway-go
+echo "--- Pushing gateway-go image ---"
 docker push "$IMAGE_GATEWAY"
 echo ""
 
