@@ -99,7 +99,7 @@ export default function PolicyOverlay({ runId, onClose }: PolicyOverlayProps) {
             <h2 className="text-lg font-semibold">Policy Guardrails</h2>
             <div className="flex items-center gap-2">
               {severityCounts.critical > 0 && (
-                <Badge variant="error">
+                <Badge variant="danger">
                   {severityCounts.critical} Critical
                 </Badge>
               )}
@@ -344,7 +344,7 @@ function ViolationCard({
           </div>
         </div>
         <div className="flex flex-col items-end gap-1">
-          <Badge variant={violation.severity === 'critical' || violation.severity === 'high' ? 'error' : 'warning'}>
+          <Badge variant={violation.severity === 'critical' || violation.severity === 'high' ? 'danger' : 'warning'}>
             {violation.severity}
           </Badge>
           <div className="text-xs px-2 py-0.5 rounded border bg-gray-50 dark:bg-gray-800">

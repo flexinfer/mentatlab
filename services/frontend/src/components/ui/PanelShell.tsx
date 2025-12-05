@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../../lib/cn';
 
-export interface PanelShellProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface PanelShellProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
   title?: React.ReactNode;
   toolbar?: React.ReactNode;
   className?: string;

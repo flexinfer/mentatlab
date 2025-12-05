@@ -38,7 +38,7 @@ const StreamingPage: React.FC = () => {
     // Initialize streaming service when component mounts
     if (activeStreamId) {
       console.log('[StreamingPage] Connecting to stream:', activeStreamId);
-      streamingService.connect(activeStreamId);
+      streamingService.connect();
     } else {
       console.log('[StreamingPage] No active stream ID, creating default stream');
       // Create a default stream ID for testing

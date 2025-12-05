@@ -73,7 +73,7 @@ export default function MetricsPanel({ runId }: MetricsPanelProps) {
       // Per-node metrics
       const nodeMetrics = new Map<string, NodeMetrics>();
       checkpoints.forEach((checkpoint) => {
-        const nodeId = checkpoint.data?.nodeId || checkpoint.data?.node || 'unknown';
+        const nodeId = String(checkpoint.data?.nodeId || checkpoint.data?.node || 'unknown');
         if (!nodeMetrics.has(nodeId)) {
           nodeMetrics.set(nodeId, {
             nodeId,
@@ -93,7 +93,7 @@ export default function MetricsPanel({ runId }: MetricsPanelProps) {
 
         if (checkpoint.data?.duration) {
           const oldAvg = node.avgDuration;
-          node.avgDuration = (oldAvg * (node.executions - 1) + checkpoint.data.duration) / node.executions;
+          node.avgDuration = (oldAvg * (node.executions - 1) + Number(checkpoint.data.duration)) / node.executions;
         }
       });
 
@@ -258,7 +258,7 @@ function RunStatusBadge({ status }: { status: string }) {
   const statusConfig: Record<string, { variant: any; label: string }> = {
     running: { variant: 'info', label: 'Running' },
     completed: { variant: 'success', label: 'Completed' },
-    failed: { variant: 'error', label: 'Failed' },
+    failed: { variant: 'danger', label: 'Failed' },
     cancelled: { variant: 'default', label: 'Cancelled' },
     unknown: { variant: 'default', label: 'Unknown' },
   };
@@ -289,7 +289,7 @@ function NodeMetricRow({ node }: { node: NodeMetrics }) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold truncate">{node.nodeId}</span>
-          {hasErrors && <Badge variant="error">{node.errors} errors</Badge>}
+          {hasErrors && <Badge variant="danger">{node.errors} errors</Badge>}
           {isSlow && !hasErrors && <Badge variant="warning">Slow</Badge>}
         </div>
         <span className="text-xs text-gray-600 dark:text-gray-400">

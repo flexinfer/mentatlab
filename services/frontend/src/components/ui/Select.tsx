@@ -3,7 +3,7 @@ import { cn } from '../../lib/cn';
 
 export type SelectSize = 'sm' | 'md' | 'lg';
 
-export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+export interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   size?: SelectSize;
   className?: string;
 }
