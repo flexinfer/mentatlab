@@ -1,10 +1,11 @@
 # mentatlab
+
 MentatLab is mission control for composable AI—design, launch and monitor intelligent agents with the discipline of a scientist and the intuition of a Mentat.
 
 The documents below spell out the composable‑frontend contract: how multiple agents, chat panels and runtime tasks are wired together on the canvas, stored in Git, and executed by the backend.  It is tightly cross‑referenced to the Product Vision, Architecture and Road‑map sections you provided, so contributors can see exactly where the “glue” lives.
 
-	•	docs/agents.md → how to create a single Lego brick (a Cog‑Pak).
-	•	docs/flows.md (below) → how to snap many bricks together into a live, observable workspace.
+    •	docs/agents.md → how to create a single Lego brick (a Cog‑Pak).
+    •	docs/flows.md (below) → how to snap many bricks together into a live, observable workspace.
 
 ## Mission Control UI
 
@@ -17,6 +18,7 @@ After starting the frontend dev server, the default route loads the new Mission 
   - Legacy Builder: removed as of Oct 28, 2025
 
 Quick start:
+
 - Start frontend: `npm run dev` in [services/frontend](services/frontend/README.md:1)
 - Open the app at the dev URL (Vite default: http://localhost:5173/)
 - The canvas-first Mission Control layout loads with:
@@ -26,6 +28,7 @@ Quick start:
   - StatusBar (flags and connection state)
 
 Feature flags (Vite):
+
 - Declared in [services/frontend/src/config/features.ts](services/frontend/src/config/features.ts:1)
 - MULTIMODAL_UPLOAD toggles pin-level upload affordances
 - NEW_STREAMING enables streaming overlays and timeline tab
@@ -37,11 +40,11 @@ To set up the MentatLab project locally, follow these steps:
 
 ### Prerequisites
 
-*   Docker and Docker Compose
-*   Node.js (v18 or higher)
-*   Python (v3.9 or higher)
-*   npm (Node Package Manager)
-*   pip (Python Package Installer)
+- Docker and Docker Compose
+- Node.js (v18 or higher)
+- Python (v3.9 or higher)
+- npm (Node Package Manager)
+- pip (Python Package Installer)
 
 ### 1. Clone the Repository
 
@@ -82,23 +85,27 @@ npm run dev
 #### Orchestrator
 
 Option A — Recommended (Docker Compose)
+
 ```bash
 # from repository root
 docker-compose up --build orchestrator redis
 ```
 
-Option B — Local Node.js (dev)
+Option B — Local Python (dev)
+
 ```bash
 cd services/orchestrator
-npm install
-npm run dev   # starts the orchestrator on http://localhost:7070 by default
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Notes:
+
 - For local browser-based SSE testing use the Vite frontend dev server (http://localhost:5173) and ensure CORS allows that origin or run without ORCHESTRATOR_API_KEY in dev.
 - Docker Compose is the easiest way to get Redis + Orchestrator running together for end-to-end testing.
 
 ### Orchestrator
+
 - Service README: [`services/orchestrator/README.md`](services/orchestrator/README.md:1)
 - API reference: [`docs/references/orchestrator-api.md`](docs/references/orchestrator-api.md:1)
 - Frontend integration reference: [`docs/references/frontend-orchestrator.md`](docs/references/frontend-orchestrator.md:1)
@@ -112,7 +119,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```
 
-*(Optional)* **Echo Agent** (Redis-based task runner)
+_(Optional)_ **Echo Agent** (Redis-based task runner)
 
 ```bash
 cd services/agents/echo
@@ -124,30 +131,31 @@ python -m services.agents.echo.app.main  # run the EchoAgent listener
 
 To run tests for all services, you can use the CI workflow as a reference or execute tests individually:
 
-*   **Python Services:**
-    ```bash
-    cd services/orchestrator # or gateway, or agents/echo
-    pytest
-    ```
-*   **Frontend:**
-    ```bash
-    cd services/frontend
-    npm test
-    ```
+- **Python Services:**
+  ```bash
+  cd services/orchestrator # or gateway, or agents/echo
+  pytest
+  ```
+- **Frontend:**
+  ```bash
+  cd services/frontend
+  npm test
+  ```
 
 ### 6. Linting
 
 To lint the code for all services:
 
-*   **Python Services:**
-    ```bash
-    cd services/orchestrator # or gateway, or agents/echo
-    flake8 .
-    ```
-*   **Frontend:**
-    ```bash
-    cd services/frontend
-    npm run lint
+- **Python Services:**
+  ```bash
+  cd services/orchestrator # or gateway, or agents/echo
+  flake8 .
+  ```
+- **Frontend:**
+  ```bash
+  cd services/frontend
+  npm run lint
+  ```
 
 ## Full‑stack via Docker Compose
 
@@ -160,27 +168,33 @@ Bring up Redis, Orchestrator (FastAPI), Gateway (FastAPI), and Frontend (Vite pr
   - Frontend (Vite): [`services/frontend/vite.config.js`](services/frontend/vite.config.js:1)
 
 Environment defaults (copy to .env if needed):
+
 - [`.env.example`](.env.example:1)
 
 Run stack:
+
 ```bash
 # from repository root
 docker compose up --build
 ```
 
 Open the app:
+
 - Frontend: http://localhost:5173
 
 Service healthchecks:
+
 - Gateway: http://localhost:8080/healthz
 - Orchestrator: http://localhost:7070/healthz
 
 Frontend configuration for CogPaks (agents) list:
+
 - The UI calls the orchestrator at `/api/v1/agents`.
 - In dev (`vite dev`), `/api` is proxied to the orchestrator; set `VITE_PROXY_TARGET` if needed.
 - In preview/production (`vite build` + `vite preview`), there is no proxy. Make sure the build embeds an orchestrator base URL via `VITE_ORCHESTRATOR_URL` (Docker Compose passes this as a build arg by default).
 
 Create a run (via Gateway → Orchestrator):
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/runs \
   -H 'Content-Type: application/json' \
@@ -196,6 +210,7 @@ curl -X POST http://localhost:8080/api/v1/runs \
 ```
 
 Stream events (supports Last-Event-ID resume):
+
 ```bash
 # replace <runId> with the returned id from create run
 curl -N http://localhost:8080/api/v1/runs/<runId>/events
@@ -204,6 +219,7 @@ curl -N -H 'Last-Event-ID: 0' http://localhost:8080/api/v1/runs/<runId>/events
 ```
 
 Notes:
+
 - Redis is optional for the Orchestrator. Default runstore is in‑memory. To enable Redis persistence set:
   - `ORCH_RUNSTORE=redis`
   - `REDIS_URL=redis://redis:6379/0`

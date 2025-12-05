@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from services.gateway.app import router_flows
+
 from services.gateway.app import websockets
 from services.gateway.app import router_agents
 from services.gateway.app import streaming
@@ -298,7 +298,7 @@ async def root():
         "features": ["flows", "agents", "websockets", "streaming", "sse"]
     }
 
-app.include_router(router_flows.router, prefix="/flows")
+
 
 # Serve static agent UI assets via gateway by proxying to orchestrator /agents/*
 @app.get("/agents/{path:path}")
