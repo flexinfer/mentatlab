@@ -1,6 +1,6 @@
 module github.com/flexinfer/mentatlab/services/orchestrator-go
 
-go 1.25.5
+go 1.23.0
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
