@@ -7,6 +7,7 @@ PLATFORMS=${PLATFORMS:-"linux/amd64,linux/arm64"}
 SINGLE_PLATFORM=${SINGLE_PLATFORM:-""}
 USE_BUILDX=false
 INSECURE_REGISTRY=false
+SKIP_PUSH=false
 BUILDER_NAME=${BUILDER_NAME:-"harbor"}
 
 usage() {
@@ -34,6 +35,8 @@ while [[ "$#" -gt 0 ]]; do
       SINGLE_PLATFORM="$2"; shift ;;
     --insecure)
       INSECURE_REGISTRY=true ;;
+    --skip-push)
+      SKIP_PUSH=true ;;
     -h|--help)
       usage; exit 0 ;;
     *) echo "Unknown flag: $1"; usage; exit 1 ;;
@@ -51,14 +54,20 @@ fi
 bx_build_push() {
   local context="$1" image="$2"
   if [[ "$USE_BUILDX" == true ]]; then
-    docker buildx build --platform "$PLATFORMS" -t "$image" --push "$context"
+    if [[ "$SKIP_PUSH" == true ]]; then
+      docker buildx build --platform "$PLATFORMS" -t "$image" "$context"
+    else
+      docker buildx build --platform "$PLATFORMS" -t "$image" --push "$context"
+    fi
   else
     if [[ -n "$SINGLE_PLATFORM" ]]; then
       docker build --platform "$SINGLE_PLATFORM" -t "$image" "$context"
     else
       docker build -t "$image" "$context"
     fi
-    docker push "$image"
+    if [[ "$SKIP_PUSH" != true ]]; then
+      docker push "$image"
+    fi
   fi
 }
 
@@ -87,16 +96,20 @@ echo "--- Building & pushing images ---"
 echo "--- Building orchestrator-go image ---"
 IMAGE_ORCHESTRATOR="$REGISTRY_TARGET/mentatlab-orchestrator-go:latest"
 docker build -t "$IMAGE_ORCHESTRATOR" -f services/orchestrator-go/Dockerfile services/orchestrator-go
-echo "--- Pushing orchestrator-go image ---"
-docker push "$IMAGE_ORCHESTRATOR"
+if [[ "$SKIP_PUSH" != true ]]; then
+  echo "--- Pushing orchestrator-go image ---"
+  docker push "$IMAGE_ORCHESTRATOR"
+fi
 echo ""
 
 # Build gateway-go
 echo "--- Building gateway-go image ---"
 IMAGE_GATEWAY="$REGISTRY_TARGET/mentatlab-gateway-go:latest"
 docker build -t "$IMAGE_GATEWAY" -f services/gateway-go/Dockerfile services/gateway-go
-echo "--- Pushing gateway-go image ---"
-docker push "$IMAGE_GATEWAY"
+if [[ "$SKIP_PUSH" != true ]]; then
+  echo "--- Pushing gateway-go image ---"
+  docker push "$IMAGE_GATEWAY"
+fi
 echo ""
 
 IMAGE_FRONTEND="$REGISTRY_TARGET/mentatlab-frontend:latest"
