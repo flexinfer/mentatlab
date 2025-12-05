@@ -123,10 +123,10 @@ if ! $APPLY_ONLY; then
   for svc in "${arr[@]}"; do
     case "$svc" in
       orchestrator)
-        build_image orchestrator "$REPO_ROOT" "$REPO_ROOT/services/orchestrator/Dockerfile"
+        build_image orchestrator-go "$REPO_ROOT/services/orchestrator-go" "$REPO_ROOT/services/orchestrator-go/Dockerfile"
         ;;
       gateway)
-        build_image gateway "$REPO_ROOT" "$REPO_ROOT/services/gateway/Dockerfile"
+        build_image gateway-go "$REPO_ROOT/services/gateway-go" "$REPO_ROOT/services/gateway-go/Dockerfile"
         ;;
       frontend)
         # Build-time URLs (prefer overrides passed via flags)
@@ -203,8 +203,8 @@ fi
 IFS=',' read -r -a arr2 <<< "$IMAGES"
 for svc in "${arr2[@]}"; do
   case "$svc" in
-    orchestrator) set_image orchestrator orchestrator orchestrator;;
-    gateway) set_image gateway gateway gateway;;
+    orchestrator) set_image orchestrator orchestrator orchestrator-go;;
+    gateway) set_image gateway gateway gateway-go;;
     frontend) set_image frontend frontend frontend;;
     echoagent) set_image echoagent echoagent echoagent;;
   esac

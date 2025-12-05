@@ -53,9 +53,9 @@ function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean
   // Health-based styling
   const health = data.health ?? 100;
   const healthColor =
-    health >= 80 ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-900/40' :
-    health >= 50 ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-900/40' :
-    'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-900/40';
+    health >= 80 ? 'bg-green-500/10 border-green-500/30 text-green-400' :
+    health >= 50 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' :
+    'bg-red-500/10 border-red-500/30 text-red-400';
 
   const hasError = (data.errorCount ?? 0) > 0;
   const isSlow = data.status === 'slow';
@@ -63,11 +63,10 @@ function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean
   return (
     <div
       className={[
-        'px-2 py-1 rounded-md border text-[11px] shadow-sm relative transition-all duration-200',
-        hasError ? healthColor : 'bg-card/90 dark:bg-slate-900/70 border-slate-200 dark:border-slate-800',
-        'text-foreground',
-        isHot ? 'ring-2 ring-indigo-400/70 scale-[1.02]' : 'ring-0',
-        selected ? 'outline outline-1 outline-indigo-400' : '',
+        'px-2 py-1 rounded-md border text-[11px] shadow-lg relative transition-all duration-200 backdrop-blur-md',
+        hasError ? healthColor : 'bg-card/80 border-primary/30 text-foreground',
+        isHot ? 'ring-2 ring-primary shadow-[0_0_15px_hsl(var(--primary)/0.5)] scale-[1.05]' : 'ring-0',
+        selected ? 'ring-1 ring-primary shadow-[0_0_10px_hsl(var(--primary)/0.3)]' : '',
       ].join(' ')}
       style={{ minWidth: 120 }}
     >
@@ -76,52 +75,52 @@ function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean
           {/* Health indicator dot */}
           <span
             className={[
-              'w-2 h-2 rounded-full flex-shrink-0',
-              health >= 80 ? 'bg-green-500' :
-              health >= 50 ? 'bg-yellow-500' :
-              'bg-red-500'
+              'w-2 h-2 rounded-full flex-shrink-0 shadow-[0_0_5px_currentColor]',
+              health >= 80 ? 'bg-green-500 text-green-500' :
+              health >= 50 ? 'bg-amber-500 text-amber-500' :
+              'bg-red-500 text-red-500'
             ].join(' ')}
             title={`Health: ${health}%`}
           />
-          <span className="font-medium truncate">{data.label}</span>
+          <span className="font-medium truncate font-mono tracking-tight">{data.label}</span>
         </div>
         {toolBadgeVisible && (
           <span
             className="ml-1 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full border text-[10px]
-                       bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-900/50"
+                       bg-secondary/20 text-secondary border-secondary/40 shadow-[0_0_8px_hsl(var(--secondary)/0.3)]"
             title="Last tool call tokens"
           >
             {data.lastToolTokens ?? 0}
           </span>
         )}
       </div>
-      <div className="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+      <div className="mt-0.5 text-[10px] text-muted-foreground flex items-center justify-between font-mono">
         <span>execs: {data.execs ?? 0}</span>
         {(data.throughput ?? 0) > 0 && (
-          <span className="text-indigo-600 dark:text-indigo-400" title="Messages per second">
+          <span className="text-primary neon-text" title="Messages per second">
             {data.throughput?.toFixed(1)}/s
           </span>
         )}
       </div>
       {hasError && (
-        <div className="mt-1 text-[10px] text-red-600 dark:text-red-400 font-semibold">
+        <div className="mt-1 text-[10px] text-destructive font-semibold animate-pulse">
           ⚠️ {data.errorCount} error{data.errorCount! > 1 ? 's' : ''}
         </div>
       )}
       {isSlow && !hasError && (
-        <div className="mt-1 text-[10px] text-yellow-600 dark:text-yellow-400">
+        <div className="mt-1 text-[10px] text-amber-500">
           ⏱️ Slow response
         </div>
       )}
 
       {/* Handles (placeholder dots for symmetry/future connections) */}
       <div
-        className="absolute -left-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-slate-400/30"
+        className="absolute -left-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-primary/50 border border-primary"
         data-handle="target"
         aria-hidden
       />
       <div
-        className="absolute -right-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-slate-400/30"
+        className="absolute -right-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-primary/50 border border-primary"
         data-handle="source"
         aria-hidden
       />
@@ -196,17 +195,17 @@ export default function NetworkPanel({ runId }: Props) {
   const statusBadge = React.useMemo(() => {
     switch (cs) {
       case 'disconnected':
-        return { color: 'bg-gray-400', text: 'Disconnected' };
+        return { color: 'bg-gray-500', text: 'Disconnected' };
       case 'connecting':
         return { color: 'bg-amber-500', text: 'Connecting' };
       case 'connected':
-        return { color: 'bg-emerald-500', text: 'Connected' };
+        return { color: 'bg-primary shadow-[0_0_8px_hsl(var(--primary))]', text: 'Connected' };
       case 'reconnecting':
-        return { color: 'bg-blue-500', text: 'Reconnecting' };
+        return { color: 'bg-secondary', text: 'Reconnecting' };
       case 'error':
-        return { color: 'bg-red-500', text: 'Error' };
+        return { color: 'bg-destructive', text: 'Error' };
       default:
-        return { color: 'bg-gray-400', text: String(connectionStatus) };
+        return { color: 'bg-gray-500', text: String(connectionStatus) };
     }
   }, [cs, connectionStatus]);
 
@@ -293,8 +292,8 @@ export default function NetworkPanel({ runId }: Props) {
                   source: srcId,
                   target: tgtId,
                   animated: true,
-                  markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--muted-foreground))' },
-                  style: { strokeWidth: 1.5 },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--primary))' },
+                  style: { strokeWidth: 1.5, stroke: 'hsl(var(--primary)/0.5)' },
                 });
               }
             }
@@ -311,8 +310,8 @@ export default function NetworkPanel({ runId }: Props) {
               source: s,
               target: t,
               animated: true,
-              markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--muted-foreground))' },
-              style: { strokeWidth: 1.5 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--primary))' },
+              style: { strokeWidth: 1.5, stroke: 'hsl(var(--primary)/0.5)' },
             });
           }
         };
@@ -344,10 +343,10 @@ export default function NetworkPanel({ runId }: Props) {
         },
       }));
       const ee: Edge[] = [
-        { id: 'Perception->Ego', source: 'Perception', target: 'Ego', animated: true, markerEnd: { type: MarkerType.ArrowClosed } },
-        { id: 'Ego->Planning', source: 'Ego', target: 'Planning', animated: true, markerEnd: { type: MarkerType.ArrowClosed } },
-        { id: 'Planning->Memory', source: 'Planning', target: 'Memory', animated: true, markerEnd: { type: MarkerType.ArrowClosed } },
-        { id: 'Planning->Actuator', source: 'Planning', target: 'Actuator', animated: true, markerEnd: { type: MarkerType.ArrowClosed } },
+        { id: 'Perception->Ego', source: 'Perception', target: 'Ego', animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--primary))' }, style: { stroke: 'hsl(var(--primary)/0.5)' } },
+        { id: 'Ego->Planning', source: 'Ego', target: 'Planning', animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--primary))' }, style: { stroke: 'hsl(var(--primary)/0.5)' } },
+        { id: 'Planning->Memory', source: 'Planning', target: 'Memory', animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--primary))' }, style: { stroke: 'hsl(var(--primary)/0.5)' } },
+        { id: 'Planning->Actuator', source: 'Planning', target: 'Actuator', animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--primary))' }, style: { stroke: 'hsl(var(--primary)/0.5)' } },
       ];
       const map = new Map<string, string>();
       ids.forEach((id) => map.set(id, id));
@@ -511,7 +510,7 @@ export default function NetworkPanel({ runId }: Props) {
               const e = prev.find((x) => x.id === id);
               const width = Math.min(1.5 + (isFinite(size) ? size / 1024 : 0), 4);
               if (e) {
-                return prev.map((x) => (x.id === id ? { ...x, animated: true, style: { ...(x.style || {}), strokeWidth: width } } : x));
+                return prev.map((x) => (x.id === id ? { ...x, animated: true, style: { ...(x.style || {}), strokeWidth: width, stroke: 'hsl(var(--primary)/0.5)' } } : x));
               } else {
                 return prev.concat([
                   {
@@ -519,8 +518,8 @@ export default function NetworkPanel({ runId }: Props) {
                     source: from,
                     target: to,
                     animated: true,
-                    markerEnd: { type: MarkerType.ArrowClosed },
-                    style: { strokeWidth: width },
+                    markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--primary))' },
+                    style: { strokeWidth: width, stroke: 'hsl(var(--primary)/0.5)' },
                   },
                 ]);
               }
@@ -603,7 +602,7 @@ export default function NetworkPanel({ runId }: Props) {
   }, [nodes]);
 
   const onConnect = React.useCallback(
-    (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true, markerEnd: { type: MarkerType.ArrowClosed } }, eds)),
+    (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true, markerEnd: { type: MarkerType.ArrowClosed, color: 'hsl(var(--primary))' }, style: { stroke: 'hsl(var(--primary)/0.5)' } }, eds)),
     [setEdges]
   );
 
@@ -658,7 +657,9 @@ export default function NetworkPanel({ runId }: Props) {
       {/* Inline CSS for subtle edge pulse */}
       <style>{`
         .react-flow__edge-path {
-          stroke: hsl(var(--muted-foreground));
+          stroke: hsl(var(--primary));
+          stroke-opacity: 0.4;
+          filter: drop-shadow(0 0 2px hsl(var(--primary)));
         }
         .react-flow__edge.animated .react-flow__edge-path {
           stroke-dasharray: 6 6;
@@ -669,29 +670,29 @@ export default function NetworkPanel({ runId }: Props) {
         }
       `}</style>
 
-      <div className="px-2 h-8 border-b bg-card/60 backdrop-blur flex items-center justify-between text-[11px]">
+      <div className="px-2 h-8 border-b border-white/10 bg-card/40 backdrop-blur flex items-center justify-between text-[11px]">
         <div className="flex items-center gap-2">
-          <span className="uppercase tracking-wide text-gray-500">Network</span>
-          <span className="text-gray-300">|</span>
-          <span className="text-gray-600 dark:text-gray-300">
-            Active Nodes: <strong>{activeNodes}</strong>
+          <span className="uppercase tracking-wide text-muted-foreground">Network</span>
+          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground">
+            Active Nodes: <strong className="text-foreground">{activeNodes}</strong>
           </span>
-          <span className="text-gray-300">|</span>
-          <span className="text-gray-600 dark:text-gray-300">
-            Msgs/s: <strong>{perSec}</strong>
+          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground">
+            Msgs/s: <strong className="text-foreground">{perSec}</strong>
           </span>
-          <span className="text-gray-300">|</span>
+          <span className="text-white/20">|</span>
           <span className="inline-flex items-center gap-1">
             <span className={['w-1.5 h-1.5 rounded-full', statusBadge.color].join(' ')} /> {statusBadge.text}
           </span>
           {loadedFrom && (
-            <span className="ml-2 text-gray-400">• {loadedFrom === 'api' ? 'Agents API' : 'Fallback graph'}</span>
+            <span className="ml-2 text-muted-foreground/50">• {loadedFrom === 'api' ? 'Agents API' : 'Fallback graph'}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {cs !== 'connected' && FeatureFlags.CONNECT_WS && (
             <button
-              className="h-6 px-2 rounded border bg-background hover:bg-muted text-[11px] disabled:opacity-60"
+              className="h-6 px-2 rounded border border-white/10 bg-white/5 hover:bg-white/10 text-[11px] disabled:opacity-60 transition-colors"
               onClick={connectLive}
               disabled={liveDisabled}
               title={liveDisabled ? 'Already connected/connecting' : 'Connect live stream'}
@@ -739,25 +740,25 @@ export default function NetworkPanel({ runId }: Props) {
             fitViewOptions={{ padding: 0.2 }}
             defaultEdgeOptions={{ animated: true, markerEnd: { type: MarkerType.ArrowClosed } }}
           >
-            <BackgroundAny gap={16} color="hsl(var(--muted))" />
-            <MiniMapAny pannable zoomable className="!bg-card/70" />
-            <ControlsAny position="bottom-right" />
+            <BackgroundAny gap={24} size={1} color="hsl(var(--primary)/0.1)" />
+            <MiniMapAny pannable zoomable className="!bg-card/40 !border-white/10 rounded-lg backdrop-blur-md" />
+            <ControlsAny position="bottom-right" className="!bg-card/40 !border-white/10 rounded-lg backdrop-blur-md [&>button]:!border-white/10 [&>button]:!text-foreground hover:[&>button]:!bg-white/10" />
           </ReactFlow>
         </ReactFlowProvider>
 
         {/* Empty overlay messaging (does not remove the underlay/graph) */}
         {empty && (
-          <div className="absolute inset-0 flex items-center justify-center text-[11px] text-gray-500 p-3 text-center pointer-events-none">
+          <div className="absolute inset-0 flex items-center justify-center text-[11px] text-muted-foreground p-3 text-center pointer-events-none">
             <div className="pointer-events-auto">
               {fetchError ? (
                 <div>
-                  <div className="mb-1">Failed to load agents:</div>
-                  <pre className="text-[10px] bg-muted/50 dark:bg-muted/20 border rounded p-2 max-w-[520px] max-h-32 overflow-auto">
+                  <div className="mb-1 text-destructive">Failed to load agents:</div>
+                  <pre className="text-[10px] bg-destructive/10 border border-destructive/20 rounded p-2 max-w-[520px] max-h-32 overflow-auto text-destructive-foreground">
                     {String(fetchError).slice(0, 200)}
                   </pre>
                   <div className="mt-2">
                     <button
-                      className="h-6 px-2 rounded border bg-background hover:bg-muted text-[11px]"
+                      className="h-6 px-2 rounded border border-white/10 bg-white/5 hover:bg-white/10 text-[11px] transition-colors"
                       onClick={() => window.location.reload()}
                     >
                       Retry
@@ -765,7 +766,7 @@ export default function NetworkPanel({ runId }: Props) {
                   </div>
                 </div>
               ) : (
-                <div>Connecting… if no backend is available, a local simulation will start automatically.</div>
+                <div className="animate-pulse text-primary">Connecting… if no backend is available, a local simulation will start automatically.</div>
               )}
             </div>
           </div>

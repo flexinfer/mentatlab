@@ -345,7 +345,7 @@ export function MissionControlLayout() {
       </div>
 
       {/* Top Bar - Floating Glass */}
-      <header className="absolute top-4 left-4 right-4 h-14 z-50 flex items-center justify-between px-4 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl animate-slide-down">
+      <header className="absolute top-4 left-4 right-4 h-14 z-50 flex items-center justify-between px-4 rounded-2xl glass-panel animate-slide-down">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center shadow-lg shadow-primary/20">
@@ -396,7 +396,7 @@ export function MissionControlLayout() {
 
       {/* Left Nav - Floating Glass Panel */}
       <aside className="absolute top-20 left-4 bottom-4 w-64 z-40 flex flex-col gap-4 pointer-events-none">
-        <nav className="flex-1 p-4 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl overflow-y-auto pointer-events-auto animate-slide-right">
+        <nav className="flex-1 p-4 rounded-2xl glass-panel overflow-y-auto pointer-events-auto animate-slide-right">
           <SectionTitle>Workspaces</SectionTitle>
           <ul className="space-y-1 mt-2 mb-6">
             <li className="px-3 py-2 rounded-lg bg-white/5 text-sm font-medium text-white border border-white/10 cursor-pointer hover:bg-white/10 transition-colors">
@@ -532,7 +532,7 @@ export function MissionControlLayout() {
 function RightDock({ runId, uiConfig, setUiConfig, isEnabled }: { runId: string | null; uiConfig: Partial<Record<keyof typeof FeatureFlags, boolean>>; setUiConfig: React.Dispatch<React.SetStateAction<Partial<Record<keyof typeof FeatureFlags, boolean>>>>; isEnabled: (f: keyof typeof FeatureFlags) => boolean }) {
   return (
     <div className="pointer-events-none absolute top-20 right-4 bottom-64 w-80 z-40 flex flex-col gap-4">
-      <div className="flex-1 rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col pointer-events-auto animate-slide-left">
+      <div className="flex-1 rounded-2xl glass-panel overflow-hidden flex flex-col pointer-events-auto animate-slide-left">
         <div className="h-10 border-b border-white/10 flex items-center px-4 text-xs font-medium bg-white/5 text-white">
           Inspector
         </div>
@@ -635,7 +635,7 @@ function BottomDock({
     <div
       className="pointer-events-none absolute left-72 right-[340px] bottom-4 h-56 z-30 flex flex-col justify-end"
     >
-      <div className="pointer-events-auto h-full rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col animate-slide-up">
+      <div className="pointer-events-auto h-full rounded-2xl glass-panel overflow-hidden flex flex-col animate-slide-up">
         <div className="h-10 border-b border-white/10 bg-white/5 text-xs">
           <div className="h-full flex items-center justify-between px-4">
             <div className="flex items-center gap-2">

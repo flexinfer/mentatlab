@@ -1,285 +1,62 @@
-# JSON Schema Definitions
+# MentatLab Revamp Plan
 
-This document contains the JSON Schema definitions for `agent.schema.json` and `flow.schema.json`.
+## Objective
 
----
+Transform MentatLab into a high-performance, "super responsive" graph agent orchestration machine with a premium aesthetic and robust architecture.
 
-## Agent Schema (`schemas/agent.schema.json`)
+## 1. Frontend Revamp (The "Graph Machine")
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "MentatLab Agent Manifest",
-  "description": "Defines the structure for an agent's manifest.yaml file.",
-  "type": "object",
-  "required": [
-    "id",
-    "version",
-    "image",
-    "description",
-    "inputs",
-    "outputs"
-  ],
-  "properties": {
-    "id": {
-      "description": "Globally unique, reverse-DNS style identifier for the agent.",
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_.-]+$"
-    },
-    "version": {
-      "description": "Semantic Version 2.0 of the agent.",
-      "type": "string",
-      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
-    },
-    "image": {
-      "description": "OCI container image reference with an explicit tag or digest.",
-      "type": "string"
-    },
-    "runtime": {
-      "description": "The runtime environment for the agent, e.g., 'python3.12'.",
-      "type": "string"
-    },
-    "description": {
-      "description": "A brief description of the agent's purpose.",
-      "type": "string"
-    },
-    "inputs": {
-      "description": "A list of input pins for the agent.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/pin"
-      }
-    },
-    "outputs": {
-      "description": "A list of output pins for the agent.",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/pin"
-      }
-    },
-    "longRunning": {
-      "description": "If true, the agent runs as a long-lived K8s Deployment; otherwise, it runs as a short-lived Job.",
-      "type": "boolean",
-      "default": false
-    },
-    "ui": {
-      "type": "object",
-      "properties": {
-        "remoteEntry": {
-          "description": "URL to a UMD/Module Federation bundle exposing a React component named NodePanel.",
-          "type": "string",
-          "format": "uri"
-        }
-      }
-    },
-    "resources": {
-        "type": "object",
-        "properties": {
-            "gpu": {
-                "type": "boolean"
-            }
-        }
-    },
-    "env": {
-        "type": "array",
-        "items": {
-            "type": "string"
-        }
-    }
-  },
-  "definitions": {
-    "pin": {
-      "type": "object",
-      "required": [
-        "name",
-        "type"
-      ],
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string",
-          "enum": [
-            "string",
-            "number",
-            "boolean",
-            "json",
-            "binary"
-          ]
-        }
-      }
-    }
-  }
-}
-```
+**Goal**: Create a stunning, responsive, canvas-first UI.
 
----
+- **Aesthetic**: Cyberpunk / Sci-Fi / Glassmorphism.
+  - Dark mode by default.
+  - Neon accents for active states.
+  - Translucent panels (glass effect) for overlays.
+- **Tech Stack**:
+  - **Framework**: React + Vite.
+  - **Styling**: Tailwind CSS v4 (already installed).
+  - **Graph**: ReactFlow (optimize for performance).
+  - **State**: Zustand (for snappy updates).
+- **Key Features**:
+  - **Live Graph**: Real-time visualization of agent states and message flows.
+  - **Command Center**: A "Mission Control" interface for global actions.
+  - **Performance**: Minimize re-renders, use WebWorkers if needed for heavy data processing.
 
-## Flow Schema (`schemas/flow.schema.json`)
+## 2. Backend Optimization (Go Gateway)
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "MentatLab Flow",
-  "description": "Defines the structure for a *.mlab flow file.",
-  "type": "object",
-  "required": [
-    "apiVersion",
-    "kind",
-    "meta",
-    "graph"
-  ],
-  "properties": {
-    "apiVersion": {
-      "description": "Schema version for the flow file.",
-      "type": "string",
-      "pattern": "^v1(alpha|beta)?\\d*$"
-    },
-    "kind": {
-      "description": "The type of the document, which is always 'Flow'.",
-      "type": "string",
-      "const": "Flow"
-    },
-    "meta": {
-      "type": "object",
-      "required": [
-        "id",
-        "name",
-        "version",
-        "createdAt"
-      ],
-      "properties": {
-        "id": {
-          "description": "Unique identifier for the flow within the workspace.",
-          "type": "string"
-        },
-        "name": {
-          "description": "Human-readable name for the flow.",
-          "type": "string"
-        },
-        "description": {
-          "description": "A brief description of the flow's purpose.",
-          "type": "string"
-        },
-        "version": {
-          "description": "Semantic version of the flow.",
-          "type": "string"
-        },
-        "createdBy": {
-          "description": "The user or entity that created the flow.",
-          "type": "string"
-        },
-        "createdAt": {
-          "description": "The timestamp when the flow was created.",
-          "type": "string",
-          "format": "date-time"
-        }
-      }
-    },
-    "graph": {
-      "type": "object",
-      "required": [
-        "nodes",
-        "edges"
-      ],
-      "properties": {
-        "nodes": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/node"
-          }
-        },
-        "edges": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/edge"
-          }
-        }
-      }
-    },
-    "layout": {
-      "type": "object",
-      "properties": {
-        "zoom": {
-          "type": "number"
-        },
-        "viewport": {
-          "$ref": "#/definitions/position"
-        }
-      }
-    },
-    "runConfig": {
-      "type": "object",
-      "properties": {
-        "maxTokens": {
-          "type": "integer"
-        },
-        "temperature": {
-          "type": "number"
-        },
-        "secrets": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    }
-  },
-  "definitions": {
-    "position": {
-      "type": "object",
-      "properties": {
-        "x": {
-          "type": "number"
-        },
-        "y": {
-          "type": "number"
-        }
-      }
-    },
-    "node": {
-      "type": "object",
-      "required": [
-        "id",
-        "type",
-        "position"
-      ],
-      "properties": {
-        "id": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string"
-        },
-        "position": {
-          "$ref": "#/definitions/position"
-        },
-        "outputs": {
-          "type": "object"
-        },
-        "params": {
-          "type": "object"
-        }
-      }
-    },
-    "edge": {
-      "type": "object",
-      "required": [
-        "from",
-        "to"
-      ],
-      "properties": {
-        "from": {
-          "type": "string",
-          "pattern": "^[^.]+\\.[^.]+$"
-        },
-        "to": {
-          "type": "string",
-          "pattern": "^[^.]+\\.[^.]+$"
-        }
-      }
-    }
-  }
-}
+**Goal**: Reduce latency and handle high-concurrency streaming.
+
+- **New Service**: `services/gateway-go`
+- **Language**: Go (Golang).
+- **Responsibilities**:
+  - **Reverse Proxy**: Forward API requests to the Orchestrator.
+  - **WebSocket Hub**: Handle real-time communication between Frontend and Agents/Orchestrator.
+  - **Static Assets**: Serve agent UI assets efficiently.
+- **Why Go?**: Superior performance for IO-bound tasks (proxying, streaming) compared to Python/FastAPI.
+
+## 3. Orchestrator Optimization (Go)
+
+**Goal**: High-throughput agent scheduling and graph execution.
+
+- **New Service**: `services/orchestrator-go`
+- **Language**: Go (Golang).
+- **Responsibilities**:
+  - **Graph Engine**: Efficient DAG traversal and execution.
+  - **Scheduler**: Native Kubernetes integration using `client-go`.
+  - **State Management**: Fast, concurrent access to RunStore (Redis/Memory).
+- **Why Go?**:
+  - Native concurrency (goroutines) is perfect for managing thousands of active agents/nodes.
+  - Strong typing and compilation ensure robustness.
+  - `client-go` is the gold standard for K8s interaction.
+
+## Execution Plan
+
+1. **Scaffold Go Services** (Completed):
+   - `services/gateway-go`: Reverse proxy & WebSocket hub implemented.
+   - `services/orchestrator-go`: Core logic & basic engine implemented.
+2. **Frontend Design System** (Completed): Defined the new "Deep Space" Tailwind theme.
+3. **Graph UI Overhaul** (Completed): Rebuilt the main canvas view with the new design.
+4. **Migration** (In Progress):
+   - Port logic from Python to Go incrementally.
+   - Next: Implement full Kubernetes integration in `orchestrator-go`.
+   - Next: Connect Frontend to Go Gateway WebSockets.
