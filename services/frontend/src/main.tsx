@@ -4,7 +4,6 @@ import App from './App.tsx';
 import './index.css';
 // Ensure React Flow's stylesheet is loaded before our overrides so theme rules win.
 import 'reactflow/dist/style.css';
-import './globals.css'; // load mc-card-bg helper and tailwind extension tokens
 import ErrorBoundary from './components/ErrorBoundary';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

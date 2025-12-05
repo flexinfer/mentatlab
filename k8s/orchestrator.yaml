@@ -37,17 +37,15 @@ spec:
       serviceAccountName: orchestrator
       containers:
         - name: orchestrator
-          image: registry.harbor.lan/library/mentatlab-orchestrator:latest
+          image: registry.harbor.lan/library/mentatlab-orchestrator-go:latest
           ports:
             - containerPort: 7070
               name: http
           env:
             - name: PORT
               value: "7070"
-            - name: ORCH_RUNSTORE
-              value: "redis"
             - name: REDIS_URL
-              value: "redis://redis:6379/0"
+              value: "redis:6379"
             - name: MENTATLAB_NAMESPACE
               value: "mentatlab"
             - name: GATEWAY_BASE_URL

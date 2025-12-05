@@ -104,10 +104,11 @@ const CanvasUnderlay = React.forwardRef(function CanvasUnderlay(
       }
 
       // Background "subconscious waves" via radial gradients and parallax
+      // Background "subconscious waves" via radial gradients and parallax
       const cam = camRef.current;
-      const band = throughput < 2 ? 0 : throughput < 6 ? 1 : 2;
-      const base1 = band === 0 ? hslToHexNumber(224, 55, 42) : band === 1 ? hslToHexNumber(205, 65, 55) : hslToHexNumber(280, 55, 62);
-      const base2 = hslToHexNumber(295, 65, 60);
+      // Deep Space Theme Colors
+      const base1 = hslToHexNumber(240, 20, 10); // Very dark blue
+      const base2 = hslToHexNumber(260, 30, 15); // Dark purple
       const { r: r1, g: g1, b: b1 } = hexToRgb(base1);
       const { r: r2, g: g2, b: b2 } = hexToRgb(base2);
       const breath = 0.85 + 0.15 * Math.sin(ts * 0.0015);
@@ -118,8 +119,8 @@ const CanvasUnderlay = React.forwardRef(function CanvasUnderlay(
         c.width * 0.5 - cam.x * 0.04, c.height * 0.5 - cam.y * 0.04, 0,
         c.width * 0.5 - cam.x * 0.04, c.height * 0.5 - cam.y * 0.04, Math.max(c.width, c.height) * (0.6 * breath)
       );
-      grad1.addColorStop(0, `rgba(${r1},${g1},${b1},0.22)`);
-      grad1.addColorStop(1, 'rgba(8,10,22,0.0)');
+      grad1.addColorStop(0, `rgba(${r1},${g1},${b1},0.4)`);
+      grad1.addColorStop(1, 'rgba(5,5,10,0.0)');
       ctx2.fillStyle = grad1;
       ctx2.fillRect(0, 0, c.width, c.height);
 
@@ -128,8 +129,8 @@ const CanvasUnderlay = React.forwardRef(function CanvasUnderlay(
         c.width * 0.5 - cam.x * 0.075, c.height * 0.5 - cam.y * 0.075, 0,
         c.width * 0.5 - cam.x * 0.075, c.height * 0.5 - cam.y * 0.075, Math.max(c.width, c.height) * (0.7 + 0.05 * Math.sin(ts * 0.001))
       );
-      grad2.addColorStop(0, `rgba(${r2},${g2},${b2},0.28)`);
-      grad2.addColorStop(1, 'rgba(12,8,18,0.0)');
+      grad2.addColorStop(0, `rgba(${r2},${g2},${b2},0.3)`);
+      grad2.addColorStop(1, 'rgba(8,8,12,0.0)');
       ctx2.fillStyle = grad2;
       ctx2.fillRect(0, 0, c.width, c.height);
 
@@ -186,14 +187,14 @@ const CanvasUnderlay = React.forwardRef(function CanvasUnderlay(
         const h = halos.current[i];
         h.t += d;
         const tt = Math.min(1, h.t / h.life);
-        const alpha = Math.max(0, 0.35 * (1 - tt));
+        const alpha = Math.max(0, 0.6 * (1 - tt));
         const radius = 14 * (0.8 + 1.6 * tt);
-        ctx2.strokeStyle = `rgba(124,58,237,${alpha})`; // indigo
-        ctx2.lineWidth = 1.5;
+        ctx2.strokeStyle = `rgba(0, 240, 255, ${alpha})`; // Neon Cyan
+        ctx2.lineWidth = 2;
         ctx2.beginPath();
         ctx2.arc(h.x, h.y, radius, 0, Math.PI * 2);
         ctx2.stroke();
-        ctx2.fillStyle = `rgba(167,139,250,${0.12 * (1 - tt)})`;
+        ctx2.fillStyle = `rgba(0, 240, 255, ${0.2 * (1 - tt)})`;
         ctx2.beginPath();
         ctx2.arc(h.x, h.y, 14, 0, Math.PI * 2);
         ctx2.fill();

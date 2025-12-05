@@ -199,11 +199,10 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    // Detect dark mode and load theme CSS vars for card and border
+    // Detect dark mode and load theme CSS vars
     const docStyle = window.getComputedStyle(document.documentElement);
-    const cardVar = (docStyle.getPropertyValue('--card') || '').trim();
-    const borderVar = (docStyle.getPropertyValue('--border') || '').trim();
     const foregroundVar = (docStyle.getPropertyValue('--foreground') || '').trim();
+    const primaryVar = (docStyle.getPropertyValue('--primary') || '').trim();
     const isDark = document.documentElement.classList.contains('dark');
 
     // Set up drawing parameters
@@ -215,36 +214,40 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     for (const [streamId, session] of activeStreams) {
       const messages = streamData.get(streamId) || [];
 
-      // Choose text color from theme
-      const textColor = isDark && foregroundVar ? `hsl(${foregroundVar})` : '#111827';
+      // Text Color - Neon Cyan/White
+      const textColor = `hsl(${foregroundVar || '180 100% 90%'})`;
       ctx.fillStyle = textColor;
-      ctx.font = '14px Arial';
+      ctx.font = '14px "JetBrains Mono", monospace';
       ctx.fillText(`${session.node_id} (${streamId.substring(0, 8)}...)`, margin, yOffset + 20);
 
       // Draw stream status indicator
       const statusColor = getStatusColor(session.status);
       ctx.fillStyle = statusColor;
       ctx.beginPath();
-      ctx.arc(width - 30, yOffset + 15, 8, 0, 2 * Math.PI);
+      ctx.arc(width - 30, yOffset + 15, 6, 0, 2 * Math.PI);
       ctx.fill();
+      // Glow effect
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = statusColor;
+      ctx.fill();
+      ctx.shadowBlur = 0;
 
       // Draw streaming data visualization
       if (messages.length > 0) {
-        drawStreamTrace(ctx, messages, margin, yOffset + 30, width - 2 * margin, streamHeight - 60, { isDark, cardVar, borderVar });
+        drawStreamTrace(ctx, messages, margin, yOffset + 30, width - 2 * margin, streamHeight - 60, { isDark });
       }
 
       // Draw stream info
-      const metaColor = isDark && foregroundVar ? `hsl(${foregroundVar})` : '#6b7280';
-      ctx.fillStyle = metaColor;
-      ctx.font = '12px Arial';
+      ctx.fillStyle = `hsl(${foregroundVar || '180 100% 90%'} / 0.7)`;
+      ctx.font = '12px "JetBrains Mono", monospace';
       ctx.fillText(`Messages: ${messages.length}`, margin, yOffset + streamHeight - 10);
 
       yOffset += streamHeight + margin;
     }
 
     // Draw overall streaming status
-    ctx.fillStyle = isStreaming ? '#22c55e' : (isDark ? '#9ca3af' : '#6b7280');
-    ctx.font = 'bold 16px Arial';
+    ctx.fillStyle = isStreaming ? '#00f0ff' : '#6b7280';
+    ctx.font = 'bold 16px "JetBrains Mono", monospace';
     ctx.fillText(
       isStreaming ? `Streaming ${activeStreams.size} sessions` : 'Not streaming',
       margin,
@@ -260,7 +263,7 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     y: number,
     w: number,
     h: number,
-    opts?: { isDark?: boolean; cardVar?: string; borderVar?: string }
+    opts?: { isDark?: boolean }
   ) => {
     if (messages.length === 0) return;
 
@@ -269,22 +272,18 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     
     const stepX = w / Math.max(displayMessages.length - 1, 1);
     
-    // Draw background (use theme card in dark mode)
-    const isDark = !!opts?.isDark;
-    const cardVar = opts?.cardVar ?? '';
-    const borderVar = opts?.borderVar ?? '';
-    const bgColor = isDark && cardVar ? `hsl(${cardVar})` : '#f3f4f6';
-    const borderColor = isDark && borderVar ? `hsl(${borderVar})` : '#d1d5db';
-    ctx.fillStyle = bgColor;
+    // Draw background (Glassmorphic)
+    ctx.fillStyle = 'rgba(20, 20, 30, 0.5)';
     ctx.fillRect(x, y, w, h);
     
     // Draw border
-    ctx.strokeStyle = borderColor;
+    ctx.strokeStyle = 'rgba(0, 240, 255, 0.2)';
+    ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
 
     // Draw data trace
     ctx.beginPath();
-    ctx.strokeStyle = '#3b82f6';
+    ctx.strokeStyle = '#00f0ff'; // Neon Cyan
     ctx.lineWidth = 2;
 
     displayMessages.forEach((message, index) => {
@@ -304,31 +303,35 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
       // Draw data points
       ctx.fillStyle = getMessageTypeColor(message.type);
       ctx.beginPath();
-      ctx.arc(plotX, plotY, 3, 0, 2 * Math.PI);
+      ctx.arc(plotX, plotY, 2, 0, 2 * Math.PI);
       ctx.fill();
     });
 
+    // Add glow to the line
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = '#00f0ff';
     ctx.stroke();
+    ctx.shadowBlur = 0;
   };
 
   const getStatusColor = (status: string): string => {
     switch (status) {
-      case 'active': return '#22c55e';
-      case 'initializing': return '#f59e0b';
-      case 'paused': return '#6b7280';
-      case 'completed': return '#3b82f6';
-      case 'error': return '#ef4444';
+      case 'active': return '#00f0ff';    // Cyan
+      case 'initializing': return '#f59e0b'; // Amber
+      case 'paused': return '#6b7280';    // Gray
+      case 'completed': return '#a020f0'; // Purple
+      case 'error': return '#ff0055';     // Neon Red
       default: return '#6b7280';
     }
   };
 
   const getMessageTypeColor = (type: string): string => {
     switch (type) {
-      case 'stream_start': return '#22c55e';
-      case 'stream_data': return '#3b82f6';
-      case 'stream_end': return '#8b5cf6';
-      case 'stream_error': return '#ef4444';
-      case 'heartbeat': return '#f59e0b';
+      case 'stream_start': return '#00f0ff'; // Cyan
+      case 'stream_data': return '#a020f0';  // Purple
+      case 'stream_end': return '#ff1493';   // Pink
+      case 'stream_error': return '#ff0055'; // Red
+      case 'heartbeat': return '#f59e0b';    // Amber
       default: return '#6b7280';
     }
   };
@@ -339,12 +342,12 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
   }, [drawStreamingVisualization]);
 
   return (
-    <div className="streaming-canvas-container">
+    <div className="glass-panel p-4 rounded-xl">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Live Streaming Visualization</h3>
+        <h3 className="text-lg font-semibold text-primary neon-text">Live Streaming Visualization</h3>
         <div className="flex items-center space-x-2">
-          <div className={`w-3 h-3 rounded-full ${isStreaming ? 'bg-green-500' : 'bg-gray-400'}`} />
-          <span className="text-sm text-gray-600">
+          <div className={`w-3 h-3 rounded-full ${isStreaming ? 'bg-primary shadow-[0_0_10px_#00f0ff]' : 'bg-gray-600'}`} />
+          <span className="text-sm text-muted-foreground">
             {isStreaming ? 'Live' : 'Offline'}
           </span>
         </div>
@@ -354,30 +357,30 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
         ref={canvasRef}
         width={width}
         height={height}
-        className="border border-gray-300 dark:border-border rounded-lg bg-white dark:mc-card-bg"
+        className="rounded-lg border border-white/10 bg-black/20 backdrop-blur-sm"
         style={{ maxWidth: '100%', height: 'auto' }}
       />
       
-      <div className="mt-2 text-xs text-gray-500">
+      <div className="mt-2 text-xs text-muted-foreground font-mono">
         Active streams: {activeStreams.size} | 
         Total messages: {Array.from(streamData.values()).reduce((acc, messages) => acc + messages.length, 0)}
       </div>
       
-      {/* Active streams preview panel - shows last received message for quick debugging */}
+      {/* Active streams preview panel */}
       {activeStreams.size > 0 && (
-        <div className="mt-3 text-xs text-gray-700">
-          <div className="font-medium mb-1">Active Streams</div>
+        <div className="mt-3 text-xs text-foreground/80 font-mono">
+          <div className="font-medium mb-1 text-primary">Active Streams</div>
           {[...activeStreams.entries()].map(([streamId, session]) => {
             const msgs = streamData.get(streamId) || [];
             const last = msgs.length ? msgs[msgs.length - 1] : null;
             const preview = last ? (typeof last.data === 'object' ? JSON.stringify(last.data).slice(0, 140) : String(last.data).slice(0,140)) : 'no messages yet';
             return (
-              <div key={streamId} className="py-1 border-b border-gray-100">
+              <div key={streamId} className="py-1 border-b border-white/5">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold">{session.node_id || session.agent_id}</div>
-                  <div className="text-xs text-gray-500">{streamId.substring(0,8)}</div>
+                  <div className="text-xs font-semibold text-secondary">{session.node_id || session.agent_id}</div>
+                  <div className="text-xs text-muted-foreground">{streamId.substring(0,8)}</div>
                 </div>
-                <div className="text-xs text-gray-600 truncate">{preview}</div>
+                <div className="text-xs text-foreground/60 truncate">{preview}</div>
               </div>
             );
           })}
