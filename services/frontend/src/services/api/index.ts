@@ -11,7 +11,6 @@ export * from "./agentService";
 export * from "./mediaService";
 export * from "./streamingService"; // Export the new streaming service
 export * from "./orchestratorService";
-
 // Export default instances
 export { httpClient as defaultHttpClient } from "./httpClient";
 // Removed websocketClient export as it's now internal to ApiService

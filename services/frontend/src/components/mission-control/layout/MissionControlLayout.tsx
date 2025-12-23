@@ -22,7 +22,7 @@ import NetworkPanel from '../panels/NetworkPanel';
 import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
 import { openCogpakUi, resolveRemoteEntry } from '@/utils/remoteUi';
 // ADD: orchestrator run helper
-import { startDemoRunAndStream } from '../../../services/api/orchestrator';
+import { orchestratorService } from '../../../services/api/orchestratorService';
 import GraphPanel from '../panels/GraphPanel';
 // ADD: keyboard shortcuts
 import { useKeyboardShortcuts, type KeyboardShortcut, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -200,7 +200,7 @@ export function MissionControlLayout() {
   // ADD: Start an orchestrator run (FastAPI backend) and subscribe to SSE
   const startOrchestratorRun = React.useCallback(async () => {
     try {
-      const { runId } = await startDemoRunAndStream();
+      const { runId } = await orchestratorService.startDemoRunAndStream(undefined);
       setActiveRunId(runId);
     } catch (e) {
       console.error('[MissionControl] Start Orchestrator Run failed', e);

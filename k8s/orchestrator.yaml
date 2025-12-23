@@ -37,7 +37,7 @@ spec:
       serviceAccountName: orchestrator
       containers:
         - name: orchestrator
-          image: registry.harbor.lan/library/mentatlab-orchestrator-go:latest
+          image: registry.harbor.lan/library/mentatlab-orchestrator:latest
           ports:
             - containerPort: 7070
               name: http

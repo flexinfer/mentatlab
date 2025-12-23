@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
         - name: gateway
-          image: registry.harbor.lan/library/mentatlab-gateway-go:latest
+          image: registry.harbor.lan/library/mentatlab-gateway:latest
           ports:
             - containerPort: 8080
               name: http
@@ -46,7 +46,11 @@ spec:
             - name: ORCHESTRATOR_BASE_URL
               value: "http://orchestrator:7070"
             - name: REDIS_URL
-              value: "redis:6379"
+              value: "redis://redis:6379"
+            - name: TRUSTED_HOSTS
+              value: "*"
+            - name: FRONTEND_URL
+              value: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"
             # Optional: Cloudflare Access service token for outbound requests (added automatically by deploy.sh if env set)
             - name: CF_ACCESS_CLIENT_ID
               valueFrom:

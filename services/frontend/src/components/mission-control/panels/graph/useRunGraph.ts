@@ -1,13 +1,11 @@
 import React from "react";
 import { type Edge, type Node as RFNode, MarkerType } from "reactflow";
-import {
-  getRun,
-  cancelRun,
-  type Run as ApiRun,
-  type PlanEdge as ApiPlanEdge,
-} from "@/services/api/runs";
+import { orchestratorService } from "@/services/api/orchestratorService";
+import type {
+  Run as ApiRun,
+  PlanEdge as ApiPlanEdge,
+} from "@/types/orchestrator";
 import { streamRegistry } from "@/services/streaming/streamRegistry";
-import { subscribeRunEvents } from "@/services/streaming/orchestratorSSE";
 import {
   parseRunEvent,
   type NormalizedRunEvent,
@@ -120,7 +118,7 @@ export function useRunGraph(
         return;
       }
       try {
-        const run: ApiRun = await getRun(runId);
+        const run: ApiRun = await orchestratorService.getRun(runId);
         if (!mounted) return;
 
         const plan = run.plan || { nodes: [], edges: [] };
@@ -198,15 +196,13 @@ export function useRunGraph(
     }
     if (!runId) return;
 
-    const handle = subscribeRunEvents(runId, {
+    const handle = orchestratorService.streamRunEvents(runId, {
       replay: 200,
       onOpen: () => {
         // no-op
       },
-      onEvent: (_evt, parsedMaybe) => {
-        const ev: NormalizedRunEvent = parseRunEvent(
-          (_evt as any) ?? { data: parsedMaybe }
-        );
+      onRaw: (evt: any) => {
+        const ev: NormalizedRunEvent = parseRunEvent(evt);
         // Global seq idempotence: ignore if older/equal than last applied
         if (ev.seq && ev.seq <= lastAppliedSeqRef.current) return;
         lastAppliedSeqRef.current = ev.seq;
@@ -303,7 +299,7 @@ export function useRunGraph(
         }
         // Logs ignored here (console will consume)
       },
-      onError: (err) => {
+      onError: (err: any) => {
         // Keep silent; client will auto-reconnect
         console.warn("[useRunGraph] SSE error", err);
       },
@@ -328,7 +324,7 @@ export function useRunGraph(
   const onCancelRun = React.useCallback(async () => {
     if (!runId) return;
     try {
-      await cancelRun(runId);
+      await orchestratorService.cancelRun(runId);
       // optimistic: mark run as failed (canceled)
       setRunStatus("failed");
       // Stop any active live streams so the network/graph quiets immediately

@@ -1,18 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { orchestratorService } from '@/services/api';
 import OrchestratorSSE from '@/services/api/streaming/orchestratorSSE';
-import type { Run, Checkpoint, RunMode } from '@/types/orchestrator';
+import type { Run, Checkpoint, RunMode, RunStatus } from '@/types/orchestrator';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { cn } from '@/lib/utils'; // Assuming this exists, based on other files
 
 /**
  * RunsPanel
- *
- * Minimal Mission Control panel for orchestrator:
- * - Create a run (mode: plan|redis|k8s)
- * - Connect to a run's SSE stream to see hello/status/checkpoint events in real time
- * - Post a simple "progress" checkpoint
- * - Cancel a run
- *
- * This component is intentionally self-contained and uses the orchestratorService + OrchestratorSSE helper.
+ * 
+ * Orchestrator Mission Control:
+ * - Create and manage runs
+ * - Live inspection via SSE
+ * - Checkpoint timeline
  */
 
 export default function RunsPanel(): JSX.Element {
@@ -23,32 +25,33 @@ export default function RunsPanel(): JSX.Element {
   const [mode, setMode] = useState<RunMode>('plan');
   const [creating, setCreating] = useState<boolean>(false);
   const [posting, setPosting] = useState<boolean>(false);
+  
+  // Use OrchestratorSSE helper via service factory
   const sseRef = useRef<OrchestratorSSE | null>(null);
 
-  // Plan (when mode=plan) returned by createRun
+  // Plan result view
   const [planResult, setPlanResult] = useState<any | null>(null);
 
-  // Lightweight in-panel toasts (replace alert())
+  // Simple toast state
   const [toasts, setToasts] = useState<{ id: number; text: string; tone?: 'info' | 'error' | 'success' }[]>([]);
   const toastSeq = useRef(1);
+
   function showToast(text: string, tone: 'info' | 'error' | 'success' = 'info') {
     const id = toastSeq.current++;
     setToasts((t) => [...t, { id, text, tone }]);
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   }
 
-  // Checkpoints container ref for auto-scroll
-  const checkpointsContainerRef = useRef<HTMLDivElement | null>(null);
-  // Auto-scroll when new checkpoints arrive
+  // Auto-scroll timeline
+  const checkpointsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!checkpointsContainerRef.current) return;
-    const el = checkpointsContainerRef.current;
-    // scroll to bottom smoothly
-    el.scrollTop = el.scrollHeight;
+    if (checkpointsRef.current) {
+        checkpointsRef.current.scrollTop = checkpointsRef.current.scrollHeight;
+    }
   }, [checkpoints]);
 
+  // Cleanup SSE on unmount
   useEffect(() => {
-    // cleanup on unmount
     return () => {
       sseRef.current?.close();
     };
@@ -58,29 +61,21 @@ export default function RunsPanel(): JSX.Element {
     setCreating(true);
     try {
       const res = await orchestratorService.createRun(mode);
-      if (res.runId) {
-        setRunIdInput(res.runId);
+      const newRunId = res.runId || res.run_id || res.id;
+      
+      if (newRunId) {
+        setRunIdInput(newRunId);
         setPlanResult(null);
-        // If plan mode, server returns plan instead of runId
-        if (mode === 'plan') {
-          // Some servers may still return a runId even for plan; tolerate both.
-        }
-        // fetch run and checkpoints
-        const run = await orchestratorService.getRun(res.runId as string);
-        setCurrentRun(run);
-        const cps = await orchestratorService.listCheckpoints(res.runId as string);
-        setCheckpoints(cps);
-        // auto-connect SSE
-        connectToRun(res.runId as string);
-        showToast('Run created: ' + String(res.runId), 'success');
+        await refreshRun(newRunId);
+        connectToRun(newRunId);
+        showToast(`Run created: ${newRunId}`, 'success');
       } else if (res.mode === 'plan' && res.plan) {
-        // show plan inline
         setPlanResult(res.plan);
-        showToast('Plan generated (mode=plan)', 'info');
+        showToast('Plan generated successfully', 'info');
       }
-    } catch (err) {
-      console.error('createRun error', err);
-      showToast('Failed to create run: ' + String(err), 'error');
+    } catch (err: any) {
+      console.error('Create run failed', err);
+      showToast(err.message || 'Failed to create run', 'error');
     } finally {
       setCreating(false);
     }
@@ -92,250 +87,203 @@ export default function RunsPanel(): JSX.Element {
       setCurrentRun(run);
       const cps = await orchestratorService.listCheckpoints(runId);
       setCheckpoints(cps);
-    } catch (err) {
-      console.error('refreshRun error', err);
+    } catch (err: any) {
+      console.error('Refresh failed', err);
+      showToast('Failed to load run details', 'error');
     }
   }
 
   function connectToRun(runId: string) {
-    // close existing
-    sseRef.current?.close();
-    const client = new OrchestratorSSE({ replay: 10, debug: false });
-    sseRef.current = client;
-
-    client.connect(runId, {
-      onOpen: () => {
-        // connection established
-        setSseConnected(true);
-        showToast('SSE connected', 'success');
-      },
-      onHello: (data) => {
-        console.debug('SSE hello', data);
-        showToast('SSE hello for ' + data.runId, 'info');
-      },
-      onCheckpoint: (cp) => {
-        setCheckpoints((prev) => {
-          // avoid duplicates by id
-          if (prev.find((p) => p.id === cp.id)) return prev;
-          const next = [...prev, cp].sort((a, b) => (a.ts > b.ts ? 1 : -1));
-          return next;
-        });
-      },
-      onStatus: (data) => {
-        // update run status if matches
-        if (currentRun && data.runId === currentRun.id) {
-          setCurrentRun((r) => (r ? { ...r, status: data.status as Run['status'] } : r));
-          showToast(`Run ${data.runId} status: ${data.status}`, 'info');
+    disconnectSSE(); // ensure clean state
+    
+    // Use factory method from service
+    const client = orchestratorService.streamRunEvents(runId, {
+        onOpen: () => {
+            setSseConnected(true);
+            showToast('Connected to live stream', 'success');
+        },
+        onHello: (data: any) => {
+            // Optional: verify runId matches
+        },
+        onCheckpoint: (cp: Checkpoint) => {
+             setCheckpoints(prev => {
+                if (prev.find(p => p.id === cp.id)) return prev;
+                return [...prev, cp].sort((a,b) => a.ts.localeCompare(b.ts));
+             });
+        },
+        onStatus: (data: { runId: string, status: string}) => {
+             if (data.runId === runId) {
+                 setCurrentRun(prev => prev ? { ...prev, status: data.status as RunStatus } : prev);
+                 showToast(`Status update: ${data.status}`, 'info');
+             }
+        },
+        onError: (err: any) => {
+             console.warn('SSE Error', err);
+             // Reconnect is automatic in client, but we show toast
         }
-      },
-      onError: (err) => {
-        console.warn('SSE error', err);
-        showToast('SSE error: ' + String(err), 'error');
-      },
-      onRaw: () => {
-        // noop
-      }
-    }).catch((err) => {
-      console.error('SSE connect failed', err);
-      showToast('SSE connect failed: ' + String(err), 'error');
     });
+    sseRef.current = client;
   }
 
   function disconnectSSE() {
-    sseRef.current?.close();
-    sseRef.current = null;
-    setSseConnected(false);
-    showToast('Disconnected SSE', 'info');
-  }
-
-  async function handleConnectClick() {
-    if (!runIdInput) {
-      alert('Enter a runId to connect');
-      return;
-    }
-    try {
-      await refreshRun(runIdInput);
-      connectToRun(runIdInput);
-    } catch (err) {
-      console.error(err);
+    if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
+        setSseConnected(false);
+        showToast('Stream disconnected', 'info');
     }
   }
 
   async function handlePostCheckpoint() {
-    if (!runIdInput) {
-      alert('Enter runId first');
-      return;
-    }
-    setPosting(true);
-    try {
-        const payload = { type: 'progress', data: { percent: Math.floor(Math.random() * 100) } };
-        const res = await orchestratorService.postCheckpoint(runIdInput, payload);
-        // refresh checkpoints (SSE will push too)
-        const cps = await orchestratorService.listCheckpoints(runIdInput);
-        setCheckpoints(cps);
-        showToast('Posted checkpoint', 'success');
-        return res;
-      } catch (err) {
-        console.error('postCheckpoint error', err);
-        showToast('Failed to post checkpoint: ' + String(err), 'error');
+      if (!runIdInput) return;
+      setPosting(true);
+      try {
+          await orchestratorService.postCheckpoint(runIdInput, {
+              type: 'user_annotation',
+              data: { note: 'Manual checkpoint', ts: Date.now() }
+          });
+          // Refresh list to be sure, though SSE should catch it
+          const cps = await orchestratorService.listCheckpoints(runIdInput);
+          setCheckpoints(cps);
+          showToast('Checkpoint added', 'success');
+      } catch (e: any) {
+          showToast('Failed to post checkpoint', 'error');
       } finally {
-        setPosting(false);
+          setPosting(false);
       }
   }
 
   async function handleCancelRun() {
-    if (!runIdInput) {
-      alert('Enter runId first');
-      return;
-    }
-    try {
-      const res = await orchestratorService.cancelRun(runIdInput);
-      if (res && res.status) {
-        setCurrentRun((r) => (r ? { ...r, status: res.status } : r));
-        showToast(`Run canceled: ${res.status}`, 'success');
+      if (!runIdInput) return;
+      try {
+          const res = await orchestratorService.cancelRun(runIdInput);
+          if (res.status) {
+              setCurrentRun(prev => prev ? { ...prev, status: res.status } : prev);
+              showToast(`Run cancelled: ${res.status}`, 'info');
+          }
+      } catch (err: any) {
+          showToast('Cancel failed: ' + (err.message || 'unknown'), 'error');
       }
-    } catch (err: any) {
-      const status = err?.status ?? err?.response?.status;
-      if (status === 409) {
-        showToast('Invalid status transition', 'error');
-      } else if (status === 404) {
-        showToast('Run not found', 'error');
-      } else {
-        showToast('Failed to cancel run: ' + String(err), 'error');
-      }
-    }
   }
 
   return (
-    <div className="p-3 border rounded bg-card" style={{ borderColor: 'hsl(var(--border))' }}>
-      <h3>Orchestrator — Runs</h3>
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-        <select value={mode} onChange={(e) => setMode(e.target.value as RunMode)}>
-          <option value="plan">plan</option>
-          <option value="redis">redis</option>
-          <option value="k8s">k8s</option>
-        </select>
-        <button onClick={handleCreateRun} disabled={creating}>
-          {creating ? 'Creating...' : 'Create Run'}
-        </button>
-
-        <input
-          placeholder="run id"
-          value={runIdInput}
-          onChange={(e) => setRunIdInput(e.target.value)}
-          style={{ width: 300 }}
-        />
-        <button onClick={handleConnectClick}>Connect</button>
-        <button onClick={disconnectSSE} disabled={!sseConnected}>
-          Disconnect
-        </button>
-      </div>
-
-      <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <strong>SSE:</strong>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: 10,
-              display: 'inline-block',
-              background: sseConnected ? '#10b981' : '#cbd5e1'
-            }}
-            title={sseConnected ? 'connected' : 'disconnected'}
-          />
-          <span>{sseConnected ? 'connected' : 'disconnected'}</span>
-        </span>
-      </div>
-
-      <div style={{ marginBottom: 8 }}>
-        <strong>Run:</strong>{' '}
-        {currentRun ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <span>
-              <strong style={{ fontFamily: 'monospace' }}>{currentRun.id}</strong> — {currentRun.mode} — <em>{currentRun.status}</em>
-            </span>
-            <button
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(currentRun.id);
-                  showToast('Copied runId to clipboard', 'success');
-                } catch {
-                  showToast('Failed to copy runId', 'error');
-                }
-              }}
-              style={{ padding: '4px 8px', fontSize: 12 }}
+    <div className="h-full flex flex-col gap-4 p-4">
+      {/* Top Controls */}
+      <Card className="flex-none p-3 flex flex-wrap gap-4 items-center bg-card/80">
+        <div className="flex items-center gap-2">
+            <label className="text-xs font-medium text-muted-foreground">Mode</label>
+            <Select 
+                value={mode} 
+                onChange={(e) => setMode(e.target.value as RunMode)}
+                className="w-24 h-8 text-xs bg-muted/50 border-white/10"
             >
-              Copy runId
-            </button>
-          </span>
-        ) : (
-          <em>no run loaded</em>
-        )}
-      </div>
-
-      <div style={{ marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button onClick={handlePostCheckpoint} disabled={posting || !runIdInput}>
-          {posting ? 'Posting...' : 'Post progress checkpoint'}
-        </button>
-        <button onClick={handleCancelRun} disabled={!runIdInput}>
-          Cancel run
-        </button>
-        <button
-          onClick={() => {
-            // export checkpoints as JSON file
-            try {
-              const blob = new Blob([JSON.stringify(checkpoints, null, 2)], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${runIdInput || currentRun?.id || 'checkpoints'}.json`;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              URL.revokeObjectURL(url);
-              showToast('Exported checkpoints', 'success');
-            } catch (e) {
-              showToast('Failed to export checkpoints', 'error');
-            }
-          }}
-          disabled={checkpoints.length === 0}
-        >
-          Export checkpoints (JSON)
-        </button>
-        <button
-          onClick={() => {
-            setCheckpoints([]);
-            showToast('Cleared local checkpoint list', 'info');
-          }}
-          disabled={checkpoints.length === 0}
-        >
-          Clear list
-        </button>
-      </div>
-
-      <div>
-        <h4>Checkpoints</h4>
-        <div style={{ maxHeight: 320, overflow: 'auto', border: '1px solid #eee', padding: 8 }}>
-          {checkpoints.length === 0 ? (
-            <div style={{ color: '#666' }}>No checkpoints yet</div>
-          ) : (
-            checkpoints.map((cp) => (
-              <div key={cp.id} className="px-2 py-2 border-b last:border-b-0">
-                <div className="text-[12px] text-gray-400">{new Date(cp.ts).toLocaleString()}</div>
-                <div>
-                  <strong>{cp.type}</strong> — <span className="font-mono">{cp.id}</span>
-                </div>
-                {cp.data ? (
-                  <pre className="mt-1 text-[12px] whitespace-pre-wrap bg-muted/50 dark:bg-muted/20 rounded p-2 overflow-auto">
-                    {JSON.stringify(cp.data, null, 2)}
-                  </pre>
-                ) : null}
-              </div>
-            ))
-          )}
+                <option value="plan">Plan</option>
+                <option value="redis">Redis</option>
+                <option value="k8s">K8s</option>
+            </Select>
+            <Button 
+                size="sm" 
+                variant="glow" 
+                onClick={handleCreateRun} 
+                disabled={creating}
+                className="h-8 text-xs font-semibold"
+            >
+                {creating ? 'Creating...' : '+ New Run'}
+            </Button>
         </div>
+        
+        <div className="h-6 w-px bg-white/10" />
+
+        <div className="flex items-center gap-2 flex-1">
+             <Input 
+                size="sm"
+                placeholder="Run ID..."
+                value={runIdInput}
+                onChange={(e) => setRunIdInput(e.target.value)}
+                className="font-mono text-xs max-w-[240px]"
+             />
+             <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={() => { refreshRun(runIdInput); connectToRun(runIdInput); }}
+                className="h-8 text-xs"
+             >
+                Connect
+             </Button>
+             {sseConnected && (
+                 <Button size="sm" variant="ghost" onClick={disconnectSSE} className="h-8 text-xs text-red-400 hover:text-red-300">
+                    Disconnect
+                 </Button>
+             )}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs">
+            <span className={cn("w-2 h-2 rounded-full", sseConnected ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-zinc-600")} />
+            <span className="text-muted-foreground">{sseConnected ? 'Live' : 'Offline'}</span>
+        </div>
+      </Card>
+
+      {/* Main Content */}
+      <div className="flex-1 min-h-0 flex gap-4">
+            {/* Run Details & Checkpoints */}
+            <Card className="flex-1 flex flex-col min-h-0 border-white/5 bg-black/20">
+                <CardHeader className="py-2 px-3 border-white/5 flex flex-row justify-between items-center">
+                    <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">Values</span>
+                    {currentRun && (
+                        <span className={cn(
+                            "text-[10px] px-2 py-0.5 rounded-full border", 
+                            currentRun.status === 'running' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : 
+                            currentRun.status === 'failed' ? "bg-red-500/10 text-red-400 border-red-500/20" : 
+                            "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                        )}>
+                            {currentRun.status.toUpperCase()}
+                        </span>
+                    )}
+                </CardHeader>
+                <div className="flex-1 overflow-auto p-0" ref={checkpointsRef}>
+                    {checkpoints.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-muted-foreground/40 text-xs italic">
+                            Waiting for events...
+                        </div>
+                    ) : (
+                        <div className="flex flex-col font-mono text-xs">
+                            {checkpoints.map((cp) => (
+                                <div key={cp.id} className="border-b border-white/5 p-2 hover:bg-white/5 transition-colors group">
+                                    <div className="flex justify-between items-baseline mb-1 opacity-60 group-hover:opacity-100">
+                                        <span className="text-blue-400 font-semibold">{cp.type}</span>
+                                        <span className="text-[10px]">{new Date(cp.ts).toLocaleTimeString()}</span>
+                                    </div>
+                                    <pre className="whitespace-pre-wrap break-all text-zinc-300 opacity-80 pl-2 border-l-2 border-white/10">
+                                        {JSON.stringify(cp.data, null, 2)}
+                                    </pre>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <div className="p-2 border-t border-white/5 bg-zinc-950/30 flex gap-2">
+                     <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handlePostCheckpoint} disabled={posting || !runIdInput}>
+                        + Annotation
+                     </Button>
+                     <Button size="sm" variant="destructive" className="h-7 text-[10px] ml-auto" onClick={handleCancelRun} disabled={!runIdInput}>
+                        Cancel Run
+                     </Button>
+                </div>
+            </Card>
+      </div>
+
+      {/* Local Toasts */}
+      <div className="absolute bottom-6 right-6 flex flex-col gap-2 pointer-events-none z-50">
+           {toasts.map(t => (
+               <div key={t.id} className={cn(
+                   "bg-zinc-900 border text-xs px-3 py-2 rounded shadow-xl animate-in slide-in-from-bottom-2 fade-in",
+                   t.tone === 'error' ? "border-red-500/50 text-red-200" : 
+                   t.tone === 'success' ? "border-emerald-500/50 text-emerald-200" : 
+                   "border-zinc-700 text-zinc-200"
+               )}>
+                   {t.text}
+               </div>
+           ))}
       </div>
     </div>
   );

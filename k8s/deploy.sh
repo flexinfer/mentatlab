@@ -97,9 +97,9 @@ build_image() {
   # When using set -u, expanding an empty array triggers an error. Guard the expansion.
   if ! $SKIP_BUILD; then
     if ((${#extra_args[@]})); then
-      run docker build -t "$img" -f "$df" "$ctx" "${extra_args[@]}"
+      run docker build --no-cache --platform linux/amd64 -t "$img" -f "$df" "$ctx" "${extra_args[@]}"
     else
-      run docker build -t "$img" -f "$df" "$ctx"
+      run docker build --no-cache --platform linux/amd64 -t "$img" -f "$df" "$ctx"
     fi
   fi
   if ! $SKIP_PUSH; then run docker push "$img"; fi
@@ -123,15 +123,16 @@ if ! $APPLY_ONLY; then
   for svc in "${arr[@]}"; do
     case "$svc" in
       orchestrator)
-        build_image orchestrator-go "$REPO_ROOT/services/orchestrator-go" "$REPO_ROOT/services/orchestrator-go/Dockerfile"
+        build_image orchestrator "$REPO_ROOT" "$REPO_ROOT/services/orchestrator/Dockerfile"
         ;;
       gateway)
-        build_image gateway-go "$REPO_ROOT/services/gateway-go" "$REPO_ROOT/services/gateway-go/Dockerfile"
+        # Using Python gateway for now as it contains the streaming logic
+        build_image gateway "$REPO_ROOT" "$REPO_ROOT/services/gateway/Dockerfile"
         ;;
       frontend)
         # Build-time URLs (prefer overrides passed via flags)
-        gw_url="${FRONTEND_GATEWAY_URL:-http://gateway:8080}"
-        orch_url="${FRONTEND_ORCH_URL:-http://orchestrator:7070}"
+        gw_url="${FRONTEND_GATEWAY_URL:-/}"
+        orch_url="${FRONTEND_ORCH_URL:-/api/v1}"
         build_image frontend "$REPO_ROOT/services/frontend" "$REPO_ROOT/services/frontend/Dockerfile" \
           --build-arg VITE_GATEWAY_BASE_URL="$gw_url" \
           --build-arg VITE_ORCHESTRATOR_URL="$orch_url" \
@@ -203,8 +204,8 @@ fi
 IFS=',' read -r -a arr2 <<< "$IMAGES"
 for svc in "${arr2[@]}"; do
   case "$svc" in
-    orchestrator) set_image orchestrator orchestrator orchestrator-go;;
-    gateway) set_image gateway gateway gateway-go;;
+    orchestrator) set_image orchestrator orchestrator orchestrator;;
+    gateway) set_image gateway gateway gateway;;
     frontend) set_image frontend frontend frontend;;
     echoagent) set_image echoagent echoagent echoagent;;
   esac
