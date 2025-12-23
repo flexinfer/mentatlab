@@ -10,9 +10,8 @@ stages:
   - build
 
 variables:
-  DOCKER_HOST: tcp://docker:2375
-  DOCKER_TLS_CERTDIR: ""
   REGISTRY: registry.harbor.lan/library
+  BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
 
 # --- Linting ---
 
@@ -50,15 +49,37 @@ test-frontend:
 
 # --- Build ---
 
-# Note: This requires a runner with Docker access (e.g., shell executor or dind service)
+# Build images via BuildKit (no Docker-in-Docker)
 build-images:
   stage: build
-  image: docker:latest
-  services:
-    - docker:dind
-
+  image: moby/buildkit:v0.12.5
   script:
-    - apk add --no-cache bash curl
-    - ./build-and-push.sh --registry $REGISTRY --skip-push # Just build for now to verify
+    - |
+      echo "Waiting for BuildKit..."
+      for i in $(seq 1 30); do
+        if buildctl --addr "${BUILDKIT_HOST}" debug info >/dev/null 2>&1; then
+          echo "BuildKit is ready"; break
+        fi
+        echo "[$i/30] not ready yet"; sleep 2
+      done
+      buildctl --addr "${BUILDKIT_HOST}" debug info
+    - |
+      REGISTRY_TARGET="${REGISTRY}"
+      build_image() {
+        local name="$1" context="$2"
+        buildctl --addr "${BUILDKIT_HOST}" build \
+          --frontend dockerfile.v0 \
+          --local context="${context}" \
+          --local dockerfile="${context}" \
+          --opt platform=linux/amd64 \
+          --output "type=image,name=${REGISTRY_TARGET}/${name}:latest,${REGISTRY_TARGET}/${name}:${CI_COMMIT_SHORT_SHA},push=true"
+      }
+
+      build_image "mentatlab-orchestrator-go" "services/orchestrator-go"
+      build_image "mentatlab-gateway-go" "services/gateway-go"
+      build_image "mentatlab-frontend" "services/frontend"
+      build_image "mentatlab-echoagent" "services/agents/echo"
+      build_image "mentatlab-psyche-sim" "agents/psyche-sim"
+      build_image "mentatlab-ctm-cogpack" "agents/ctm-cogpack"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
