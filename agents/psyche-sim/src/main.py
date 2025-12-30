@@ -37,14 +37,30 @@ import urllib.request
 import urllib.error
 import urllib.request
 import urllib.error
+
 # Add structured NDJSON emit helper imports
 try:
-    from agents.common.emit import log_info, log_error, checkpoint, emit_event, set_correlation_id
+    from agents.common.emit import (
+        log_info,
+        log_error,
+        checkpoint,
+        emit_event,
+        set_correlation_id,
+    )
 except Exception:
     # Fallback if namespace package resolution differs in certain environments
     import sys as _sys, os as _os
-    _sys.path.append(_os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..")))
-    from agents.common.emit import log_info, log_error, checkpoint, emit_event, set_correlation_id
+
+    _sys.path.append(
+        _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+    )
+    from agents.common.emit import (
+        log_info,
+        log_error,
+        checkpoint,
+        emit_event,
+        set_correlation_id,
+    )
 
 AGENT_MODEL = "psyche-sim/0.1.0"
 
@@ -104,6 +120,7 @@ def read_input() -> Optional[Dict[str, Any]]:
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
 
+
 # CloudEvents helpers and config (opt-in via env)
 _CE_CONFIG: Dict[str, Any] = {
     "enabled": False,
@@ -113,13 +130,18 @@ _CE_CONFIG: Dict[str, Any] = {
     "checkpoint_interval": 0,
 }
 
+
 def _now_rfc3339() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    return (
+        datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+    )
+
 
 def _env_flag_true(val: Optional[str]) -> bool:
     if val is None:
         return False
     return val.strip().lower() in ("1", "true", "yes", "on")
+
 
 def derive_type(payload: dict, default_type: str = "agent.data") -> str:
     # checks payload.get("type") or payload.get("event_type") safely.
@@ -128,7 +150,14 @@ def derive_type(payload: dict, default_type: str = "agent.data") -> str:
         t = payload.get("type") or payload.get("event_type")
     return t if isinstance(t, str) and t else default_type
 
-def make_cloudevent(payload: dict, event_type: str, source: str, specversion: str, execution_id: Optional[str]) -> dict:
+
+def make_cloudevent(
+    payload: dict,
+    event_type: str,
+    source: str,
+    specversion: str,
+    execution_id: Optional[str],
+) -> dict:
     # returns envelope dict with uuid4 id and RFC3339 UTC time, and ce-execution_id when provided.
     evt = {
         "specversion": specversion,
@@ -153,7 +182,10 @@ def _emit_stream_message(msg: Dict[str, Any]) -> None:
     try:
         # keep logs minimal to avoid excessive noise
         if isinstance(msg, dict) and "type" in msg:
-            log_info(f"stream_event:{msg.get('type')}", data={"sequence": msg.get("sequence")})
+            log_info(
+                f"stream_event:{msg.get('type')}",
+                data={"sequence": msg.get("sequence")},
+            )
     except Exception:
         pass
     try:
@@ -166,16 +198,26 @@ def _emit_stream_message(msg: Dict[str, Any]) -> None:
                 _CE_CONFIG.get("specversion", "1.0"),
                 _CE_CONFIG.get("execution_id"),
             )
-            sys.stdout.write(json.dumps(wrapped, separators=(",", ":"), ensure_ascii=False) + "\n")
+            sys.stdout.write(
+                json.dumps(wrapped, separators=(",", ":"), ensure_ascii=False) + "\n"
+            )
         else:
-            sys.stdout.write(json.dumps(msg, separators=(",", ":"), ensure_ascii=False) + "\n")
+            sys.stdout.write(
+                json.dumps(msg, separators=(",", ":"), ensure_ascii=False) + "\n"
+            )
         sys.stdout.flush()
     except Exception:
         # If streaming fails, continue — final result will still be printed.
         pass
 
 
-def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_delay: float = 0.25, final_override: Optional[str] = None):
+def _simulate_streaming(
+    agent_id: str,
+    stream_id: str,
+    text_chunks: list,
+    chunk_delay: float = 0.25,
+    final_override: Optional[str] = None,
+):
     """
     Emit a structured simulation of a small network of subconscious subcomponents.
     - Subcomponents produce short comments about the prompt.
@@ -183,7 +225,10 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
     - Messages are emitted as streaming NDJSON (text:stream, progress, stream:status, stream_end).
     """
     # Announce streaming phase via contract log + checkpoint
-    log_info("psyche-sim: streaming simulation start", data={"agent_id": agent_id, "stream_id": stream_id})
+    log_info(
+        "psyche-sim: streaming simulation start",
+        data={"agent_id": agent_id, "stream_id": stream_id},
+    )
     checkpoint("streaming_start", 0.0, {"agent_id": agent_id, "stream_id": stream_id})
     base = {
         "agent_id": agent_id,
@@ -215,7 +260,9 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
     sequence = 1
     # For each round (derived from chunks) run each subcomponent and have ego integrate
     for round_idx in range(total_rounds):
-        prompt_fragment = text_chunks[round_idx] if round_idx < len(text_chunks) else text_chunks[-1]
+        prompt_fragment = (
+            text_chunks[round_idx] if round_idx < len(text_chunks) else text_chunks[-1]
+        )
         # Each subcomponent produces a short reaction
         sub_outputs = []
         for comp in subcomponents:
@@ -230,7 +277,11 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
                 "content": resp,
                 "isComplete": False,
                 "sequence": sequence,
-                "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": comp["id"]},
+                "model": {
+                    "name": AGENT_MODEL,
+                    "provider": "psyche-sim",
+                    "component": comp["id"],
+                },
             }
             _emit_stream_message(msg)
             sequence += 1
@@ -269,8 +320,12 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         integration_text = " | ".join([o["text"] for o in sub_outputs])
         # Simple integration rule: integration_score increases with length of integration_text
         added = min(1.0, len(integration_text) / 200.0)
-        ego_state["integration_score"] = round(ego_state["integration_score"] + added, 3)
-        ego_state["history"].append({"round": round_idx + 1, "integration": integration_text})
+        ego_state["integration_score"] = round(
+            ego_state["integration_score"] + added, 3
+        )
+        ego_state["history"].append(
+            {"round": round_idx + 1, "integration": integration_text}
+        )
         ego_msg_text = f"ego: integrated round {round_idx+1}; score={ego_state['integration_score']}"
         ego_msg = {
             **base,
@@ -279,7 +334,11 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
             "content": ego_msg_text,
             "isComplete": False,
             "sequence": sequence,
-            "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": "ego"},
+            "model": {
+                "name": AGENT_MODEL,
+                "provider": "psyche-sim",
+                "component": "ego",
+            },
         }
         _emit_stream_message(ego_msg)
         sequence += 1
@@ -305,13 +364,21 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
             "id": str(uuid.uuid4()),
             "type": "stream:status",
             "status": "active",
-            "progress": {"current": round_idx + 1, "total": total_rounds, "percentage": int(((round_idx + 1) / total_rounds) * 100)},
+            "progress": {
+                "current": round_idx + 1,
+                "total": total_rounds,
+                "percentage": int(((round_idx + 1) / total_rounds) * 100),
+            },
             "sequence": sequence,
         }
         _emit_stream_message(status_msg)
         # Emit a checkpoint per round according to the agent contract
         try:
-            checkpoint("round", (round_idx + 1) / float(total_rounds), {"round": round_idx + 1, "total_rounds": total_rounds})
+            checkpoint(
+                "round",
+                (round_idx + 1) / float(total_rounds),
+                {"round": round_idx + 1, "total_rounds": total_rounds},
+            )
         except Exception:
             pass
         sequence += 1
@@ -320,8 +387,10 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
     if isinstance(final_override, str) and final_override.strip():
         final_response = final_override.strip()
     else:
-        final_response = f"Ego final synthesis (score={ego_state['integration_score']}): " \
-                         f"{' // '.join([h['integration'][:60] for h in ego_state['history']])}"
+        final_response = (
+            f"Ego final synthesis (score={ego_state['integration_score']}): "
+            f"{' // '.join([h['integration'][:60] for h in ego_state['history']])}"
+        )
     final_msg = {
         **base,
         "id": str(uuid.uuid4()),
@@ -365,32 +434,46 @@ def _simulate_streaming(agent_id: str, stream_id: str, text_chunks: list, chunk_
         **base,
         "id": str(uuid.uuid4()),
         "type": "stream_end",
-        "data": {"message": "psyche stream ended", "final_score": ego_state["integration_score"]},
+        "data": {
+            "message": "psyche stream ended",
+            "final_score": ego_state["integration_score"],
+        },
         "sequence": sequence,
     }
     _emit_stream_message(end_msg)
     # streaming completed checkpoint
     try:
-        checkpoint("streaming_complete", 1.0, {"agent_id": agent_id, "stream_id": stream_id})
-        log_info("psyche-sim: streaming simulation complete", data={"agent_id": agent_id, "stream_id": stream_id})
+        checkpoint(
+            "streaming_complete", 1.0, {"agent_id": agent_id, "stream_id": stream_id}
+        )
+        log_info(
+            "psyche-sim: streaming simulation complete",
+            data={"agent_id": agent_id, "stream_id": stream_id},
+        )
     except Exception:
         pass
     # small pause
     time.sleep(0.02)
 
 
-def _http_post_json(url: str, payload: Dict[str, Any], timeout: float = 20.0) -> tuple[int, str]:
+def _http_post_json(
+    url: str, payload: Dict[str, Any], timeout: float = 20.0
+) -> tuple[int, str]:
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}
+    )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         body = resp.read().decode("utf-8", errors="ignore")
         return resp.status or 0, body
 
 
-def _vllm_generate_text(base: str, prompt: str, model: Optional[str] = None) -> Optional[str]:
+def _vllm_generate_text(
+    base: str, prompt: str, model: Optional[str] = None
+) -> Optional[str]:
     if not base:
         return None
-    b = base.rstrip('/')
+    b = base.rstrip("/")
     # Try OpenAI-style chat.completions
     payload = {
         "model": model or "",
@@ -444,7 +527,7 @@ def _vllm_stream_chat(base: str, prompt: str, model: Optional[str] = None):
     """Yield text deltas from vLLM OpenAI-style streaming when available."""
     if not base:
         return
-    b = base.rstrip('/')
+    b = base.rstrip("/")
     payload = {
         "model": model or "",
         "messages": [{"role": "user", "content": prompt}],
@@ -453,7 +536,11 @@ def _vllm_stream_chat(base: str, prompt: str, model: Optional[str] = None):
         "max_tokens": 1024,
     }
     data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(f"{b}/v1/chat/completions", data=data, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(
+        f"{b}/v1/chat/completions",
+        data=data,
+        headers={"Content-Type": "application/json"},
+    )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             for raw in resp:
@@ -468,7 +555,9 @@ def _vllm_stream_chat(base: str, prompt: str, model: Optional[str] = None):
                     break
                 try:
                     obj = json.loads(chunk)
-                    delta = ((obj.get("choices") or [{}])[0].get("delta") or {}).get("content")
+                    delta = ((obj.get("choices") or [{}])[0].get("delta") or {}).get(
+                        "content"
+                    )
                     if isinstance(delta, str) and delta:
                         yield delta
                 except Exception:
@@ -477,68 +566,9 @@ def _vllm_stream_chat(base: str, prompt: str, model: Optional[str] = None):
         return
 
 
-def _http_post_json(url: str, payload: Dict[str, Any], timeout: float = 20.0) -> tuple[int, str]:
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = resp.read().decode("utf-8", errors="ignore")
-        return resp.status or 0, body
-
-
-def _vllm_generate_text(base: str, prompt: str, model: Optional[str] = None) -> Optional[str]:
-    if not base:
-        return None
-    b = base.rstrip('/')
-    # Try OpenAI-style chat.completions
-    payload = {
-        "model": model or "",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7,
-        "max_tokens": 256,
-    }
-    try:
-        status, body = _http_post_json(f"{b}/v1/chat/completions", payload)
-        if 200 <= status < 300:
-            obj = json.loads(body)
-            choices = obj.get("choices") or []
-            if choices and choices[0].get("message", {}).get("content"):
-                return str(choices[0]["message"]["content"]).strip()
-    except Exception:
-        pass
-    # Try OpenAI-style completions
-    try:
-        payload2 = {
-            "model": model or "",
-            "prompt": prompt,
-            "temperature": 0.7,
-            "max_tokens": 256,
-        }
-        status, body = _http_post_json(f"{b}/v1/completions", payload2)
-        if 200 <= status < 300:
-            obj = json.loads(body)
-            choices = obj.get("choices") or []
-            if choices and (choices[0].get("text") is not None):
-                return str(choices[0]["text"]).strip()
-    except Exception:
-        pass
-    # Try vLLM non-OpenAI generate
-    try:
-        payload3 = {"prompt": prompt, "temperature": 0.7, "max_tokens": 256}
-        status, body = _http_post_json(f"{b}/generate", payload3)
-        if 200 <= status < 300:
-            obj = json.loads(body)
-            if isinstance(obj, dict) and obj.get("text"):
-                return str(obj["text"]).strip()
-            if isinstance(obj, dict) and obj.get("outputs"):
-                outs = obj["outputs"]
-                if outs and outs[0].get("text"):
-                    return str(outs[0]["text"]).strip()
-    except Exception:
-        pass
-    return None
-
-
-def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def process(
+    spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """
     Implement a simple Psyche simulation flow based on the examples/psyche-simulation.
     - Creates per-subcomponent outputs
@@ -568,7 +598,7 @@ def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> D
         result["components"][comp["id"]] = {
             "role": comp["role"],
             "text": comp_text,
-            "confidence": round(0.5 + (len(comp_text) % 10) / 20.0, 3)
+            "confidence": round(0.5 + (len(comp_text) % 10) / 20.0, 3),
         }
 
     # Ego integrates: simple concatenation and a computed score
@@ -579,7 +609,7 @@ def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> D
     result["ego"] = {
         "integrated_text": ego_text,
         "integration_score": integration_score,
-        "analysis": f"Ego produced integration with score {integration_score}"
+        "analysis": f"Ego produced integration with score {integration_score}",
     }
 
     # Graph summary for UI consumption
@@ -595,14 +625,23 @@ def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> D
             },
             "graph": {
                 "nodes": [
-                    {"id": comp["id"], "type": "psyche.subcomponent", "position": {"x": 100 + idx * 120, "y": 100}, "isMediaNode": False}
+                    {
+                        "id": comp["id"],
+                        "type": "psyche.subcomponent",
+                        "position": {"x": 100 + idx * 120, "y": 100},
+                        "isMediaNode": False,
+                    }
                     for idx, comp in enumerate(subcomponents)
-                ] + [
-                    {"id": "ego", "type": "psyche.ego", "position": {"x": 100 + len(subcomponents) * 120, "y": 250}, "isMediaNode": False}
+                ]
+                + [
+                    {
+                        "id": "ego",
+                        "type": "psyche.ego",
+                        "position": {"x": 100 + len(subcomponents) * 120, "y": 250},
+                        "isMediaNode": False,
+                    }
                 ],
-                "edges": [
-                    {"from": comp["id"], "to": "ego"} for comp in subcomponents
-                ],
+                "edges": [{"from": comp["id"], "to": "ego"} for comp in subcomponents],
             },
             "runConfig": {
                 "streamingConfig": {"enableRealtime": True, "defaultChunkSize": 1024}
@@ -617,7 +656,9 @@ def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> D
     return result
 
 
-def make_output(result_payload: Dict[str, Any], start_time: float, end_time: float) -> Dict[str, Any]:
+def make_output(
+    result_payload: Dict[str, Any], start_time: float, end_time: float
+) -> Dict[str, Any]:
     """Wrap result with mentat_meta observability block."""
     seconds = round(end_time - start_time, 4)
     mentat_meta = {
@@ -669,10 +710,14 @@ def main() -> int:
             pass
         # Configure CloudEvents/Checkpoint from environment and incoming context
         ce_enabled = _env_flag_true(os.environ.get("PSYCHE_SIM_CE_ENABLED"))
-        ce_source = os.environ.get("PSYCHE_SIM_CE_SOURCE", "/mentatlab/agent/psyche-sim")
+        ce_source = os.environ.get(
+            "PSYCHE_SIM_CE_SOURCE", "/mentatlab/agent/psyche-sim"
+        )
         ce_version = os.environ.get("PSYCHE_SIM_CE_VERSION", "1.0")
         try:
-            checkpoint_interval = int(os.environ.get("PSYCHE_SIM_CHECKPOINT_INTERVAL", "0") or "0")
+            checkpoint_interval = int(
+                os.environ.get("PSYCHE_SIM_CHECKPOINT_INTERVAL", "0") or "0"
+            )
         except Exception:
             checkpoint_interval = 0
         exec_header = os.environ.get("PSYCHE_SIM_EXECUTION_ID_HEADER", "X-Execution-Id")
@@ -695,13 +740,15 @@ def main() -> int:
                             execution_id = v if isinstance(v, str) else str(v)
                             break
 
-        _CE_CONFIG.update({
-            "enabled": ce_enabled,
-            "source": ce_source,
-            "specversion": ce_version,
-            "execution_id": execution_id,
-            "checkpoint_interval": checkpoint_interval,
-        })
+        _CE_CONFIG.update(
+            {
+                "enabled": ce_enabled,
+                "source": ce_source,
+                "specversion": ce_version,
+                "execution_id": execution_id,
+                "checkpoint_interval": checkpoint_interval,
+            }
+        )
 
         # If streaming mode requested, simulate an NDJSON stream before final output
         mode = None
@@ -722,11 +769,17 @@ def main() -> int:
                     for i in range(0, len(words), size):
                         text_chunks.append(" ".join(words[i : i + size]))
             else:
-                text_chunks = ["Psyche Simulation streaming message 1.", "...message 2...", "Final chunk."]
+                text_chunks = [
+                    "Psyche Simulation streaming message 1.",
+                    "...message 2...",
+                    "Final chunk.",
+                ]
 
             # vLLM integration: if enabled, stream deltas from the model as text:stream
             vllm_base = os.environ.get("VLLM_BASE_URL", "").strip()
-            use_vllm = _env_flag_true(os.environ.get("PSYCHE_USE_VLLM", "1")) and bool(vllm_base)
+            use_vllm = _env_flag_true(os.environ.get("PSYCHE_USE_VLLM", "1")) and bool(
+                vllm_base
+            )
             vllm_model = os.environ.get("VLLM_MODEL", "")
 
             # Allow override of chunk_delay
@@ -753,8 +806,13 @@ def main() -> int:
             }
             _emit_stream_message(header)
             try:
-                log_info("psyche-sim: initializing stream", data={"agent_id": agent_id, "stream_id": stream_id})
-                checkpoint("initializing", 0.05, {"agent_id": agent_id, "stream_id": stream_id})
+                log_info(
+                    "psyche-sim: initializing stream",
+                    data={"agent_id": agent_id, "stream_id": stream_id},
+                )
+                checkpoint(
+                    "initializing", 0.05, {"agent_id": agent_id, "stream_id": stream_id}
+                )
             except Exception:
                 pass
             if use_vllm and isinstance(spec, dict):
@@ -772,7 +830,9 @@ def main() -> int:
                 _emit_stream_message(start_evt)
                 seq = 2
                 acc = []
-                for delta in _vllm_stream_chat(vllm_base, str(prompt_val), vllm_model) or []:
+                for delta in (
+                    _vllm_stream_chat(vllm_base, str(prompt_val), vllm_model) or []
+                ):
                     acc.append(delta)
                     msg = {
                         "id": str(uuid.uuid4()),
@@ -783,7 +843,11 @@ def main() -> int:
                         "content": delta,
                         "isComplete": False,
                         "sequence": seq,
-                        "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": "vllm"},
+                        "model": {
+                            "name": AGENT_MODEL,
+                            "provider": "psyche-sim",
+                            "component": "vllm",
+                        },
                     }
                     _emit_stream_message(msg)
                     seq += 1
@@ -810,7 +874,11 @@ def main() -> int:
                         "content": final_text,
                         "isComplete": True,
                         "sequence": seq,
-                        "model": {"name": AGENT_MODEL, "provider": "psyche-sim", "component": "vllm"},
+                        "model": {
+                            "name": AGENT_MODEL,
+                            "provider": "psyche-sim",
+                            "component": "vllm",
+                        },
                     }
                     _emit_stream_message(final_msg)
                     seq += 1
@@ -837,8 +905,18 @@ def main() -> int:
                 _emit_stream_message(end_evt)
             else:
                 # Simulated streaming with optional model-crafted final line
-                final_override = _vllm_generate_text(vllm_base, spec.get("prompt", "")) if vllm_base else None
-                _simulate_streaming(agent_id=agent_id, stream_id=stream_id, text_chunks=text_chunks, chunk_delay=chunk_delay, final_override=final_override)
+                final_override = (
+                    _vllm_generate_text(vllm_base, spec.get("prompt", ""))
+                    if vllm_base
+                    else None
+                )
+                _simulate_streaming(
+                    agent_id=agent_id,
+                    stream_id=stream_id,
+                    text_chunks=text_chunks,
+                    chunk_delay=chunk_delay,
+                    final_override=final_override,
+                )
             # Small pause to ensure consumer can process
             time.sleep(0.05)
 
@@ -862,7 +940,10 @@ def main() -> int:
         # Completion log/checkpoint
         try:
             checkpoint("end", 1.0)
-            log_info("psyche-sim: completed", data={"seconds": round(end_time - start_time, 4)})
+            log_info(
+                "psyche-sim: completed",
+                data={"seconds": round(end_time - start_time, 4)},
+            )
         except Exception:
             pass
         return 0
@@ -873,7 +954,7 @@ def main() -> int:
         error_payload = {
             "error": "Internal agent error",
             "exception": str(exc),
-            "traceback": tb
+            "traceback": tb,
         }
         out = make_output(error_payload, start_time, end_time)
         print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))

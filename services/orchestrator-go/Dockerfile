@@ -3,10 +3,12 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o orchestrator main.go
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o orchestrator ./cmd/orchestrator/
 
 FROM alpine:latest
+RUN apk --no-cache add ca-certificates
 WORKDIR /app
 COPY --from=builder /app/orchestrator .
 EXPOSE 7070
+USER 1000:1000
 CMD ["./orchestrator"]
