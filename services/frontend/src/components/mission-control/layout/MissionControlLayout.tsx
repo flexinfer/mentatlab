@@ -3,33 +3,24 @@ import { FeatureFlags } from '../../../config/features';
 import { StreamingCanvas } from '../../StreamingCanvas';
 import { Button } from '../../ui/button';
 import TimelinePanel from '../panels/TimelinePanel';
-// ADD: Issues panel import
 import IssuesPanel from '../panels/IssuesPanel';
-// ADD: Console panel import
 import ConsolePanel from '../panels/ConsolePanel';
-// ADD: Runs panel import (dev)
 import RunsPanel from '../panels/RunsPanel';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { ReactFlowProvider } from 'reactflow';
-// ADD: streaming store + enum for status badge and connect state
-import { useStreamingStore } from '../../../store/index';
+import { useStreamingStore, useFlowStore } from '../../../store/index';
 import { StreamConnectionState } from '../../../types/streaming';
-import ContractOverlay from '../overlays/ContractOverlay';
 import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
 import InspectorPanel from '../panels/InspectorPanel';
 import NetworkPanel from '../panels/NetworkPanel';
-import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
-import { openCogpakUi, resolveRemoteEntry } from '@/utils/remoteUi';
-// ADD: orchestrator run helper
+import { getOrchestratorBaseUrl } from '@/config/orchestrator';
+import { openCogpakUi } from '@/utils/remoteUi';
 import { orchestratorService } from '../../../services/api/orchestratorService';
 import GraphPanel from '../panels/GraphPanel';
-// ADD: keyboard shortcuts
 import { useKeyboardShortcuts, type KeyboardShortcut, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsDialog } from '@/components/ui/KeyboardShortcutsDialog';
-// ADD: flow store for undo/redo
-import { useFlowStore } from '@/store/index';
-// NEW: stream registry to stop live clients when needed
+import { CommandPalette, type Command } from '@/components/ui/CommandPalette';
 import { streamRegistry } from '@/services/streaming/streamRegistry';
 
 export function MissionControlLayout() {
@@ -96,6 +87,9 @@ export function MissionControlLayout() {
 
   // Keyboard shortcuts help dialog
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = React.useState<boolean>(false);
+
+  // Command palette state
+  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState<boolean>(false);
 
   // Lineage overlay state
   const [lineageOverlayOpen, setLineageOverlayOpen] = React.useState<boolean>(false);
@@ -211,8 +205,7 @@ export function MissionControlLayout() {
   const shortcuts = React.useMemo<KeyboardShortcut[]>(() => [
     {
       ...commonShortcuts.commandPalette(() => {
-        console.log('[Shortcuts] Command palette (not yet implemented)');
-        // TODO: Implement command palette
+        setCommandPaletteOpen(true);
       }),
       description: 'Navigation: Open command palette',
     },
@@ -265,7 +258,9 @@ export function MissionControlLayout() {
     },
     {
       ...commonShortcuts.escape(() => {
-        if (shortcutsDialogOpen) {
+        if (commandPaletteOpen) {
+          setCommandPaletteOpen(false);
+        } else if (shortcutsDialogOpen) {
           setShortcutsDialogOpen(false);
         } else if (lineageOverlayOpen) {
           setLineageOverlayOpen(false);
@@ -324,10 +319,105 @@ export function MissionControlLayout() {
       },
       preventDefault: true,
     },
-  ], [shortcutsDialogOpen, lineageOverlayOpen, policyOverlayOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo]);
+  ], [commandPaletteOpen, shortcutsDialogOpen, lineageOverlayOpen, policyOverlayOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo]);
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts(shortcuts);
+
+  // Command palette commands
+  const commands = React.useMemo<Command[]>(() => [
+    // Navigation
+    {
+      id: 'goto-flow',
+      label: 'Go to Flow Editor',
+      description: 'Switch to flow canvas view',
+      category: 'Navigation',
+      action: () => setMainView('flow'),
+    },
+    {
+      id: 'goto-network',
+      label: 'Go to Network View',
+      description: 'Switch to network visualization',
+      category: 'Navigation',
+      action: () => setMainView('network'),
+    },
+    // Flow Actions
+    {
+      id: 'run-flow',
+      label: 'Run Flow',
+      description: 'Execute the current flow',
+      category: 'Flow',
+      shortcut: 'Ctrl+R',
+      action: startOrchestratorRun,
+    },
+    {
+      id: 'demo-run',
+      label: 'Start Demo Run',
+      description: 'Start a simulated demo run',
+      category: 'Flow',
+      shortcut: 'Ctrl+D',
+      action: startDemoRun,
+    },
+    {
+      id: 'undo',
+      label: 'Undo',
+      description: 'Undo last change',
+      category: 'Edit',
+      shortcut: 'Ctrl+Z',
+      action: undo,
+      disabled: !canUndo(),
+    },
+    {
+      id: 'redo',
+      label: 'Redo',
+      description: 'Redo last change',
+      category: 'Edit',
+      shortcut: 'Ctrl+Shift+Z',
+      action: redo,
+      disabled: !canRedo(),
+    },
+    // View Toggles
+    {
+      id: 'toggle-lineage',
+      label: 'Toggle Lineage Overlay',
+      description: 'Show/hide data lineage visualization',
+      category: 'View',
+      shortcut: 'Ctrl+L',
+      action: () => setLineageOverlayOpen((o) => !o),
+    },
+    {
+      id: 'toggle-policy',
+      label: 'Toggle Policy Overlay',
+      description: 'Show/hide policy constraints',
+      category: 'View',
+      shortcut: 'Ctrl+P',
+      action: () => setPolicyOverlayOpen((o) => !o),
+    },
+    {
+      id: 'toggle-dark-mode',
+      label: 'Toggle Dark Mode',
+      description: 'Switch between light and dark theme',
+      category: 'View',
+      shortcut: 'Ctrl+T',
+      action: () => setDark((d) => !d),
+    },
+    // Settings
+    {
+      id: 'open-settings',
+      label: 'Open Settings',
+      description: 'Configure UI settings and feature flags',
+      category: 'Settings',
+      action: () => setSettingsOpen(true),
+    },
+    {
+      id: 'show-shortcuts',
+      label: 'Keyboard Shortcuts',
+      description: 'Show all available keyboard shortcuts',
+      category: 'Help',
+      shortcut: 'Shift+?',
+      action: () => setShortcutsDialogOpen(true),
+    },
+  ], [startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo]);
 
   return (
     <div className="h-screen w-screen relative overflow-hidden bg-background text-foreground font-sans selection:bg-primary/30">
@@ -505,6 +595,13 @@ export function MissionControlLayout() {
         shortcuts={shortcuts}
         isOpen={shortcutsDialogOpen}
         onClose={() => setShortcutsDialogOpen(false)}
+      />
+
+      {/* Command Palette */}
+      <CommandPalette
+        commands={commands}
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
       />
 
       {/* Lineage Overlay */}

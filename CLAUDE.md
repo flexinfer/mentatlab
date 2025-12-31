@@ -48,7 +48,10 @@ npm run e2e        # Playwright tests
 cd services/gateway-go && go run main.go
 
 # Orchestrator (port 7070)
-cd services/orchestrator-go && go run main.go
+cd services/orchestrator-go && go run ./cmd/orchestrator/
+
+# Quick check (lint + test Go services)
+make check
 
 # Testing
 go test -v ./...
