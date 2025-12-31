@@ -1,0 +1,40 @@
+#!/bin/bash
+# Pre-commit hook for MentatLab
+# Runs linting and tests before allowing commits
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Get list of staged Go files
+GATEWAY_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep "^services/gateway-go/.*\.go$" || true)
+ORCHESTRATOR_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep "^services/orchestrator-go/.*\.go$" || true)
+FRONTEND_CHANGED=$(git diff --cached --name-only --diff-filter=ACM | grep "^services/frontend/.*\.\(ts\|tsx\|js\|jsx\)$" || true)
+
+# Check gateway-go
+if [ -n "$GATEWAY_CHANGED" ]; then
+    echo "==> Checking gateway-go..."
+    (cd services/gateway-go && go vet ./... && go build ./... && go test ./...)
+    echo "    gateway-go: OK"
+fi
+
+# Check orchestrator-go
+if [ -n "$ORCHESTRATOR_CHANGED" ]; then
+    echo "==> Checking orchestrator-go..."
+    (cd services/orchestrator-go && go vet ./... && go build ./... && go test ./...)
+    echo "    orchestrator-go: OK"
+fi
+
+# Check frontend
+if [ -n "$FRONTEND_CHANGED" ]; then
+    echo "==> Checking frontend..."
+    (cd services/frontend && npm run lint)
+    echo "    frontend: OK"
+fi
+
+# If nothing changed that we check, still pass
+if [ -z "$GATEWAY_CHANGED" ] && [ -z "$ORCHESTRATOR_CHANGED" ] && [ -z "$FRONTEND_CHANGED" ]; then
+    echo "No relevant files changed, skipping checks."
+fi
+
+echo "Pre-commit checks passed!"

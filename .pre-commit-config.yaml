@@ -1,0 +1,72 @@
+repos:
+  # Go checks
+  - repo: local
+    hooks:
+      - id: go-vet-gateway
+        name: go vet (gateway-go)
+        entry: bash -c 'cd services/gateway-go && go vet ./...'
+        language: system
+        files: ^services/gateway-go/.*\.go$
+        pass_filenames: false
+
+      - id: go-vet-orchestrator
+        name: go vet (orchestrator-go)
+        entry: bash -c 'cd services/orchestrator-go && go vet ./...'
+        language: system
+        files: ^services/orchestrator-go/.*\.go$
+        pass_filenames: false
+
+      - id: go-test-gateway
+        name: go test (gateway-go)
+        entry: bash -c 'cd services/gateway-go && go test ./...'
+        language: system
+        files: ^services/gateway-go/.*\.go$
+        pass_filenames: false
+
+      - id: go-test-orchestrator
+        name: go test (orchestrator-go)
+        entry: bash -c 'cd services/orchestrator-go && go test ./...'
+        language: system
+        files: ^services/orchestrator-go/.*\.go$
+        pass_filenames: false
+
+      - id: go-build-gateway
+        name: go build (gateway-go)
+        entry: bash -c 'cd services/gateway-go && go build ./...'
+        language: system
+        files: ^services/gateway-go/.*\.go$
+        pass_filenames: false
+
+      - id: go-build-orchestrator
+        name: go build (orchestrator-go)
+        entry: bash -c 'cd services/orchestrator-go && go build ./...'
+        language: system
+        files: ^services/orchestrator-go/.*\.go$
+        pass_filenames: false
+
+  # Frontend checks
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: frontend lint
+        entry: bash -c 'cd services/frontend && npm run lint'
+        language: system
+        files: ^services/frontend/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
+  # YAML validation
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-yaml
+        args: ['--unsafe']  # Allow custom tags
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+
+  # Dockerfile linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: ['--ignore', 'DL3018']  # Allow apk add without version pinning
