@@ -8,6 +8,7 @@ export * from "./apiService";
 export * from "./baseService";
 
 export * from "./agentService";
+export * from "./flowService";
 export * from "./mediaService";
 export * from "./streamingService"; // Export the new streaming service
 export * from "./orchestratorService";
@@ -20,5 +21,6 @@ export { streamingService as defaultStreamingService } from "./streamingService"
 // Export service factories
 
 export { getAgentService } from "./agentService";
+export { getFlowService } from "./flowService";
 export { getMediaService } from "./mediaService";
 export { orchestratorService } from "./orchestratorService";

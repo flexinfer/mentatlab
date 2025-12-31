@@ -14,6 +14,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/api"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
@@ -149,6 +150,24 @@ func main() {
 	}
 	defer agentRegistry.Close()
 
+	// Initialize flow store
+	var flows flowstore.FlowStore
+	if cfg.RunStoreType == "redis" {
+		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
+		redisFlows, err := flowstore.NewRedisStore(redisAddr)
+		if err != nil {
+			logger.Warn("failed to create Redis flow store, using memory", "error", err)
+			flows = flowstore.NewMemoryStore()
+		} else {
+			flows = redisFlows
+			logger.Info("using Redis flow store")
+		}
+	} else {
+		flows = flowstore.NewMemoryStore()
+		logger.Info("using in-memory flow store")
+	}
+	defer flows.Close()
+
 	// Initialize K8s client (optional)
 	var k8sClient *k8s.Client
 	if cfg.K8sInCluster || cfg.K8sKubeconfig != "" {
@@ -169,6 +188,7 @@ func main() {
 	// Initialize API handlers
 	handlerOpts := &api.HandlerOptions{
 		Registry:  agentRegistry,
+		FlowStore: flows,
 		K8sClient: k8sClient,
 	}
 	handlers := api.NewHandlers(store, sched, v, cfg, logger, handlerOpts)

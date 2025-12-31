@@ -57,6 +57,13 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/agents/schedule", s.handlers.ScheduleAgent).Methods("POST")
 	api.HandleFunc("/agents/validate", s.handlers.ValidateManifest).Methods("POST")
 
+	// Flow management
+	api.HandleFunc("/flows", s.handlers.CreateFlow).Methods("POST")
+	api.HandleFunc("/flows", s.handlers.ListFlows).Methods("GET")
+	api.HandleFunc("/flows/{id}", s.handlers.GetFlow).Methods("GET")
+	api.HandleFunc("/flows/{id}", s.handlers.UpdateFlow).Methods("PUT")
+	api.HandleFunc("/flows/{id}", s.handlers.DeleteFlow).Methods("DELETE")
+
 	// Job management (K8s jobs)
 	api.HandleFunc("/jobs/{id}/status", s.handlers.GetJobStatus).Methods("GET")
 	api.HandleFunc("/jobs/{id}", s.handlers.DeleteJob).Methods("DELETE")

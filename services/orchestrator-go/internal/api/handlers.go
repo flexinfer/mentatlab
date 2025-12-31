@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
@@ -26,6 +27,7 @@ type Handlers struct {
 	scheduler *scheduler.Scheduler
 	validator *validator.Validator
 	registry  registry.AgentRegistry
+	flowStore flowstore.FlowStore
 	k8sClient *k8s.Client
 	config    *config.Config
 	logger    *slog.Logger
@@ -34,6 +36,7 @@ type Handlers struct {
 // HandlerOptions configures optional handler dependencies.
 type HandlerOptions struct {
 	Registry  registry.AgentRegistry
+	FlowStore flowstore.FlowStore
 	K8sClient *k8s.Client
 }
 
@@ -51,6 +54,7 @@ func NewHandlers(store runstore.RunStore, sched *scheduler.Scheduler, v *validat
 	}
 	if opts != nil {
 		h.registry = opts.Registry
+		h.flowStore = opts.FlowStore
 		h.k8sClient = opts.K8sClient
 	}
 	return h
@@ -545,6 +549,157 @@ func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("agent deleted", slog.String("id", agentID))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- Flow Management ---
+
+// CreateFlow handles POST /api/v1/flows
+func (h *Handlers) CreateFlow(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if h.flowStore == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		return
+	}
+
+	var req flowstore.CreateFlowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		return
+	}
+
+	flow, err := h.flowStore.Create(ctx, &req)
+	if err != nil {
+		if errors.Is(err, flowstore.ErrFlowExists) {
+			h.respondError(w, http.StatusConflict, "flow already exists", err)
+			return
+		}
+		h.respondError(w, http.StatusInternalServerError, "failed to create flow", err)
+		return
+	}
+
+	h.logger.Info("flow created", slog.String("id", flow.ID), slog.String("name", flow.Name))
+	h.respondJSON(w, http.StatusCreated, flow)
+}
+
+// GetFlow handles GET /api/v1/flows/{id}
+func (h *Handlers) GetFlow(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	flowID := vars["id"]
+
+	if h.flowStore == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		return
+	}
+
+	flow, err := h.flowStore.Get(ctx, flowID)
+	if err != nil {
+		if errors.Is(err, flowstore.ErrFlowNotFound) {
+			h.respondError(w, http.StatusNotFound, "flow not found", err)
+			return
+		}
+		h.respondError(w, http.StatusInternalServerError, "failed to get flow", err)
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, flow)
+}
+
+// UpdateFlow handles PUT /api/v1/flows/{id}
+func (h *Handlers) UpdateFlow(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	flowID := vars["id"]
+
+	if h.flowStore == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		return
+	}
+
+	var req flowstore.UpdateFlowRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		return
+	}
+
+	flow, err := h.flowStore.Update(ctx, flowID, &req)
+	if err != nil {
+		if errors.Is(err, flowstore.ErrFlowNotFound) {
+			h.respondError(w, http.StatusNotFound, "flow not found", err)
+			return
+		}
+		h.respondError(w, http.StatusInternalServerError, "failed to update flow", err)
+		return
+	}
+
+	h.logger.Info("flow updated", slog.String("id", flow.ID))
+	h.respondJSON(w, http.StatusOK, flow)
+}
+
+// DeleteFlow handles DELETE /api/v1/flows/{id}
+func (h *Handlers) DeleteFlow(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	flowID := vars["id"]
+
+	if h.flowStore == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		return
+	}
+
+	if err := h.flowStore.Delete(ctx, flowID); err != nil {
+		if errors.Is(err, flowstore.ErrFlowNotFound) {
+			h.respondError(w, http.StatusNotFound, "flow not found", err)
+			return
+		}
+		h.respondError(w, http.StatusInternalServerError, "failed to delete flow", err)
+		return
+	}
+
+	h.logger.Info("flow deleted", slog.String("id", flowID))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListFlows handles GET /api/v1/flows
+func (h *Handlers) ListFlows(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if h.flowStore == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		return
+	}
+
+	// Parse query parameters
+	opts := &flowstore.ListOptions{}
+
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		if l, err := strconv.Atoi(limit); err == nil && l > 0 {
+			opts.Limit = l
+			if opts.Limit > 500 {
+				opts.Limit = 500
+			}
+		}
+	}
+	if offset := r.URL.Query().Get("offset"); offset != "" {
+		if o, err := strconv.Atoi(offset); err == nil && o >= 0 {
+			opts.Offset = o
+		}
+	}
+	if createdBy := r.URL.Query().Get("created_by"); createdBy != "" {
+		opts.CreatedBy = createdBy
+	}
+
+	flows, err := h.flowStore.List(ctx, opts)
+	if err != nil {
+		h.respondError(w, http.StatusInternalServerError, "failed to list flows", err)
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"flows": flows,
+		"count": len(flows),
+	})
 }
 
 // --- Job Management ---
