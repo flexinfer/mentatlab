@@ -92,8 +92,20 @@ func New(cfg *Config) (*Service, error) {
 	case "memory":
 		backend = NewMemoryBackend()
 	case "s3", "minio":
-		// TODO: Implement S3/MinIO backend
-		return nil, fmt.Errorf("s3/minio backend not yet implemented")
+		s3Cfg := &S3Config{
+			Endpoint:        cfg.Endpoint,
+			Bucket:          cfg.Bucket,
+			Region:          cfg.Region,
+			AccessKeyID:     cfg.AccessKeyID,
+			SecretAccessKey: cfg.SecretAccessKey,
+			UseSSL:          cfg.UseSSL,
+			PathPrefix:      cfg.PathPrefix,
+		}
+		s3Backend, err := NewS3Backend(s3Cfg)
+		if err != nil {
+			return nil, fmt.Errorf("create s3 backend: %w", err)
+		}
+		backend = s3Backend
 	default:
 		return nil, fmt.Errorf("unknown backend type: %s", cfg.Type)
 	}

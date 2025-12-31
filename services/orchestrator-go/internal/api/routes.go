@@ -46,10 +46,16 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/runs/{id}/cancel", s.handlers.CancelRun).Methods("POST")
 	api.HandleFunc("/runs/{id}/events", s.handlers.StreamEvents).Methods("GET")
 
+	// Agent registry CRUD
+	api.HandleFunc("/agents", s.handlers.CreateAgent).Methods("POST")
+	api.HandleFunc("/agents", s.handlers.ListAgents).Methods("GET")
+	api.HandleFunc("/agents/{id}", s.handlers.GetAgent).Methods("GET")
+	api.HandleFunc("/agents/{id}", s.handlers.UpdateAgent).Methods("PUT")
+	api.HandleFunc("/agents/{id}", s.handlers.DeleteAgent).Methods("DELETE")
+
 	// Agent scheduling
 	api.HandleFunc("/agents/schedule", s.handlers.ScheduleAgent).Methods("POST")
 	api.HandleFunc("/agents/validate", s.handlers.ValidateManifest).Methods("POST")
-	api.HandleFunc("/agents", s.handlers.ListAgents).Methods("GET")
 
 	// Job management (K8s jobs)
 	api.HandleFunc("/jobs/{id}/status", s.handlers.GetJobStatus).Methods("GET")

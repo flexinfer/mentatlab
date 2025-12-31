@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/api"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
@@ -122,8 +125,53 @@ func main() {
 		v = nil
 	}
 
+	// Initialize agent registry
+	var agentRegistry registry.AgentRegistry
+	if cfg.RunStoreType == "redis" {
+		// Parse Redis URL for registry
+		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
+		registryCfg := &registry.RedisConfig{
+			Addr:     redisAddr,
+			Password: cfg.RedisPassword,
+			DB:       cfg.RedisDB,
+		}
+		redisRegistry, err := registry.NewRedisRegistry(registryCfg)
+		if err != nil {
+			logger.Warn("failed to create Redis agent registry, using memory", "error", err)
+			agentRegistry = registry.NewMemoryRegistryWithDefaults()
+		} else {
+			agentRegistry = redisRegistry
+			logger.Info("using Redis agent registry")
+		}
+	} else {
+		agentRegistry = registry.NewMemoryRegistryWithDefaults()
+		logger.Info("using in-memory agent registry with defaults")
+	}
+	defer agentRegistry.Close()
+
+	// Initialize K8s client (optional)
+	var k8sClient *k8s.Client
+	if cfg.K8sInCluster || cfg.K8sKubeconfig != "" {
+		k8sCfg := &k8s.Config{
+			InCluster:  cfg.K8sInCluster,
+			Kubeconfig: cfg.K8sKubeconfig,
+			Namespace:  cfg.K8sNamespace,
+		}
+		client, err := k8s.NewClient(k8sCfg)
+		if err != nil {
+			logger.Warn("failed to create K8s client", "error", err)
+		} else {
+			k8sClient = client
+			logger.Info("K8s client initialized", slog.String("namespace", cfg.K8sNamespace))
+		}
+	}
+
 	// Initialize API handlers
-	handlers := api.NewHandlers(store, sched, v, cfg, logger)
+	handlerOpts := &api.HandlerOptions{
+		Registry:  agentRegistry,
+		K8sClient: k8sClient,
+	}
+	handlers := api.NewHandlers(store, sched, v, cfg, logger, handlerOpts)
 	server := api.NewServer(handlers)
 
 	// Create HTTP server

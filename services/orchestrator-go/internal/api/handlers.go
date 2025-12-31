@@ -5,11 +5,15 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
@@ -21,22 +25,35 @@ type Handlers struct {
 	store     runstore.RunStore
 	scheduler *scheduler.Scheduler
 	validator *validator.Validator
+	registry  registry.AgentRegistry
+	k8sClient *k8s.Client
 	config    *config.Config
 	logger    *slog.Logger
 }
 
+// HandlerOptions configures optional handler dependencies.
+type HandlerOptions struct {
+	Registry  registry.AgentRegistry
+	K8sClient *k8s.Client
+}
+
 // NewHandlers creates a new Handlers instance.
-func NewHandlers(store runstore.RunStore, sched *scheduler.Scheduler, v *validator.Validator, cfg *config.Config, logger *slog.Logger) *Handlers {
+func NewHandlers(store runstore.RunStore, sched *scheduler.Scheduler, v *validator.Validator, cfg *config.Config, logger *slog.Logger, opts *HandlerOptions) *Handlers {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Handlers{
+	h := &Handlers{
 		store:     store,
 		scheduler: sched,
 		validator: v,
 		config:    cfg,
 		logger:    logger,
 	}
+	if opts != nil {
+		h.registry = opts.Registry
+		h.k8sClient = opts.K8sClient
+	}
+	return h
 }
 
 // --- Health Endpoints ---
@@ -163,13 +180,47 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListRuns(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	// Parse pagination parameters
+	limit := 50 // Default limit
+	offset := 0
+
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+			if limit > 500 { // Cap at 500
+				limit = 500
+			}
+		}
+	}
+	if o := r.URL.Query().Get("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
 	runIDs, err := h.store.ListRuns(ctx)
 	if err != nil {
 		h.respondError(w, http.StatusInternalServerError, "failed to list runs", err)
 		return
 	}
 
-	h.respondJSON(w, http.StatusOK, map[string]interface{}{"runs": runIDs})
+	// Apply pagination
+	total := len(runIDs)
+	if offset > total {
+		offset = total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	paginatedIDs := runIDs[offset:end]
+
+	h.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"runs":   paginatedIDs,
+		"total":  total,
+		"limit":  limit,
+		"offset": offset,
+	})
 }
 
 // GetRun handles GET /api/v1/runs/{id}
@@ -344,36 +395,233 @@ func (h *Handlers) ValidateManifest(w http.ResponseWriter, r *http.Request) {
 
 // ListAgents handles GET /api/v1/agents
 func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement agent registry
+	ctx := r.Context()
+
+	// Parse query parameters for filtering
+	opts := &registry.ListOptions{}
+
+	if caps := r.URL.Query().Get("capabilities"); caps != "" {
+		opts.Capabilities = strings.Split(caps, ",")
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		if l, err := strconv.Atoi(limit); err == nil {
+			opts.Limit = l
+		}
+	}
+	if offset := r.URL.Query().Get("offset"); offset != "" {
+		if o, err := strconv.Atoi(offset); err == nil {
+			opts.Offset = o
+		}
+	}
+
+	// Use registry if available
+	if h.registry != nil {
+		agents, err := h.registry.List(ctx, opts)
+		if err != nil {
+			h.respondError(w, http.StatusInternalServerError, "failed to list agents", err)
+			return
+		}
+		h.respondJSON(w, http.StatusOK, map[string]interface{}{
+			"agents": agents,
+			"count":  len(agents),
+		})
+		return
+	}
+
+	// Fallback: hardcoded list for backwards compatibility
 	h.respondJSON(w, http.StatusOK, map[string]interface{}{
 		"agents": []map[string]string{
 			{"id": "mentatlab.echo", "name": "Echo Agent"},
 			{"id": "mentatlab.psyche-sim", "name": "Psyche Simulation"},
 			{"id": "mentatlab.ctm-cogpack", "name": "CTM CogPack"},
 		},
+		"count": 3,
 	})
+}
+
+// CreateAgent handles POST /api/v1/agents
+func (h *Handlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if h.registry == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		return
+	}
+
+	var req registry.CreateAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		return
+	}
+
+	agent, err := h.registry.Create(ctx, &req)
+	if err != nil {
+		if errors.Is(err, registry.ErrAgentExists) {
+			h.respondError(w, http.StatusConflict, "agent already exists", err)
+			return
+		}
+		h.respondError(w, http.StatusInternalServerError, "failed to create agent", err)
+		return
+	}
+
+	h.logger.Info("agent created", slog.String("id", agent.ID), slog.String("name", agent.Name))
+	h.respondJSON(w, http.StatusCreated, agent)
+}
+
+// GetAgent handles GET /api/v1/agents/{id}
+func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	agentID := vars["id"]
+
+	if h.registry == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		return
+	}
+
+	agent, err := h.registry.Get(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, registry.ErrAgentNotFound) {
+			h.respondError(w, http.StatusNotFound, "agent not found", err)
+			return
+		}
+		h.respondError(w, http.StatusInternalServerError, "failed to get agent", err)
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, agent)
+}
+
+// UpdateAgent handles PUT /api/v1/agents/{id}
+func (h *Handlers) UpdateAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	agentID := vars["id"]
+
+	if h.registry == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		return
+	}
+
+	var req registry.UpdateAgentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		return
+	}
+
+	agent, err := h.registry.Update(ctx, agentID, &req)
+	if err != nil {
+		if errors.Is(err, registry.ErrAgentNotFound) {
+			h.respondError(w, http.StatusNotFound, "agent not found", err)
+			return
+		}
+		h.respondError(w, http.StatusInternalServerError, "failed to update agent", err)
+		return
+	}
+
+	h.logger.Info("agent updated", slog.String("id", agent.ID))
+	h.respondJSON(w, http.StatusOK, agent)
+}
+
+// DeleteAgent handles DELETE /api/v1/agents/{id}
+func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	agentID := vars["id"]
+
+	if h.registry == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		return
+	}
+
+	if err := h.registry.Delete(ctx, agentID); err != nil {
+		if errors.Is(err, registry.ErrAgentNotFound) {
+			h.respondError(w, http.StatusNotFound, "agent not found", err)
+			return
+		}
+		h.respondError(w, http.StatusInternalServerError, "failed to delete agent", err)
+		return
+	}
+
+	h.logger.Info("agent deleted", slog.String("id", agentID))
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // --- Job Management ---
 
 // GetJobStatus handles GET /api/v1/jobs/{id}/status
 func (h *Handlers) GetJobStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	vars := mux.Vars(r)
 	jobID := vars["id"]
 
-	// TODO: Implement K8s job status lookup
+	if h.k8sClient == nil {
+		// No K8s client - return unknown status
+		h.respondJSON(w, http.StatusOK, map[string]interface{}{
+			"job_id": jobID,
+			"status": "unknown",
+			"error":  "k8s client not configured",
+		})
+		return
+	}
+
+	job, err := h.k8sClient.GetJob(ctx, jobID)
+	if err != nil {
+		h.respondError(w, http.StatusNotFound, "job not found", err)
+		return
+	}
+
+	// Determine job status from K8s job conditions
+	status := "unknown"
+	var startTime, completionTime *string
+
+	if job.Status.StartTime != nil {
+		t := job.Status.StartTime.Format(time.RFC3339)
+		startTime = &t
+	}
+	if job.Status.CompletionTime != nil {
+		t := job.Status.CompletionTime.Format(time.RFC3339)
+		completionTime = &t
+	}
+
+	if job.Status.Succeeded > 0 {
+		status = "succeeded"
+	} else if job.Status.Failed > 0 {
+		status = "failed"
+	} else if job.Status.Active > 0 {
+		status = "running"
+	} else {
+		status = "pending"
+	}
+
 	h.respondJSON(w, http.StatusOK, map[string]interface{}{
-		"job_id": jobID,
-		"status": "unknown",
+		"job_id":          jobID,
+		"status":          status,
+		"active":          job.Status.Active,
+		"succeeded":       job.Status.Succeeded,
+		"failed":          job.Status.Failed,
+		"start_time":      startTime,
+		"completion_time": completionTime,
 	})
 }
 
 // DeleteJob handles DELETE /api/v1/jobs/{id}
 func (h *Handlers) DeleteJob(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	vars := mux.Vars(r)
-	_ = vars["id"]
+	jobID := vars["id"]
 
-	// TODO: Implement K8s job deletion
+	if h.k8sClient == nil {
+		h.respondError(w, http.StatusServiceUnavailable, "k8s client not available", errors.New("k8s client not configured"))
+		return
+	}
+
+	if err := h.k8sClient.DeleteJob(ctx, jobID); err != nil {
+		h.respondError(w, http.StatusInternalServerError, "failed to delete job", err)
+		return
+	}
+
+	h.logger.Info("job deleted", slog.String("job_id", jobID))
 	w.WriteHeader(http.StatusNoContent)
 }
 
