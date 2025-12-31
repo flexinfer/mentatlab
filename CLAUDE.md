@@ -98,7 +98,16 @@ pdm run pytest tests/test_routes.py -k "test_flow"  # Specific test
 
 - `services/frontend/src/components/mission-control/` - Mission Control UI (canvas, panels, overlays)
 - `services/orchestrator/app/` - Python orchestrator core (scheduling.py, runstore.py, streaming.py)
-- `services/orchestrator-go/engine/` - Go graph execution engine
+- `services/orchestrator-go/internal/` - Go orchestrator packages:
+  - `api/` - HTTP handlers and routing
+  - `registry/` - Agent registry (memory/Redis)
+  - `flowstore/` - Flow persistence (memory/Redis)
+  - `runstore/` - Run state storage
+  - `scheduler/` - DAG execution scheduler
+  - `k8s/` - Kubernetes job driver
+- `services/gateway-go/` - Go gateway with:
+  - `hub/` - WebSocket hub with stream filtering
+  - `middleware/` - Auth, rate limiting, security headers
 - `agents/` - Agent implementations (psyche-sim, ctm-cogpack, echo)
 - `cli/mentatctl/` - CLI tool for agent management
 - `schemas/` - JSON schemas for flows, agents
@@ -136,3 +145,40 @@ GitLab CI (`.gitlab-ci.yml`) runs:
 - **Panels**: Console, Issues, Timeline in `src/components/mission-control/panels/`
 - **Feature Flags**: `src/config/features.ts` (CONTRACT_OVERLAY, CONNECT_WS, etc.)
 - **Services**: Linter, API clients in `src/services/mission-control/services.ts`
+- **Command Palette**: `Cmd+K` opens quick actions (`src/components/ui/CommandPalette.tsx`)
+
+## API Endpoints (Go Orchestrator)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/runs` | GET/POST | List/create runs |
+| `/api/v1/runs/{id}` | GET/DELETE | Get/delete run |
+| `/api/v1/runs/{id}/start` | POST | Start run execution |
+| `/api/v1/runs/{id}/events` | GET (SSE) | Stream run events |
+| `/api/v1/agents` | GET/POST | List/register agents |
+| `/api/v1/agents/{id}` | GET/PUT/DELETE | Agent CRUD |
+| `/api/v1/flows` | GET/POST | List/create flows |
+| `/api/v1/flows/{id}` | GET/PUT/DELETE | Flow CRUD |
+| `/api/v1/jobs/{id}/status` | GET | K8s job status |
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+K` | Open command palette |
+| `Cmd+Z` | Undo |
+| `Cmd+Shift+Z` | Redo |
+| `Cmd+R` | Run flow |
+| `Cmd+D` | Start demo run |
+| `Cmd+L` | Toggle lineage overlay |
+| `Cmd+P` | Toggle policy overlay |
+| `Cmd+T` | Toggle dark mode |
+| `Shift+?` | Show all shortcuts |
+| `Escape` | Close dialogs/overlays |
+
+## Pre-commit Hooks
+
+Install with `make install-hooks`. Runs on Go file changes:
+- `go vet` on gateway-go and orchestrator-go
+- `go test` on both services
+- `go build` verification

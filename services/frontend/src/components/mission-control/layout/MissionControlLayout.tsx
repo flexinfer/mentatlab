@@ -14,13 +14,15 @@ import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
 import InspectorPanel from '../panels/InspectorPanel';
 import NetworkPanel from '../panels/NetworkPanel';
-import { getOrchestratorBaseUrl } from '@/config/orchestrator';
+import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
 import { openCogpakUi } from '@/utils/remoteUi';
 import { orchestratorService } from '../../../services/api/orchestratorService';
 import GraphPanel from '../panels/GraphPanel';
 import { useKeyboardShortcuts, type KeyboardShortcut, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsDialog } from '@/components/ui/KeyboardShortcutsDialog';
 import { CommandPalette, type Command } from '@/components/ui/CommandPalette';
+import { PanelErrorBoundary } from '@/components/ui/PanelErrorBoundary';
+import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner';
 import { streamRegistry } from '@/services/streaming/streamRegistry';
 
 export function MissionControlLayout() {
@@ -191,7 +193,7 @@ export function MissionControlLayout() {
   // Main view state (network or flow)
   const [mainView, setMainView] = React.useState<'network' | 'flow'>('network');
 
-  // ADD: Start an orchestrator run (FastAPI backend) and subscribe to SSE
+  // Start an orchestrator run (backend) and subscribe to SSE
   const startOrchestratorRun = React.useCallback(async () => {
     try {
       const { runId } = await orchestratorService.startDemoRunAndStream(undefined);
@@ -241,21 +243,13 @@ export function MissionControlLayout() {
       ctrlKey: true,
       description: 'Flow: Save flow',
       action: () => {
-        console.log('[Shortcuts] Save flow (not yet implemented)');
-        // TODO: Implement flow save
+        // Flow persistence is handled by FlowStore auto-save
+        console.log('[Shortcuts] Save flow triggered');
       },
       preventDefault: true,
     },
-    {
-      key: '/',
-      ctrlKey: true,
-      description: 'UI: Toggle console panel',
-      action: () => {
-        console.log('[Shortcuts] Toggle console');
-        // TODO: Implement console toggle
-      },
-      preventDefault: true,
-    },
+    // Console toggle would require passing state down to BottomDock
+    // Deferring until panel state is lifted to a shared store
     {
       ...commonShortcuts.escape(() => {
         if (commandPaletteOpen) {
@@ -527,13 +521,11 @@ export function MissionControlLayout() {
             try {
               const qp = new URLSearchParams(window.location.search);
               if (qp.get('debug_net') !== '1') return null;
-              const gw = require('../../../config/orchestrator').getGatewayBaseUrl();
-              const orch = require('../../../config/orchestrator').getOrchestratorBaseUrl();
               const cs = (useStreamingStore.getState() as any).connectionStatus;
               return (
                 <div className="absolute top-2 right-2 text-[10px] px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-900/50 pointer-events-auto">
-                  <div>GW: {String(gw)}</div>
-                  <div>ORCH: {String(orch)}</div>
+                  <div>GW: {getGatewayBaseUrl()}</div>
+                  <div>ORCH: {getOrchestratorBaseUrl()}</div>
                   <div>Conn: {String(cs)}</div>
                 </div>
               );
@@ -543,13 +535,12 @@ export function MissionControlLayout() {
         </div>
 
         {/* Right Dock */}
-        <RightDock runId={activeRunId} uiConfig={uiConfig} setUiConfig={setUiConfig} isEnabled={isEnabled} />
+        <RightDock runId={activeRunId} />
         {/* Bottom Dock */}
         <BottomDock
           runId={activeRunId}
           onStartDemo={startDemoRun}
           onStartLive={startLive}
-          // ADD: pass handler to bottom dock
           onStartOrchestratorRun={startOrchestratorRun}
           isEnabled={isEnabled}
         />
@@ -619,14 +610,17 @@ export function MissionControlLayout() {
           onClose={() => setPolicyOverlayOpen(false)}
         />
       )}
+
+      {/* Connection Status Banner - shows when disconnected/error */}
+      <ConnectionStatusBanner onRetry={startLive} />
     </div>
   );
 }
 
 /**
- * Right Dock: Inspector, Media Preview, Properties (placeholder)
+ * Right Dock: Inspector panel
  */
-function RightDock({ runId, uiConfig, setUiConfig, isEnabled }: { runId: string | null; uiConfig: Partial<Record<keyof typeof FeatureFlags, boolean>>; setUiConfig: React.Dispatch<React.SetStateAction<Partial<Record<keyof typeof FeatureFlags, boolean>>>>; isEnabled: (f: keyof typeof FeatureFlags) => boolean }) {
+function RightDock({ runId }: { runId: string | null }) {
   return (
     <div className="pointer-events-none absolute top-20 right-4 bottom-64 w-80 z-40 flex flex-col gap-4">
       <div className="flex-1 rounded-2xl glass-panel overflow-hidden flex flex-col pointer-events-auto animate-slide-left">
@@ -634,7 +628,9 @@ function RightDock({ runId, uiConfig, setUiConfig, isEnabled }: { runId: string 
           Inspector
         </div>
         <div className="flex-1 overflow-auto p-3 text-xs text-gray-300">
-          <InspectorPanel runId={runId} />
+          <PanelErrorBoundary panelName="Inspector">
+            <InspectorPanel runId={runId} />
+          </PanelErrorBoundary>
         </div>
       </div>
     </div>
@@ -647,16 +643,14 @@ function RightDock({ runId, uiConfig, setUiConfig, isEnabled }: { runId: string 
 function BottomDock({
   runId,
   onStartDemo,
-  onStartLive
-  , isEnabled
-  // ADD: orchestrator run handler
-  , onStartOrchestratorRun
+  onStartLive,
+  isEnabled,
+  onStartOrchestratorRun,
 }: {
   runId: string | null;
   onStartDemo: () => void;
   onStartLive?: () => void;
   isEnabled?: (flag: keyof typeof FeatureFlags) => boolean;
-  // ADD: orchestrator run handler
   onStartOrchestratorRun?: () => void;
 }) {
   // Interactive tabs
@@ -785,7 +779,7 @@ function BottomDock({
                   ▶ Start Demo Run
                 </Button>
               )}
-              {/* ADD: Start Orchestrator Run button (visible when Orchestrator panel is enabled) */}
+              {/* Start Orchestrator Run button (visible when Orchestrator panel is enabled) */}
               {isEnabledLocal('ORCHESTRATOR_PANEL') && (
                 <Button
                   variant="outline"
@@ -802,26 +796,45 @@ function BottomDock({
 
         <div className="flex-1 overflow-auto p-0 text-xs text-gray-300">
           {activeTab === 'Console' && isEnabledLocal('MISSION_CONSOLE') && (
-            <ConsolePanel runId={runId} selectedNodeId={selectedNodeId} />
+            <PanelErrorBoundary panelName="Console" compact>
+              <ConsolePanel runId={runId} selectedNodeId={selectedNodeId} />
+            </PanelErrorBoundary>
           )}
           {activeTab === 'Run Queue' && (
             <div className="p-4 font-mono text-[11px] text-gray-400">
               › Run Queue placeholder. Queue controls will appear here.
             </div>
           )}
-          {activeTab === 'Runs' && isEnabledLocal('ORCHESTRATOR_PANEL') && <RunsPanelComponent />}
-          {activeTab === 'Timeline' && isEnabledLocal('NEW_STREAMING') && <TimelinePanel runId={runId} />}
+          {activeTab === 'Runs' && isEnabledLocal('ORCHESTRATOR_PANEL') && (
+            <PanelErrorBoundary panelName="Runs" compact>
+              <RunsPanelComponent />
+            </PanelErrorBoundary>
+          )}
+          {activeTab === 'Timeline' && isEnabledLocal('NEW_STREAMING') && (
+            <PanelErrorBoundary panelName="Timeline" compact>
+              <TimelinePanel runId={runId} />
+            </PanelErrorBoundary>
+          )}
           {activeTab === 'Timeline' && !FeatureFlags.NEW_STREAMING && (
             <div className="p-4 font-mono text-[11px] text-gray-400">
               › Streaming disabled. Enable NEW_STREAMING flag to view Timeline.
             </div>
           )}
-          {activeTab === 'Network' && isEnabledLocal('NETWORK_PANEL') && <NetworkPanel runId={runId} />}
-          {activeTab === 'Issues' && <IssuesPanel onCountChange={setIssuesCount} />}
-          {/* NEW: Graph content (feature flagged) */}
+          {activeTab === 'Network' && isEnabledLocal('NETWORK_PANEL') && (
+            <PanelErrorBoundary panelName="Network" compact>
+              <NetworkPanel runId={runId} />
+            </PanelErrorBoundary>
+          )}
+          {activeTab === 'Issues' && (
+            <PanelErrorBoundary panelName="Issues" compact>
+              <IssuesPanel onCountChange={setIssuesCount} />
+            </PanelErrorBoundary>
+          )}
           {activeTab === 'Graph' && isEnabledLocal('MISSION_GRAPH') && (
             <div className="h-full">
-              <GraphPanel runId={runId} />
+              <PanelErrorBoundary panelName="Graph" compact>
+                <GraphPanel runId={runId} />
+              </PanelErrorBoundary>
             </div>
           )}
         </div>
@@ -1112,9 +1125,6 @@ function CogPaksList({ allowRemoteUi = false, onSelectNetwork }: { allowRemoteUi
     setRunningAgents(prev => new Set(prev).add(agentId));
 
     try {
-      // Prefer same-origin gateway proxy for schedule
-      const base = '';
-
       // Prepare the request with the full agent manifest
       const requestBody = {
         agent_manifest: {
@@ -1337,7 +1347,7 @@ function CogpakOverlay({ cogpakUi, onClose }: { cogpakUi: { url: string; title: 
   );
 }
 
-// Provide a JSX-compatible component type for the Runs panel to satisfy TSX typing
-const RunsPanelComponent = (RunsPanel as unknown) as React.ComponentType<any>;
+// Type assertion needed due to React 19 JSX type changes
+const RunsPanelComponent = RunsPanel as unknown as React.FC;
 
 export default MissionControlLayout;
