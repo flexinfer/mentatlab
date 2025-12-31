@@ -24,7 +24,7 @@ metadata:
     app: gateway
     component: backend
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: gateway
@@ -34,24 +34,46 @@ spec:
         app: gateway
         component: backend
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
       containers:
         - name: gateway
-          image: registry.harbor.lan/library/mentatlab-gateway:latest
+          image: registry.harbor.lan/library/mentatlab-gateway-go:v1.0.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: PORT
               value: "8080"
             - name: ORCHESTRATOR_BASE_URL
               value: "http://orchestrator:7070"
             - name: REDIS_URL
-              value: "redis://redis:6379"
-            - name: TRUSTED_HOSTS
-              value: "*"
-            - name: FRONTEND_URL
+              value: "redis:6379"
+            - name: CORS_ORIGINS
               value: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"
-            # Optional: Cloudflare Access service token for outbound requests (added automatically by deploy.sh if env set)
+            # Cloudflare Access configuration
+            - name: CF_TEAM_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-access
+                  key: CF_TEAM_DOMAIN
+                  optional: true
+            - name: CF_POLICY_AUD
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-access
+                  key: CF_POLICY_AUD
+                  optional: true
             - name: CF_ACCESS_CLIENT_ID
               valueFrom:
                 secretKeyRef:
@@ -64,10 +86,39 @@ spec:
                   name: cloudflare-access
                   key: CF_ACCESS_CLIENT_SECRET
                   optional: true
+            - name: AUTH_ENABLED
+              value: "false"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
           resources:
             requests:
-              cpu: 200m
-              memory: 512Mi
+              cpu: 100m
+              memory: 128Mi
             limits:
-              cpu: 1000m
-              memory: 2Gi
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gateway
+  namespace: mentatlab
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: gateway

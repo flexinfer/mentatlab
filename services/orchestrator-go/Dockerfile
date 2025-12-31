@@ -10,5 +10,5 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /app
 COPY --from=builder /app/orchestrator .
 EXPOSE 7070
-USER 1000:1000
+USER 65534:65534
 CMD ["./orchestrator"]

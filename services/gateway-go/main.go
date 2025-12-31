@@ -1,49 +1,158 @@
 package main
 
 import (
-	"log"
+	"context"
+	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
 
 	"github.com/flexinfer/mentatlab/services/gateway-go/hub"
+	"github.com/flexinfer/mentatlab/services/gateway-go/middleware"
 
 	"github.com/gorilla/mux"
 )
 
+// Config holds gateway configuration.
+type Config struct {
+	Port                string
+	OrchestratorURL     string
+	RedisAddr           string
+	CFTeamDomain        string
+	CFPolicyAUD         string
+	CFServiceClientID   string
+	CFServiceClientSecret string
+	AuthEnabled         bool
+	AllowedOrigins      []string
+	RateLimitRPS        float64
+	RateLimitBurst      int
+	ShutdownTimeout     time.Duration
+}
+
+// loadConfig loads configuration from environment variables.
+func loadConfig() *Config {
+	cfg := &Config{
+		Port:              getEnv("PORT", "8080"),
+		OrchestratorURL:   getEnv("ORCHESTRATOR_BASE_URL", "http://localhost:7070"),
+		RedisAddr:         getEnv("REDIS_URL", "redis:6379"),
+		CFTeamDomain:      getEnv("CF_TEAM_DOMAIN", ""),
+		CFPolicyAUD:       getEnv("CF_POLICY_AUD", ""),
+		CFServiceClientID: getEnv("CF_ACCESS_CLIENT_ID", ""),
+		CFServiceClientSecret: getEnv("CF_ACCESS_CLIENT_SECRET", ""),
+		AuthEnabled:       getEnv("AUTH_ENABLED", "false") == "true",
+		RateLimitRPS:      100,
+		RateLimitBurst:    200,
+		ShutdownTimeout:   10 * time.Second,
+	}
+
+	// Parse allowed origins
+	origins := getEnv("CORS_ORIGINS", "")
+	if origins != "" {
+		cfg.AllowedOrigins = strings.Split(origins, ",")
+	}
+
+	return cfg
+}
+
+func getEnv(key, defaultVal string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+	return defaultVal
+}
+
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	// Setup structured logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	slog.SetDefault(logger)
 
-	orchURLStr := os.Getenv("ORCHESTRATOR_BASE_URL")
-	if orchURLStr == "" {
-		orchURLStr = "http://localhost:7070"
-	}
+	cfg := loadConfig()
 
-	redisAddr := os.Getenv("REDIS_URL")
-	if redisAddr == "" {
-		redisAddr = "redis:6379"
-	}
-
-	orchURL, err := url.Parse(orchURLStr)
+	orchURL, err := url.Parse(cfg.OrchestratorURL)
 	if err != nil {
-		log.Fatalf("Invalid orchestrator URL: %v", err)
+		logger.Error("invalid orchestrator URL", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
-	// Initialize Hub
-	wsHub := hub.NewHub(redisAddr)
+	// Initialize Hub with structured logging
+	wsHub := hub.NewHubWithConfig(&hub.HubConfig{
+		RedisAddr: cfg.RedisAddr,
+		Logger:    logger,
+	})
 	go wsHub.Run()
+
+	// Initialize middleware
+	authMiddleware := middleware.NewAuthMiddleware(&middleware.AuthConfig{
+		TeamDomain:          cfg.CFTeamDomain,
+		PolicyAUD:           cfg.CFPolicyAUD,
+		ServiceClientID:     cfg.CFServiceClientID,
+		ServiceClientSecret: cfg.CFServiceClientSecret,
+		Enabled:             cfg.AuthEnabled,
+		SkipPaths:           []string{"/health", "/healthz", "/ready", "/ws/"},
+	}, logger)
+
+	securityMiddleware := middleware.NewSecurityMiddleware(&middleware.SecurityConfig{
+		AllowedOrigins: cfg.AllowedOrigins,
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowedHeaders: []string{"Content-Type", "Authorization", "X-Request-ID", "CF-Access-JWT-Assertion"},
+		FrameOptions:   "DENY",
+		HSTSMaxAge:     31536000,
+	})
+
+	rateLimiter := middleware.NewRateLimiter(&middleware.RateLimitConfig{
+		RequestsPerSecond: cfg.RateLimitRPS,
+		BurstSize:         cfg.RateLimitBurst,
+		SkipPaths:         []string{"/health", "/healthz", "/ready"},
+	})
 
 	r := mux.NewRouter()
 
-	// Health check
+	// Health endpoints
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("GET")
+
+	r.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}).Methods("GET")
+
+	r.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		status := map[string]interface{}{
+			"status": "ready",
+			"components": map[string]interface{}{
+				"redis": map[string]interface{}{
+					"healthy": wsHub.RedisHealthy(ctx),
+				},
+				"websocket": map[string]interface{}{
+					"clients": wsHub.ClientCount(),
+				},
+			},
+		}
+
+		// Check if Redis is healthy
+		if !wsHub.RedisHealthy(ctx) {
+			status["status"] = "degraded"
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(status)
+	}).Methods("GET")
 
 	// WebSocket endpoint
 	r.HandleFunc("/ws/streams/{stream_id}", func(w http.ResponseWriter, r *http.Request) {
@@ -54,31 +163,81 @@ func main() {
 
 	// Reverse Proxy for API requests
 	proxy := httputil.NewSingleHostReverseProxy(orchURL)
+
+	// Modify proxy to inject service tokens for orchestrator requests
+	originalDirector := proxy.Director
+	proxy.Director = func(req *http.Request) {
+		originalDirector(req)
+		// Inject Cloudflare Access service token for internal requests
+		authMiddleware.InjectServiceToken(req)
+	}
+
 	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("Proxying request: %s %s", r.Method, r.URL.Path)
+		logger.Info("proxying request",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+		)
 		proxy.ServeHTTP(w, r)
 	})
 
-	// CORS Middleware
-	r.Use(mux.CORSMethodMiddleware(r))
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	})
+	// Apply middleware (order matters: outer -> inner)
+	// 1. Recovery (outermost - catch panics)
+	// 2. Security headers
+	// 3. CORS
+	// 4. Rate limiting
+	// 5. Authentication
+	handler := securityMiddleware.Middleware(
+		securityMiddleware.CORSMiddleware(
+			rateLimiter.Middleware(
+				authMiddleware.Middleware(r),
+			),
+		),
+	)
 
-	log.Printf("Gateway (Go) listening on port %s", port)
-	log.Printf("Proxying to Orchestrator: %s", orchURLStr)
-	log.Printf("Redis: %s", redisAddr)
-
-	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	// Create HTTP server with timeouts
+	srv := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      handler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// Start server in goroutine
+	go func() {
+		logger.Info("gateway starting",
+			slog.String("port", cfg.Port),
+			slog.String("orchestrator", cfg.OrchestratorURL),
+			slog.String("redis", cfg.RedisAddr),
+			slog.Bool("auth_enabled", cfg.AuthEnabled),
+		)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("server error", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	logger.Info("shutting down server...")
+
+	// Graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	defer cancel()
+
+	// Stop accepting new WebSocket connections and close existing ones
+	wsHub.Stop()
+
+	// Stop rate limiter cleanup goroutine
+	rateLimiter.Stop()
+
+	// Shutdown HTTP server
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Error("server shutdown error", slog.String("error", err.Error()))
+	}
+
+	logger.Info("server stopped")
 }

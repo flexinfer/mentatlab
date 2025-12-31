@@ -24,7 +24,7 @@ metadata:
     app: orchestrator
     component: backend
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: orchestrator
@@ -35,12 +35,24 @@ spec:
         component: backend
     spec:
       serviceAccountName: orchestrator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
       containers:
         - name: orchestrator
-          image: registry.harbor.lan/library/mentatlab-orchestrator:latest
+          image: registry.harbor.lan/library/mentatlab-orchestrator-go:v1.0.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 7070
               name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: PORT
               value: "7070"
@@ -52,13 +64,63 @@ spec:
               value: "http://gateway:8080"
             - name: VLLM_BASE_URL
               value: "http://vllm-optimized-lb.ai.svc.cluster.local:8000"
-            # Allow browser origin via Ingress host
             - name: FRONTEND_URL
-              value: "http://mentatlab.lan"
+              value: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"
+            # Agent registry backend (redis or memory)
+            - name: REGISTRY_TYPE
+              value: "redis"
+            # MinIO/S3 configuration for artifact storage
+            - name: DATAFLOW_TYPE
+              value: "minio"
+            - name: MINIO_ENDPOINT
+              value: "minio.mentatlab.svc:9000"
+            - name: MINIO_BUCKET
+              value: "mentatlab-artifacts"
+            - name: MINIO_USE_SSL
+              value: "false"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_ACCESS_KEY
+                  optional: true
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: MINIO_SECRET_KEY
+                  optional: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
           resources:
             requests:
               cpu: 200m
-              memory: 512Mi
+              memory: 256Mi
             limits:
               cpu: 1000m
-              memory: 2Gi
+              memory: 1Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: orchestrator
+  namespace: mentatlab
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: orchestrator
