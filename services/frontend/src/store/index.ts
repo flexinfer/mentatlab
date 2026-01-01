@@ -308,7 +308,8 @@ export const useStreamingStore = create<StreamingState>()(
 
     // Actions (no Immer – use plain immutable updates)
     registerStream: (streamId: string, config: any) => {
-      const next = new Map(get().activeStreams);
+      const current = get().activeStreams;
+      const next = new Map(current);
       next.set(streamId, {
         id: streamId,
         config,
@@ -316,6 +317,15 @@ export const useStreamingStore = create<StreamingState>()(
         buffer: [],
         errors: [],
       });
+
+      // Auto-cleanup: limit to 50 streams max, remove oldest if exceeded
+      if (next.size > 50) {
+        const sortedKeys = Array.from(next.keys());
+        // Remove the oldest (first registered) streams
+        const toRemove = sortedKeys.slice(0, next.size - 50);
+        toRemove.forEach(key => next.delete(key));
+      }
+
       set({ activeStreams: next });
     },
 
@@ -333,7 +343,11 @@ export const useStreamingStore = create<StreamingState>()(
       const existing = current.get(streamId);
       if (!existing) return;
       const next = new Map(current);
-      next.set(streamId, { ...existing, buffer: [...existing.buffer, message] });
+      // Limit buffer size to prevent memory leaks
+      const buffer = existing.buffer.length >= 1000
+        ? [...existing.buffer.slice(-999), message]
+        : [...existing.buffer, message];
+      next.set(streamId, { ...existing, buffer });
       set({ activeStreams: next });
     },
 
@@ -342,10 +356,146 @@ export const useStreamingStore = create<StreamingState>()(
       const existing = current.get(streamId);
       if (!existing) return;
       const next = new Map(current);
-      next.set(streamId, { ...existing, errors: [...existing.errors, error] });
+      // Limit errors array too
+      const errors = existing.errors.length >= 100
+        ? [...existing.errors.slice(-99), error]
+        : [...existing.errors, error];
+      next.set(streamId, { ...existing, errors });
       set({ activeStreams: next });
     },
 
     setConnectionStatus: (status: StreamConnectionState) => set({ connectionStatus: status }),
   }))
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Panel Layout Store - persists panel visibility, sizes, and collapse state
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type PanelId = 'console' | 'issues' | 'timeline' | 'runs' | 'network' | 'graph' | 'inspector';
+
+export interface PanelLayoutState {
+  // Active bottom dock tab
+  activeBottomTab: string;
+  // Panel visibility (for toggleable panels)
+  visiblePanels: Set<PanelId>;
+  // Panel sizes (percentage or pixels)
+  panelSizes: Record<PanelId, number>;
+  // Collapsed panels
+  collapsedPanels: Set<PanelId>;
+  // Main view mode
+  mainView: 'network' | 'flow';
+  // Dark mode preference
+  darkMode: boolean;
+
+  // Actions
+  setActiveBottomTab: (tab: string) => void;
+  togglePanel: (panelId: PanelId) => void;
+  showPanel: (panelId: PanelId) => void;
+  hidePanel: (panelId: PanelId) => void;
+  setPanelSize: (panelId: PanelId, size: number) => void;
+  toggleCollapse: (panelId: PanelId) => void;
+  setMainView: (view: 'network' | 'flow') => void;
+  setDarkMode: (dark: boolean) => void;
+  resetLayout: () => void;
+}
+
+const defaultPanelLayout: Pick<PanelLayoutState, 'activeBottomTab' | 'visiblePanels' | 'panelSizes' | 'collapsedPanels' | 'mainView' | 'darkMode'> = {
+  activeBottomTab: 'Network',
+  visiblePanels: new Set(['console', 'issues', 'timeline', 'inspector'] as PanelId[]),
+  panelSizes: {
+    console: 100,
+    issues: 100,
+    timeline: 100,
+    runs: 100,
+    network: 100,
+    graph: 100,
+    inspector: 320,
+  },
+  collapsedPanels: new Set<PanelId>(),
+  mainView: 'network',
+  darkMode: false,
+};
+
+export const usePanelLayoutStore = create<PanelLayoutState>()(
+  devtools(
+    persist(
+      (set, _get) => ({
+        ...defaultPanelLayout,
+
+        setActiveBottomTab: (tab: string) => set({ activeBottomTab: tab }),
+
+        togglePanel: (panelId: PanelId) =>
+          set((state) => {
+            const next = new Set(state.visiblePanels);
+            if (next.has(panelId)) {
+              next.delete(panelId);
+            } else {
+              next.add(panelId);
+            }
+            return { visiblePanels: next };
+          }),
+
+        showPanel: (panelId: PanelId) =>
+          set((state) => {
+            const next = new Set(state.visiblePanels);
+            next.add(panelId);
+            return { visiblePanels: next };
+          }),
+
+        hidePanel: (panelId: PanelId) =>
+          set((state) => {
+            const next = new Set(state.visiblePanels);
+            next.delete(panelId);
+            return { visiblePanels: next };
+          }),
+
+        setPanelSize: (panelId: PanelId, size: number) =>
+          set((state) => ({
+            panelSizes: { ...state.panelSizes, [panelId]: size },
+          })),
+
+        toggleCollapse: (panelId: PanelId) =>
+          set((state) => {
+            const next = new Set(state.collapsedPanels);
+            if (next.has(panelId)) {
+              next.delete(panelId);
+            } else {
+              next.add(panelId);
+            }
+            return { collapsedPanels: next };
+          }),
+
+        setMainView: (view: 'network' | 'flow') => set({ mainView: view }),
+
+        setDarkMode: (dark: boolean) => set({ darkMode: dark }),
+
+        resetLayout: () => set(defaultPanelLayout),
+      }),
+      {
+        name: 'mentatlab-panel-layout',
+        // Serialize Sets to arrays for localStorage
+        partialize: (state) => ({
+          activeBottomTab: state.activeBottomTab,
+          visiblePanels: Array.from(state.visiblePanels),
+          panelSizes: state.panelSizes,
+          collapsedPanels: Array.from(state.collapsedPanels),
+          mainView: state.mainView,
+          darkMode: state.darkMode,
+        }),
+        // Deserialize arrays back to Sets
+        onRehydrateStorage: () => (state) => {
+          if (state) {
+            // Convert arrays back to Sets if needed
+            if (Array.isArray(state.visiblePanels)) {
+              state.visiblePanels = new Set(state.visiblePanels as unknown as PanelId[]);
+            }
+            if (Array.isArray(state.collapsedPanels)) {
+              state.collapsedPanels = new Set(state.collapsedPanels as unknown as PanelId[]);
+            }
+          }
+        },
+      }
+    )
+  )
 );

@@ -34,9 +34,15 @@ spec:
         app: frontend
         component: ui
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
       containers:
         - name: frontend
-          image: registry.harbor.lan/library/mentatlab-frontend:latest
+          image: registry.harbor.lan/library/mentatlab-frontend:v1.0.0
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5173
               name: http
@@ -53,3 +59,36 @@ spec:
             limits:
               cpu: 500m
               memory: 1Gi
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: cache
+              mountPath: /home/node/.cache
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}

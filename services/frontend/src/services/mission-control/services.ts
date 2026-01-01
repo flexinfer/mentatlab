@@ -716,24 +716,151 @@ export class FlowLinterService {
     return issues;
   }
 
+  /**
+   * Apply a quick-fix to the flow, returning a new flow with the fix applied.
+   * Returns the original flow unchanged if the fix cannot be auto-applied.
+   */
   applyQuickFix(flow: Flow, issue: LintIssue): Flow {
-    // MC1: stubbed quick-fix applier — do not mutate the flow.
-    // Log the invocation for telemetry/debugging and return the input flow unchanged.
-    try {
-      console.debug('[FlowLinterService] applyQuickFix', {
-        issueId: issue?.id,
-        fixId: issue?.fix?.id,
-        action: issue?.fix?.action,
-        params: issue?.fix?.params,
-      });
-    } catch {
-      // ignore logging failures
+    if (!issue?.fix) {
+      console.debug('[FlowLinterService] applyQuickFix: no fix descriptor', { issueId: issue?.id });
+      return flow;
     }
-    return flow;
+
+    const { action, params } = issue.fix;
+    console.debug('[FlowLinterService] applyQuickFix', {
+      issueId: issue.id,
+      fixId: issue.fix.id,
+      action,
+      params,
+    });
+
+    const graph = (flow as any)?.graph ?? {};
+    const nodes: any[] = Array.isArray(graph.nodes) ? graph.nodes : [];
+
+    switch (action) {
+      case 'suggest-set-timeout': {
+        // Auto-apply: Set timeout on the target node
+        const nodeId = params?.nodeId as string;
+        const timeoutMs = (params?.timeoutMs as number) ?? 30000;
+        if (!nodeId) return flow;
+
+        const updatedNodes = nodes.map((n) => {
+          if (n.id !== nodeId) return n;
+          return {
+            ...n,
+            params: {
+              ...(n.params ?? {}),
+              timeoutMs,
+            },
+          };
+        });
+
+        return {
+          ...flow,
+          graph: {
+            ...graph,
+            nodes: updatedNodes,
+          },
+        };
+      }
+
+      case 'remove-circular-edge': {
+        // Auto-apply: Remove an edge that creates a cycle
+        const edgeId = params?.edgeId as string;
+        if (!edgeId) return flow;
+
+        const edges: any[] = Array.isArray(graph.edges) ? graph.edges : [];
+        const updatedEdges = edges.filter((e) => e.id !== edgeId);
+
+        return {
+          ...flow,
+          graph: {
+            ...graph,
+            edges: updatedEdges,
+          },
+        };
+      }
+
+      case 'set-pin-type': {
+        // Auto-apply: Set a pin type on a node
+        const nodeId = params?.nodeId as string;
+        const pinId = params?.pinId as string;
+        const pinType = params?.type as string;
+        const pinLocation = (params?.location as 'inputs' | 'outputs') ?? 'inputs';
+        if (!nodeId || !pinId || !pinType) return flow;
+
+        const updatedNodes = nodes.map((n) => {
+          if (n.id !== nodeId) return n;
+          const pins = n[pinLocation] ?? {};
+          return {
+            ...n,
+            [pinLocation]: {
+              ...pins,
+              [pinId]: {
+                ...(pins[pinId] ?? {}),
+                type: pinType,
+              },
+            },
+          };
+        });
+
+        return {
+          ...flow,
+          graph: {
+            ...graph,
+            nodes: updatedNodes,
+          },
+        };
+      }
+
+      case 'add-edge': {
+        // Auto-apply: Add an edge between two nodes
+        const fromNode = params?.fromNode as string;
+        const toNode = params?.toNode as string;
+        const fromPin = params?.fromPin as string;
+        const toPin = params?.toPin as string;
+        if (!fromNode || !toNode) return flow;
+
+        const edges: any[] = Array.isArray(graph.edges) ? graph.edges : [];
+        const newEdge = {
+          id: `edge-${cryptoRandomId()}`,
+          from: fromPin ? `${fromNode}.${fromPin}` : fromNode,
+          to: toPin ? `${toNode}.${toPin}` : toNode,
+        };
+
+        return {
+          ...flow,
+          graph: {
+            ...graph,
+            edges: [...edges, newEdge],
+          },
+        };
+      }
+
+      // UI-only actions that cannot be auto-applied - return flow unchanged
+      // The UI should handle these by showing appropriate helpers/dialogs
+      case 'open-edge-helper':
+      case 'open-connector-helper':
+      case 'open-pin-schema':
+        console.debug('[FlowLinterService] UI-only action, not auto-applied:', action);
+        return flow;
+
+      default:
+        console.warn('[FlowLinterService] Unknown quick-fix action:', action);
+        return flow;
+    }
+  }
+
+  /**
+   * Check if a quick-fix can be automatically applied (vs requiring UI interaction)
+   */
+  canAutoApply(issue: LintIssue): boolean {
+    const autoApplyActions = ['suggest-set-timeout', 'remove-circular-edge', 'set-pin-type', 'add-edge'];
+    return autoApplyActions.includes(issue?.fix?.action ?? '');
   }
 
   applyFix(flow: Flow, issue: LintIssue): Flow {
-    // Backwards-compatible alias that delegates to applyQuickFix (no graph mutation for MC1)
+    // Backwards-compatible alias
     return this.applyQuickFix(flow, issue);
   }
 }

@@ -8,7 +8,7 @@ import ConsolePanel from '../panels/ConsolePanel';
 import RunsPanel from '../panels/RunsPanel';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { ReactFlowProvider } from 'reactflow';
-import { useStreamingStore, useFlowStore } from '../../../store/index';
+import { useStreamingStore, useFlowStore, usePanelLayoutStore } from '../../../store/index';
 import { StreamConnectionState } from '../../../types/streaming';
 import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
@@ -42,14 +42,11 @@ export function MissionControlLayout() {
     onSave: (flowId) => console.log(`[AutoSave] Flow ${flowId} saved`),
     onError: (error, flowId) => console.error(`[AutoSave] Failed to save ${flowId}:`, error),
   });
-  // THEME: dark mode persisted
-  const [dark, setDark] = React.useState<boolean>(() => {
-    try { return (localStorage.getItem('theme') ?? 'light') === 'dark'; } catch { return false; }
-  });
+  // THEME: dark mode persisted via panel layout store
+  const { darkMode: dark, setDarkMode: setDark, mainView, setMainView } = usePanelLayoutStore();
   React.useEffect(() => {
     try {
       document.documentElement.classList.toggle('dark', dark);
-      localStorage.setItem('theme', dark ? 'dark' : 'light');
     } catch { /* ignore */ }
   }, [dark]);
 
@@ -200,8 +197,7 @@ export function MissionControlLayout() {
     openCogpakUi(remoteEntry, title);
   };
 
-  // Main view state (network or flow)
-  const [mainView, setMainView] = React.useState<'network' | 'flow'>('network');
+  // Main view state now comes from usePanelLayoutStore (see above)
 
   // Start an orchestrator run (backend) and subscribe to SSE
   const startOrchestratorRun = React.useCallback(async () => {
@@ -318,11 +314,11 @@ export function MissionControlLayout() {
       ctrlKey: true,
       description: 'UI: Toggle dark mode',
       action: () => {
-        setDark((d) => !d);
+        setDark(!dark);
       },
       preventDefault: true,
     },
-  ], [commandPaletteOpen, shortcutsDialogOpen, lineageOverlayOpen, policyOverlayOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo]);
+  ], [commandPaletteOpen, shortcutsDialogOpen, lineageOverlayOpen, policyOverlayOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo, dark, setDark]);
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts(shortcuts);
@@ -402,7 +398,7 @@ export function MissionControlLayout() {
       description: 'Switch between light and dark theme',
       category: 'View',
       shortcut: 'Ctrl+T',
-      action: () => setDark((d) => !d),
+      action: () => setDark(!dark),
     },
     // Settings
     {
@@ -420,7 +416,7 @@ export function MissionControlLayout() {
       shortcut: 'Shift+?',
       action: () => setShortcutsDialogOpen(true),
     },
-  ], [startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo]);
+  ], [startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo, dark, setDark, setMainView]);
 
   return (
     <div className="h-screen w-screen relative overflow-hidden bg-background text-foreground font-sans selection:bg-primary/30">
@@ -464,7 +460,7 @@ export function MissionControlLayout() {
           <div className="flex items-center gap-2 pl-2 border-l border-white/10">
             <button
               className="p-2 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-white transition-colors"
-              onClick={() => setDark((d) => !d)}
+              onClick={() => setDark(!dark)}
               title="Toggle theme"
             >
               {dark ? '☾' : '☀'}
@@ -662,22 +658,19 @@ function BottomDock({
   isEnabled?: (flag: keyof typeof FeatureFlags) => boolean;
   onStartOrchestratorRun?: () => void;
 }) {
-  // Interactive tabs
+  // Interactive tabs - now using panel layout store for persistence
   const isEnabledLocal = isEnabled ?? (() => true);
-  const initialTab = ((): 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph' => {
-    try {
-      const stored = localStorage.getItem('mc_bottom_active_tab') as any;
-      if (stored) return stored;
-    } catch { }
-    // Prefer Network by default when available
-    if (isEnabledLocal('NETWORK_PANEL')) return 'Network';
-    if (isEnabledLocal('NEW_STREAMING')) return 'Timeline';
-    return isEnabledLocal('MISSION_CONSOLE') ? 'Console' : 'Run Queue';
-  })();
-  const [activeTab, setActiveTabRaw] = React.useState<'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph'>(initialTab);
-  const setActiveTab = (t: typeof activeTab) => {
-    setActiveTabRaw(t);
-    try { localStorage.setItem('mc_bottom_active_tab', t); } catch { }
+  const { activeBottomTab, setActiveBottomTab } = usePanelLayoutStore();
+
+  // Cast stored tab to valid type, with fallback
+  type TabType = 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph';
+  const validTabs: TabType[] = ['Console', 'Run Queue', 'Timeline', 'Issues', 'Runs', 'Network', 'Graph'];
+  const activeTab: TabType = validTabs.includes(activeBottomTab as TabType)
+    ? (activeBottomTab as TabType)
+    : (isEnabledLocal('NETWORK_PANEL') ? 'Network' : isEnabledLocal('NEW_STREAMING') ? 'Timeline' : 'Console');
+
+  const setActiveTab = (t: TabType) => {
+    setActiveBottomTab(t);
   };
   // Live connect state (disable button when connecting/connected)
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
