@@ -1,0 +1,104 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Gateway (Go)",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/services/gateway-go",
+            "env": {
+                "PORT": "8080",
+                "REDIS_URL": "localhost:6379",
+                "ORCHESTRATOR_BASE_URL": "http://localhost:7070"
+            },
+            "cwd": "${workspaceFolder}/services/gateway-go"
+        },
+        {
+            "name": "Debug Orchestrator (Go)",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/services/orchestrator-go/cmd/orchestrator",
+            "env": {
+                "PORT": "7070",
+                "REDIS_URL": "localhost:6379",
+                "ORCH_RUNSTORE": "memory"
+            },
+            "cwd": "${workspaceFolder}/services/orchestrator-go"
+        },
+        {
+            "name": "Debug Current Go Test",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${fileDirname}",
+            "args": [
+                "-test.v",
+                "-test.run",
+                "^${selectedText}$"
+            ]
+        },
+        {
+            "name": "Debug All Go Tests in Package",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${fileDirname}",
+            "args": ["-test.v"]
+        },
+        {
+            "name": "Debug Frontend (Chrome)",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:5173",
+            "webRoot": "${workspaceFolder}/services/frontend/src",
+            "sourceMapPathOverrides": {
+                "webpack:///./src/*": "${webRoot}/*"
+            },
+            "preLaunchTask": "npm: dev - services/frontend"
+        },
+        {
+            "name": "Attach to Frontend (Chrome)",
+            "type": "chrome",
+            "request": "attach",
+            "port": 9222,
+            "webRoot": "${workspaceFolder}/services/frontend/src"
+        },
+        {
+            "name": "Debug Python CLI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "cli.mentatctl",
+            "args": ["--help"],
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true
+        },
+        {
+            "name": "Debug Python Agent (Echo)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents/echo/main.py",
+            "args": ["--cid=debug-test", "hello", "world"],
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack (Go)",
+            "configurations": [
+                "Debug Orchestrator (Go)",
+                "Debug Gateway (Go)"
+            ],
+            "stopAll": true,
+            "presentation": {
+                "group": "Full Stack",
+                "order": 1
+            }
+        }
+    ]
+}

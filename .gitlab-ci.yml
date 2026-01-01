@@ -8,6 +8,7 @@ stages:
   - lint
   - test
   - build
+  - e2e
 
 variables:
   REGISTRY: registry.harbor.lan/library
@@ -83,3 +84,95 @@ build-images:
       build_image "mentatlab-ctm-cogpack" "agents/ctm-cogpack"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
+
+# --- E2E Testing ---
+
+e2e-test:
+  stage: e2e
+  image: docker:24-cli
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_CERT_PATH: "/certs/client"
+    DOCKER_TLS_VERIFY: "1"
+    # Use built images from registry
+    ORCHESTRATOR_IMAGE: "${REGISTRY}/mentatlab-orchestrator-go:${CI_COMMIT_SHORT_SHA}"
+    GATEWAY_IMAGE: "${REGISTRY}/mentatlab-gateway-go:${CI_COMMIT_SHORT_SHA}"
+    FRONTEND_IMAGE: "${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - apk add --no-cache docker-compose curl jq
+    - docker info
+  script:
+    - |
+      echo "=== Starting E2E Tests ==="
+
+      # Create docker-compose override for CI
+      cat > docker-compose.ci.yml << 'EOF'
+      version: '3.9'
+      services:
+        orchestrator:
+          image: ${ORCHESTRATOR_IMAGE:-registry.harbor.lan/library/mentatlab-orchestrator-go:latest}
+          build: !reset null
+        gateway:
+          image: ${GATEWAY_IMAGE:-registry.harbor.lan/library/mentatlab-gateway-go:latest}
+          build: !reset null
+        frontend:
+          image: ${FRONTEND_IMAGE:-registry.harbor.lan/library/mentatlab-frontend:latest}
+          build: !reset null
+      EOF
+
+      # Start services
+      echo "Starting services..."
+      docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+
+      # Wait for services to be healthy
+      echo "Waiting for services to be healthy..."
+      MAX_RETRIES=60
+      for i in $(seq 1 $MAX_RETRIES); do
+        ORCH_HEALTH=$(curl -sf http://localhost:7070/healthz 2>/dev/null && echo "ok" || echo "fail")
+        GW_HEALTH=$(curl -sf http://localhost:8080/healthz 2>/dev/null && echo "ok" || echo "fail")
+        FE_HEALTH=$(curl -sf http://localhost:5173 2>/dev/null && echo "ok" || echo "fail")
+
+        if [ "$ORCH_HEALTH" = "ok" ] && [ "$GW_HEALTH" = "ok" ] && [ "$FE_HEALTH" = "ok" ]; then
+          echo "All services healthy!"
+          break
+        fi
+
+        echo "[$i/$MAX_RETRIES] Waiting... (orch=$ORCH_HEALTH, gw=$GW_HEALTH, fe=$FE_HEALTH)"
+        sleep 2
+      done
+
+      # Run E2E tests
+      echo "=== Running E2E Tests ==="
+
+      # Test 1: Health endpoints
+      echo "Test 1: Health endpoints..."
+      curl -sf http://localhost:7070/healthz || (echo "FAIL: Orchestrator health" && exit 1)
+      curl -sf http://localhost:8080/healthz || (echo "FAIL: Gateway health" && exit 1)
+      echo "PASS: Health endpoints"
+
+      # Test 2: API endpoints are reachable
+      echo "Test 2: API endpoints..."
+      curl -sf http://localhost:7070/api/v1/runs || (echo "FAIL: Runs endpoint" && exit 1)
+      curl -sf http://localhost:7070/api/v1/agents || (echo "FAIL: Agents endpoint" && exit 1)
+      echo "PASS: API endpoints"
+
+      # Test 3: Gateway proxies to orchestrator
+      echo "Test 3: Gateway proxy..."
+      curl -sf http://localhost:8080/api/v1/runs || (echo "FAIL: Gateway proxy" && exit 1)
+      echo "PASS: Gateway proxy"
+
+      # Test 4: Frontend loads
+      echo "Test 4: Frontend..."
+      curl -sf http://localhost:5173 | grep -q "<!DOCTYPE html>" || (echo "FAIL: Frontend" && exit 1)
+      echo "PASS: Frontend"
+
+      echo "=== All E2E Tests Passed ==="
+  after_script:
+    - docker-compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=100 || true
+    - docker-compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  allow_failure: true  # E2E tests are advisory initially

@@ -1,0 +1,144 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "npm: dev - services/frontend",
+            "type": "npm",
+            "script": "dev",
+            "path": "services/frontend",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "typescript",
+                "pattern": "$tsc",
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "VITE",
+                    "endsPattern": "ready in"
+                }
+            },
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated"
+            }
+        },
+        {
+            "label": "Build Gateway",
+            "type": "shell",
+            "command": "go build -o ../../bin/gateway .",
+            "options": {
+                "cwd": "${workspaceFolder}/services/gateway-go"
+            },
+            "group": "build",
+            "problemMatcher": "$go"
+        },
+        {
+            "label": "Build Orchestrator",
+            "type": "shell",
+            "command": "go build -o ../../bin/orchestrator ./cmd/orchestrator/",
+            "options": {
+                "cwd": "${workspaceFolder}/services/orchestrator-go"
+            },
+            "group": "build",
+            "problemMatcher": "$go"
+        },
+        {
+            "label": "Build All Go",
+            "dependsOn": ["Build Gateway", "Build Orchestrator"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Test Gateway",
+            "type": "shell",
+            "command": "go test -v ./...",
+            "options": {
+                "cwd": "${workspaceFolder}/services/gateway-go"
+            },
+            "group": "test",
+            "problemMatcher": "$go"
+        },
+        {
+            "label": "Test Orchestrator",
+            "type": "shell",
+            "command": "go test -v ./...",
+            "options": {
+                "cwd": "${workspaceFolder}/services/orchestrator-go"
+            },
+            "group": "test",
+            "problemMatcher": "$go"
+        },
+        {
+            "label": "Test All Go",
+            "dependsOn": ["Test Gateway", "Test Orchestrator"],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Lint All",
+            "type": "shell",
+            "command": "make lint",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Docker Compose Up",
+            "type": "shell",
+            "command": "make up",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Docker Compose Down",
+            "type": "shell",
+            "command": "make down",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Watch Gateway (Air)",
+            "type": "shell",
+            "command": "air",
+            "options": {
+                "cwd": "${workspaceFolder}/services/gateway-go"
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "go",
+                "pattern": "$go",
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "watching",
+                    "endsPattern": "running"
+                }
+            }
+        },
+        {
+            "label": "Watch Orchestrator (Air)",
+            "type": "shell",
+            "command": "air",
+            "options": {
+                "cwd": "${workspaceFolder}/services/orchestrator-go"
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "go",
+                "pattern": "$go",
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "watching",
+                    "endsPattern": "running"
+                }
+            }
+        }
+    ]
+}

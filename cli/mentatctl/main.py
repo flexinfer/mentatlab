@@ -19,7 +19,7 @@ from .agent_commands import agent
 app = typer.Typer(
     name="mentatctl",
     help="Mentat CLI - Command line interface for managing flows and agents",
-    no_args_is_help=True
+    no_args_is_help=True,
 )
 
 # Add agent subcommands
@@ -27,27 +27,32 @@ app.add_command(agent, name="agent")
 
 # Development commands group
 dev_app = typer.Typer(
-    name="dev",
-    help="Development commands for local testing",
-    no_args_is_help=True
+    name="dev", help="Development commands for local testing", no_args_is_help=True
 )
 app.add_command(dev_app, name="dev")
+
 
 @dev_app.command("run")
 def dev_run(
     manifest_file: Path = typer.Argument(..., help="Path to agent manifest.yaml file"),
     input: List[str] = typer.Option([], "--input", "-i", help="Input key=value pairs"),
     follow: bool = typer.Option(False, "--follow", help="Follow execution logs"),
-    local: bool = typer.Option(False, "--local", help="Run locally instead of K8s cluster"),
-    orchestrator_url: str = typer.Option("http://localhost:8001", "--orchestrator-url", help="Orchestrator service URL")
+    local: bool = typer.Option(
+        False, "--local", help="Run locally instead of K8s cluster"
+    ),
+    orchestrator_url: str = typer.Option(
+        "http://localhost:8001", "--orchestrator-url", help="Orchestrator service URL"
+    ),
 ):
     """Execute an agent locally or against K8s cluster for development testing"""
     try:
         if not manifest_file.exists():
-            typer.echo(f"❌ Error: Manifest file not found at {manifest_file}", err=True)
+            typer.echo(
+                f"❌ Error: Manifest file not found at {manifest_file}", err=True
+            )
             raise typer.Exit(code=1)
 
-        with open(manifest_file, 'r') as f:
+        with open(manifest_file, "r") as f:
             try:
                 manifest_data = yaml.safe_load(f)
             except yaml.YAMLError as e:
@@ -57,51 +62,66 @@ def dev_run(
         # Parse input parameters
         inputs = {}
         for inp in input:
-            if '=' in inp:
-                key, value = inp.split('=', 1)
+            if "=" in inp:
+                key, value = inp.split("=", 1)
                 inputs[key] = value
             else:
-                typer.echo(f"⚠️  Warning: Ignoring invalid input format '{inp}' (expected key=value)", err=True)
+                typer.echo(
+                    f"⚠️  Warning: Ignoring invalid input format '{inp}' (expected key=value)",
+                    err=True,
+                )
 
         # Prepare execution request
         execution_data = {
-            'agent_manifest': manifest_data,
-            'inputs': inputs,
-            'execution_id': f"dev-{manifest_data.get('id', 'unknown')}"
+            "agent_manifest": manifest_data,
+            "inputs": inputs,
+            "execution_id": f"dev-{manifest_data.get('id', 'unknown')}",
         }
 
         typer.echo(f"🚀 Starting agent execution ({'local' if local else 'K8s'})...")
-        typer.echo(f"📋 Agent: {manifest_data.get('id', 'unknown')} v{manifest_data.get('version', '?')}")
-        
+        typer.echo(
+            f"📋 Agent: {manifest_data.get('id', 'unknown')} v{manifest_data.get('version', '?')}"
+        )
+
         if inputs:
             typer.echo(f"📥 Inputs: {inputs}")
 
         # Submit for execution
         try:
-            response = requests.post(f"{orchestrator_url}/agents/schedule", json=execution_data, timeout=30)
-            
+            response = requests.post(
+                f"{orchestrator_url}/agents/schedule", json=execution_data, timeout=30
+            )
+
             if response.status_code == 200:
                 result = response.json()
-                resource_id = result.get('resource_id')
-                typer.echo(f"✅ Agent scheduled successfully with resource ID: {resource_id}")
-                
+                resource_id = result.get("resource_id")
+                typer.echo(
+                    f"✅ Agent scheduled successfully with resource ID: {resource_id}"
+                )
+
                 if follow and resource_id:
                     typer.echo("👀 Following execution logs...")
                     # Poll for status
                     import time
+
                     while True:
                         try:
-                            status_response = requests.get(f"{orchestrator_url}/jobs/{resource_id}/status", timeout=10)
+                            status_response = requests.get(
+                                f"{orchestrator_url}/jobs/{resource_id}/status",
+                                timeout=10,
+                            )
                             if status_response.status_code == 200:
                                 status_data = status_response.json()
-                                status = status_data.get('status', {}).get('status', 'unknown')
+                                status = status_data.get("status", {}).get(
+                                    "status", "unknown"
+                                )
                                 typer.echo(f"📊 Status: {status}")
-                                
-                                if status in ['succeeded', 'failed']:
+
+                                if status in ["succeeded", "failed"]:
                                     break
-                                elif status == 'running':
+                                elif status == "running":
                                     typer.echo("🔄 Agent is running...")
-                                    
+
                             time.sleep(2)
                         except requests.RequestException as e:
                             typer.echo(f"⚠️  Warning: Could not check status: {e}")
@@ -109,26 +129,31 @@ def dev_run(
                         except KeyboardInterrupt:
                             typer.echo("\n🛑 Stopped following logs")
                             break
-                            
+
             else:
                 error_detail = response.text
                 typer.echo(f"❌ Agent execution failed: {error_detail}", err=True)
                 raise typer.Exit(code=1)
-                
+
         except requests.RequestException as e:
             typer.echo(f"❌ Error connecting to orchestrator: {e}", err=True)
             raise typer.Exit(code=1)
-            
+
     except Exception as e:
         typer.echo(f"❌ Error executing agent: {e}", err=True)
         raise typer.Exit(code=1)
 
+
 # Legacy flow validation command (backward compatibility)
 @app.command("validate")
 def validate_flow(
-    file_path: Path = typer.Argument(..., help="Path to the .mlab flow file (YAML or JSON)."),
-    gateway_url: str = typer.Option("http://localhost:8000", "--gateway-url", help="Gateway service URL"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Validate without executing")
+    file_path: Path = typer.Argument(
+        ..., help="Path to the .mlab flow file (YAML or JSON)."
+    ),
+    gateway_url: str = typer.Option(
+        "http://localhost:8000", "--gateway-url", help="Gateway service URL"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate without executing"),
 ):
     """Validate a flow configuration file"""
     try:
@@ -137,7 +162,10 @@ def validate_flow(
             raise typer.Exit(code=1)
 
         if file_path.suffix not in [".yaml", ".yml", ".json", ".mlab"]:
-            typer.echo(f"❌ Error: Unsupported file type. Please provide a .yaml, .yml, .json, or .mlab file.", err=True)
+            typer.echo(
+                f"❌ Error: Unsupported file type. Please provide a .yaml, .yml, .json, or .mlab file.",
+                err=True,
+            )
             raise typer.Exit(code=1)
 
         try:
@@ -147,21 +175,31 @@ def validate_flow(
                 else:
                     flow_data = json.load(f)
         except (json.JSONDecodeError, yaml.YAMLError) as e:
-            typer.echo(f"❌ Error: Could not parse {file_path}. Invalid JSON or YAML format: {e}", err=True)
+            typer.echo(
+                f"❌ Error: Could not parse {file_path}. Invalid JSON or YAML format: {e}",
+                err=True,
+            )
             raise typer.Exit(code=1)
 
         if dry_run:
             # Load the schema
-            schema_path = Path(__file__).parent.parent.parent / "schemas" / "flow.schema.json"
+            schema_path = (
+                Path(__file__).parent.parent.parent / "schemas" / "flow.schema.json"
+            )
             if not schema_path.exists():
-                typer.echo(f"❌ Error: Schema file not found at {schema_path}", err=True)
+                typer.echo(
+                    f"❌ Error: Schema file not found at {schema_path}", err=True
+                )
                 raise typer.Exit(code=1)
 
             try:
                 with open(schema_path, "r") as f:
                     flow_schema = json.load(f)
             except json.JSONDecodeError as e:
-                typer.echo(f"❌ Error: Could not parse schema file. Invalid JSON format: {e}", err=True)
+                typer.echo(
+                    f"❌ Error: Could not parse schema file. Invalid JSON format: {e}",
+                    err=True,
+                )
                 raise typer.Exit(code=1)
 
             try:
@@ -177,8 +215,10 @@ def validate_flow(
 
         # Send to gateway for validation
         try:
-            response = requests.post(f"{gateway_url}/flows/validate", json=flow_data, timeout=30)
-            
+            response = requests.post(
+                f"{gateway_url}/flows/validate", json=flow_data, timeout=30
+            )
+
             if response.status_code == 200:
                 typer.echo(f"✅ Flow '{file_path}' is valid")
             else:
@@ -187,16 +227,21 @@ def validate_flow(
         except requests.RequestException as e:
             typer.echo(f"❌ Error connecting to gateway: {e}", err=True)
             raise typer.Exit(code=1)
-            
+
     except Exception as e:
         typer.echo(f"❌ Error validating flow: {e}", err=True)
         raise typer.Exit(code=1)
 
+
 @app.command("run")
 def run_flow(
-    file_path: Path = typer.Argument(..., help="Path to the .mlab flow file (YAML or JSON)."),
-    gateway_url: str = typer.Option("http://localhost:8000", "--gateway-url", help="Gateway service URL"),
-    follow: bool = typer.Option(False, "--follow", help="Follow execution logs")
+    file_path: Path = typer.Argument(
+        ..., help="Path to the .mlab flow file (YAML or JSON)."
+    ),
+    gateway_url: str = typer.Option(
+        "http://localhost:8000", "--gateway-url", help="Gateway service URL"
+    ),
+    follow: bool = typer.Option(False, "--follow", help="Follow execution logs"),
 ):
     """Execute a flow"""
     try:
@@ -211,32 +256,134 @@ def run_flow(
                 else:
                     flow_data = json.load(f)
         except (json.JSONDecodeError, yaml.YAMLError) as e:
-            typer.echo(f"❌ Error: Could not parse {file_path}. Invalid JSON or YAML format: {e}", err=True)
+            typer.echo(
+                f"❌ Error: Could not parse {file_path}. Invalid JSON or YAML format: {e}",
+                err=True,
+            )
             raise typer.Exit(code=1)
 
         # Submit flow for execution
         try:
-            response = requests.post(f"{gateway_url}/flows/execute", json=flow_data, timeout=30)
-            
+            response = requests.post(
+                f"{gateway_url}/flows/execute", json=flow_data, timeout=30
+            )
+
             if response.status_code == 200:
                 result = response.json()
-                execution_id = result.get('execution_id')
+                execution_id = result.get("execution_id")
                 typer.echo(f"✅ Flow submitted with execution ID: {execution_id}")
-                
+
                 if follow and execution_id:
                     typer.echo("👀 Following execution logs...")
                     # TODO: Implement log following
-                    
+
             else:
                 typer.echo(f"❌ Flow execution failed: {response.text}", err=True)
                 raise typer.Exit(code=1)
         except requests.RequestException as e:
             typer.echo(f"❌ Error connecting to gateway: {e}", err=True)
             raise typer.Exit(code=1)
-            
+
     except Exception as e:
         typer.echo(f"❌ Error executing flow: {e}", err=True)
         raise typer.Exit(code=1)
+
+
+# Debug command for connection diagnostics
+@app.command("debug")
+def debug_connections(
+    gateway_url: str = typer.Option(
+        "http://localhost:8080", "--gateway-url", help="Gateway service URL"
+    ),
+    orchestrator_url: str = typer.Option(
+        "http://localhost:7070", "--orchestrator-url", help="Orchestrator service URL"
+    ),
+    redis_url: str = typer.Option("localhost:6379", "--redis-url", help="Redis URL"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed output"),
+):
+    """Check connectivity to all MentatLab services"""
+    import socket
+
+    typer.echo("🔍 MentatLab Connection Diagnostics")
+    typer.echo("=" * 40)
+
+    all_healthy = True
+
+    # Check Gateway
+    typer.echo("\n📡 Gateway:")
+    try:
+        response = requests.get(f"{gateway_url}/healthz", timeout=5)
+        if response.status_code == 200:
+            typer.echo(f"   ✓ {gateway_url} - healthy")
+            if verbose:
+                typer.echo(f"     Response: {response.text[:100]}")
+        else:
+            typer.echo(
+                f"   ✗ {gateway_url} - unhealthy (status {response.status_code})"
+            )
+            all_healthy = False
+    except requests.exceptions.ConnectionError:
+        typer.echo(f"   ✗ {gateway_url} - connection refused")
+        all_healthy = False
+    except requests.exceptions.Timeout:
+        typer.echo(f"   ✗ {gateway_url} - timeout")
+        all_healthy = False
+    except Exception as e:
+        typer.echo(f"   ✗ {gateway_url} - error: {e}")
+        all_healthy = False
+
+    # Check Orchestrator
+    typer.echo("\n🎭 Orchestrator:")
+    try:
+        response = requests.get(f"{orchestrator_url}/healthz", timeout=5)
+        if response.status_code == 200:
+            typer.echo(f"   ✓ {orchestrator_url} - healthy")
+            if verbose:
+                typer.echo(f"     Response: {response.text[:100]}")
+        else:
+            typer.echo(
+                f"   ✗ {orchestrator_url} - unhealthy (status {response.status_code})"
+            )
+            all_healthy = False
+    except requests.exceptions.ConnectionError:
+        typer.echo(f"   ✗ {orchestrator_url} - connection refused")
+        all_healthy = False
+    except requests.exceptions.Timeout:
+        typer.echo(f"   ✗ {orchestrator_url} - timeout")
+        all_healthy = False
+    except Exception as e:
+        typer.echo(f"   ✗ {orchestrator_url} - error: {e}")
+        all_healthy = False
+
+    # Check Redis
+    typer.echo("\n🔴 Redis:")
+    try:
+        host, port = redis_url.split(":")
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        result = sock.connect_ex((host, int(port)))
+        sock.close()
+        if result == 0:
+            typer.echo(f"   ✓ {redis_url} - port open")
+        else:
+            typer.echo(f"   ✗ {redis_url} - port closed")
+            all_healthy = False
+    except Exception as e:
+        typer.echo(f"   ✗ {redis_url} - error: {e}")
+        all_healthy = False
+
+    # Summary
+    typer.echo("\n" + "=" * 40)
+    if all_healthy:
+        typer.echo("✅ All services are healthy!")
+    else:
+        typer.echo("❌ Some services are unhealthy")
+        typer.echo("\n💡 Troubleshooting tips:")
+        typer.echo("   • Start services: make up")
+        typer.echo("   • Check logs: make logs")
+        typer.echo("   • View status: make status")
+        raise typer.Exit(code=1)
+
 
 if __name__ == "__main__":
     app()
