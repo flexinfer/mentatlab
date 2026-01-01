@@ -87,6 +87,10 @@ pdm run python -m services.orchestrator
         └───────────┘
 ```
 
+
 ## CI/CD
 
 GitLab CI is configured in `.gitlab-ci.yml` for automated builds.
+
+## Planning
+- See `ROADMAP.md` for project status and plans.
