@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -71,8 +71,9 @@ func main() {
 		json.NewEncoder(w).Encode(run)
 	}).Methods("GET")
 
-	log.Printf("Orchestrator (Go) listening on port %s", port)
+	slog.Info("orchestrator listening", slog.String("port", port))
 	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		slog.Error("server failed", slog.Any("error", err))
+		os.Exit(1)
 	}
 }

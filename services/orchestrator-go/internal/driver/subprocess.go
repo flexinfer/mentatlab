@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"sync"
@@ -250,6 +250,6 @@ func (d *LocalSubprocessDriver) emitEvent(ctx context.Context, runID, eventType 
 		return
 	}
 	if err := d.emitter.EmitEvent(ctx, runID, eventType, data, nodeID, level); err != nil {
-		log.Printf("failed to emit event for run %s: %v", runID, err)
+		slog.Error("failed to emit event", slog.String("run_id", runID), slog.String("event_type", eventType), slog.Any("error", err))
 	}
 }

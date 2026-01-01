@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -113,13 +113,13 @@ func (e *Engine) publishEvent(streamID string, eventType string, data interface{
 
 	bytes, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("Failed to marshal event: %v", err)
+		slog.Error("failed to marshal event", slog.String("stream_id", streamID), slog.Any("error", err))
 		return
 	}
 
 	// Publish to global channel "stream:events"
 	err = e.redisClient.Publish(context.Background(), "stream:events", bytes).Err()
 	if err != nil {
-		log.Printf("Failed to publish event to Redis: %v", err)
+		slog.Error("failed to publish event to Redis", slog.String("stream_id", streamID), slog.Any("error", err))
 	}
 }

@@ -111,7 +111,7 @@ func main() {
 		DefaultMaxRetries:  cfg.DefaultMaxRetries,
 		DefaultBackoffSecs: cfg.DefaultBackoffSecs,
 	}
-	sched := scheduler.New(store, subprocessDriver, resolveCmd, schedCfg)
+	sched := scheduler.New(store, subprocessDriver, resolveCmd, schedCfg, logger.With(slog.String("component", "scheduler")))
 
 	logger.Info("scheduler initialized",
 		slog.Int("max_parallelism", cfg.MaxParallelism),

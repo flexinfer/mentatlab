@@ -5,6 +5,10 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	// Import metrics to register them
+	_ "github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 )
 
 // Server holds the HTTP handlers and dependencies.
@@ -33,6 +37,9 @@ func (s *Server) setupRoutes() {
 	s.router.HandleFunc("/health", s.handlers.Health).Methods("GET")
 	s.router.HandleFunc("/healthz", s.handlers.Health).Methods("GET")
 	s.router.HandleFunc("/ready", s.handlers.Ready).Methods("GET")
+
+	// Prometheus metrics endpoint
+	s.router.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// API routes
 	api := s.router.PathPrefix("/api/v1").Subrouter()

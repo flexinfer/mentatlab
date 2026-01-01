@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -270,7 +270,7 @@ func (rl *PerIPRateLimiter) Handler(next http.Handler) http.Handler {
 			json.NewEncoder(w).Encode(map[string]string{
 				"error": "rate limit exceeded",
 			})
-			log.Printf("rate limited: %s", ip)
+			slog.Warn("rate limit exceeded", slog.String("ip", ip))
 			return
 		}
 		next.ServeHTTP(w, r)

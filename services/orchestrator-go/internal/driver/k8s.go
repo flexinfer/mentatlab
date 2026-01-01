@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
@@ -68,7 +68,7 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 	// Use a default image if none specified
 	if nodeSpec.Image == "" {
 		// This shouldn't happen in production - scheduler should provide image
-		log.Printf("warning: no image specified for node %s, using default", nodeID)
+		slog.Warn("no image specified for node, using default", slog.String("node_id", nodeID), slog.String("default_image", "python:3.12-slim"))
 		nodeSpec.Image = "python:3.12-slim"
 	}
 
@@ -111,7 +111,7 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 	}
 
 	jobName := createdJob.Name
-	log.Printf("created k8s job %s for run %s node %s", jobName, runID, nodeID)
+	slog.Info("created K8s job", slog.String("job_name", jobName), slog.String("run_id", runID), slog.String("node_id", nodeID))
 
 	// Set up log streaming
 	watchCtx, watchCancel := context.WithCancel(ctx)
@@ -126,7 +126,7 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 			d.processLogLine(ctx, runID, nodeID, line, isStderr)
 		},
 		OnStatus: func(status *k8s.JobStatus) {
-			log.Printf("job %s status: %s", jobName, status.Phase)
+			slog.Debug("job status update", slog.String("job_name", jobName), slog.String("phase", status.Phase))
 		},
 		OnComplete: func(code int, err error) {
 			exitCode = code
@@ -146,7 +146,7 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 	case <-ctx.Done():
 		// Context cancelled - delete the job
 		if err := d.client.DeleteJob(context.Background(), jobName); err != nil {
-			log.Printf("failed to delete job %s: %v", jobName, err)
+			slog.Error("failed to delete job", slog.String("job_name", jobName), slog.Any("error", err))
 		}
 		d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
 			"status": "failed",
@@ -234,7 +234,7 @@ func (d *K8sDriver) emitEvent(ctx context.Context, runID, eventType string, data
 		return
 	}
 	if err := d.emitter.EmitEvent(ctx, runID, eventType, data, nodeID, level); err != nil {
-		log.Printf("emit event error: %v", err)
+		slog.Error("failed to emit event", slog.String("run_id", runID), slog.String("event_type", eventType), slog.Any("error", err))
 	}
 }
 

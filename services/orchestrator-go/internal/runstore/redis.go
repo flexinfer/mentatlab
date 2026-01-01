@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -201,7 +201,7 @@ func (s *RedisStore) CreateRun(ctx context.Context, name string, plan *types.Pla
 
 	// Set TTL
 	if err := s.setTTL(ctx, runID); err != nil {
-		log.Printf("warning: failed to set TTL for run %s: %v", runID, err)
+		slog.Warn("failed to set TTL for run", slog.String("run_id", runID), slog.Any("error", err))
 	}
 
 	return runID, nil

@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -80,7 +80,7 @@ func (w *JobWatcher) watchJob(ctx context.Context) {
 			FieldSelector: fmt.Sprintf("metadata.name=%s", w.jobName),
 		})
 		if err != nil {
-			log.Printf("watch job error: %v", err)
+			slog.Error("failed to watch job", slog.String("job_name", w.jobName), slog.Any("error", err))
 			time.Sleep(time.Second)
 			continue
 		}
@@ -129,19 +129,19 @@ func (w *JobWatcher) streamLogs(ctx context.Context) {
 	// Wait for pod to be created
 	podName, err := w.waitForPod(ctx)
 	if err != nil {
-		log.Printf("wait for pod error: %v", err)
+		slog.Error("failed to wait for pod", slog.String("job_name", w.jobName), slog.Any("error", err))
 		return
 	}
 
 	// Wait for container to be running
 	if err := w.waitForContainer(ctx, podName); err != nil {
-		log.Printf("wait for container error: %v", err)
+		slog.Error("failed to wait for container", slog.String("job_name", w.jobName), slog.String("pod_name", podName), slog.Any("error", err))
 		return
 	}
 
 	// Stream logs
 	if err := w.followPodLogs(ctx, podName); err != nil {
-		log.Printf("follow logs error: %v", err)
+		slog.Error("failed to follow pod logs", slog.String("job_name", w.jobName), slog.String("pod_name", podName), slog.Any("error", err))
 	}
 }
 

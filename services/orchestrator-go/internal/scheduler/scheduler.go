@@ -4,7 +4,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"sync"
 	"time"
@@ -41,6 +41,7 @@ type Scheduler struct {
 	sem                chan struct{} // Parallelism limiter
 	defaultMaxRetries  int
 	defaultBackoffSecs int
+	logger             *slog.Logger
 }
 
 // Config holds scheduler configuration.
@@ -65,9 +66,12 @@ func DefaultConfig() *Config {
 }
 
 // New creates a new scheduler.
-func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, cfg *Config) *Scheduler {
+func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, cfg *Config, logger *slog.Logger) *Scheduler {
 	if cfg == nil {
 		cfg = DefaultConfig()
+	}
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	var sem chan struct{}
@@ -83,6 +87,7 @@ func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver,
 		sem:                sem,
 		defaultMaxRetries:  cfg.DefaultMaxRetries,
 		defaultBackoffSecs: cfg.DefaultBackoffSecs,
+		logger:             logger,
 	}
 }
 
@@ -191,7 +196,7 @@ func (s *Scheduler) CancelRun(ctx context.Context, runID string) error {
 
 	// Mark cancelled in store
 	if err := s.store.CancelRun(ctx, runID); err != nil && err != runstore.ErrRunNotFound {
-		log.Printf("cancel run store error: %v", err)
+		s.logger.Error("failed to cancel run in store", slog.String("run_id", runID), slog.Any("error", err))
 	}
 
 	if exists {
@@ -210,7 +215,7 @@ func (s *Scheduler) CancelRun(ctx context.Context, runID string) error {
 	// Emit run failed (cancellation = failure per spec)
 	finishedAt := utcISO()
 	if err := s.store.UpdateRunStatus(ctx, runID, types.RunStatusFailed, nil, &finishedAt); err != nil {
-		log.Printf("update run status error: %v", err)
+		s.logger.Error("failed to update run status", slog.String("run_id", runID), slog.Any("error", err))
 	}
 	s.emitRunStatus(ctx, runID, "failed")
 
@@ -329,7 +334,7 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 		Retries:   attempts,
 	}
 	if err := s.store.UpdateNodeState(ctx, rctx.runID, nodeID, state); err != nil {
-		log.Printf("update node state error: %v", err)
+		s.logger.Error("failed to update node state", slog.String("run_id", rctx.runID), slog.String("node_id", nodeID), slog.Any("error", err))
 	}
 
 	// Execute in goroutine
@@ -374,7 +379,7 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 		// Run via driver
 		exitCode, err := s.driver.RunNode(nodeCtx, rctx.runID, nodeID, cmd, env, timeout)
 		if err != nil {
-			log.Printf("driver error for node %s: %v", nodeID, err)
+			s.logger.Error("driver execution failed", slog.String("run_id", rctx.runID), slog.String("node_id", nodeID), slog.Any("error", err))
 			exitCode = 1
 		}
 
@@ -539,7 +544,7 @@ func (s *Scheduler) emitEvent(ctx context.Context, runID, eventType string, data
 		Data:   data,
 	}
 	if _, err := s.store.AppendEvent(ctx, runID, input); err != nil {
-		log.Printf("emit event error: %v", err)
+		s.logger.Error("failed to emit event", slog.String("run_id", runID), slog.String("event_type", eventType), slog.Any("error", err))
 	}
 }
 
