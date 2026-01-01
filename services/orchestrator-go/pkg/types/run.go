@@ -71,6 +71,30 @@ type NodeSpec struct {
 	Inputs   []string          `json:"inputs,omitempty"` // Node IDs this depends on
 	Timeout  time.Duration     `json:"timeout,omitempty"`
 	Retries  int               `json:"retries,omitempty"`
+
+	// Control flow configurations (only one should be set for control flow nodes)
+	Conditional *ConditionalConfig `json:"conditional,omitempty"`
+	ForEach     *ForEachConfig     `json:"for_each,omitempty"`
+	Subflow     *SubflowConfig     `json:"subflow,omitempty"`
+}
+
+// IsControlFlow returns true if this node is a control flow node.
+func (n *NodeSpec) IsControlFlow() bool {
+	return n.Conditional != nil || n.ForEach != nil || n.Subflow != nil
+}
+
+// GetControlFlowType returns the control flow type or empty string if not a control flow node.
+func (n *NodeSpec) GetControlFlowType() string {
+	switch {
+	case n.Conditional != nil:
+		return NodeTypeConditional
+	case n.ForEach != nil:
+		return NodeTypeForEach
+	case n.Subflow != nil:
+		return NodeTypeSubflow
+	default:
+		return ""
+	}
 }
 
 // EdgeSpec describes a data flow edge between nodes.

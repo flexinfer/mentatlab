@@ -19,6 +19,14 @@ const (
 	EventTypeRunStatus   EventType = "run_status"
 	EventTypeProgress    EventType = "progress"
 	EventTypeError       EventType = "error"
+
+	// Control flow events
+	EventTypeConditionEvaluated EventType = "condition_evaluated"
+	EventTypeBranchSelected     EventType = "branch_selected"
+	EventTypeBranchSkipped      EventType = "branch_skipped"
+	EventTypeLoopStarted        EventType = "loop_started"
+	EventTypeLoopIteration      EventType = "loop_iteration"
+	EventTypeLoopComplete       EventType = "loop_complete"
 )
 
 // LogLevel represents the severity of a log event.

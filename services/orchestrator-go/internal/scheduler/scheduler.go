@@ -42,6 +42,7 @@ type Scheduler struct {
 	defaultMaxRetries  int
 	defaultBackoffSecs int
 	logger             *slog.Logger
+	exprEval           *ExprEvaluator // Expression evaluator for control flow
 }
 
 // Config holds scheduler configuration.
@@ -88,6 +89,7 @@ func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver,
 		defaultMaxRetries:  cfg.DefaultMaxRetries,
 		defaultBackoffSecs: cfg.DefaultBackoffSecs,
 		logger:             logger,
+		exprEval:           NewExprEvaluator(),
 	}
 }
 
@@ -355,7 +357,32 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 			}
 		}
 
-		// Resolve command
+		// Dispatch based on node type
+		if spec.IsControlFlow() {
+			var err error
+			switch {
+			case spec.Conditional != nil:
+				err = s.executeConditional(ctx, rctx, spec)
+			case spec.ForEach != nil:
+				err = s.executeForEach(ctx, rctx, spec)
+			// Subflow not yet implemented
+			default:
+				err = fmt.Errorf("unknown control flow type for node %s", nodeID)
+			}
+
+			exitCode := 0
+			if err != nil {
+				s.logger.Error("control flow execution failed",
+					slog.String("run_id", rctx.runID),
+					slog.String("node_id", nodeID),
+					slog.Any("error", err))
+				exitCode = 1
+			}
+			s.onNodeFinished(ctx, rctx, nodeID, exitCode)
+			return
+		}
+
+		// Regular agent node - resolve command
 		cmd := s.resolveCmd(spec)
 		if len(cmd) == 0 {
 			// No command - skip this node

@@ -23,6 +23,7 @@ type memoryRun struct {
 	finishedAt  *time.Time
 	error       string
 	nodes       map[string]*types.NodeState
+	outputs     map[string]map[string]interface{} // nodeID -> outputs
 	events      []*types.Event
 	nextSeq     int64
 	maxEvents   int64
@@ -81,6 +82,7 @@ func (s *MemoryStore) CreateRun(ctx context.Context, name string, plan *types.Pl
 		plan:        plan,
 		status:      types.RunStatusQueued,
 		nodes:       nodes,
+		outputs:     make(map[string]map[string]interface{}),
 		events:      make([]*types.Event, 0),
 		nextSeq:     1,
 		maxEvents:   s.config.EventMaxLen,
@@ -247,6 +249,44 @@ func (s *MemoryStore) GetNodeState(ctx context.Context, runID, nodeID string) (*
 	}
 
 	return state, nil
+}
+
+func (s *MemoryStore) SetNodeOutputs(ctx context.Context, runID, nodeID string, outputs map[string]interface{}) error {
+	s.mu.RLock()
+	run, ok := s.runs[runID]
+	s.mu.RUnlock()
+
+	if !ok {
+		return ErrRunNotFound
+	}
+
+	run.mu.Lock()
+	defer run.mu.Unlock()
+
+	run.outputs[nodeID] = outputs
+	run.updatedAt = time.Now().UTC()
+
+	return nil
+}
+
+func (s *MemoryStore) GetNodeOutputs(ctx context.Context, runID, nodeID string) (map[string]interface{}, error) {
+	s.mu.RLock()
+	run, ok := s.runs[runID]
+	s.mu.RUnlock()
+
+	if !ok {
+		return nil, ErrRunNotFound
+	}
+
+	run.mu.RLock()
+	defer run.mu.RUnlock()
+
+	outputs, ok := run.outputs[nodeID]
+	if !ok {
+		return nil, nil // No outputs yet, not an error
+	}
+
+	return outputs, nil
 }
 
 func (s *MemoryStore) AppendEvent(ctx context.Context, runID string, input *types.EventInput) (*types.Event, error) {

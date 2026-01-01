@@ -126,11 +126,12 @@ func NewRedisStore(cfg *RedisConfig) (*RedisStore, error) {
 }
 
 // Key helpers
-func (s *RedisStore) keyMeta(runID string) string   { return fmt.Sprintf("%s:%s:meta", s.prefix, runID) }
-func (s *RedisStore) keyNodes(runID string) string  { return fmt.Sprintf("%s:%s:nodes", s.prefix, runID) }
-func (s *RedisStore) keyEvents(runID string) string { return fmt.Sprintf("%s:%s:events", s.prefix, runID) }
-func (s *RedisStore) keySeq(runID string) string    { return fmt.Sprintf("%s:%s:seq", s.prefix, runID) }
-func (s *RedisStore) keyPlan(runID string) string   { return fmt.Sprintf("%s:%s:plan", s.prefix, runID) }
+func (s *RedisStore) keyMeta(runID string) string    { return fmt.Sprintf("%s:%s:meta", s.prefix, runID) }
+func (s *RedisStore) keyNodes(runID string) string   { return fmt.Sprintf("%s:%s:nodes", s.prefix, runID) }
+func (s *RedisStore) keyEvents(runID string) string  { return fmt.Sprintf("%s:%s:events", s.prefix, runID) }
+func (s *RedisStore) keySeq(runID string) string     { return fmt.Sprintf("%s:%s:seq", s.prefix, runID) }
+func (s *RedisStore) keyPlan(runID string) string    { return fmt.Sprintf("%s:%s:plan", s.prefix, runID) }
+func (s *RedisStore) keyOutputs(runID string) string { return fmt.Sprintf("%s:%s:outputs", s.prefix, runID) }
 
 // setTTL refreshes TTL on all keys for a run.
 func (s *RedisStore) setTTL(ctx context.Context, runID string) error {
@@ -143,6 +144,7 @@ func (s *RedisStore) setTTL(ctx context.Context, runID string) error {
 	pipe.Expire(ctx, s.keyEvents(runID), s.ttl)
 	pipe.Expire(ctx, s.keySeq(runID), s.ttl)
 	pipe.Expire(ctx, s.keyPlan(runID), s.ttl)
+	pipe.Expire(ctx, s.keyOutputs(runID), s.ttl)
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -425,6 +427,41 @@ func (s *RedisStore) GetNodeState(ctx context.Context, runID, nodeID string) (*t
 	}
 
 	return state, nil
+}
+
+// SetNodeOutputs stores a node's output values for expression evaluation.
+func (s *RedisStore) SetNodeOutputs(ctx context.Context, runID, nodeID string, outputs map[string]interface{}) error {
+	outputsJSON, err := json.Marshal(outputs)
+	if err != nil {
+		return fmt.Errorf("marshal outputs: %w", err)
+	}
+
+	if err := s.client.HSet(ctx, s.keyOutputs(runID), nodeID, string(outputsJSON)).Err(); err != nil {
+		return fmt.Errorf("set node outputs: %w", err)
+	}
+
+	// Refresh TTL
+	s.setTTL(ctx, runID)
+
+	return nil
+}
+
+// GetNodeOutputs retrieves a node's stored output values.
+func (s *RedisStore) GetNodeOutputs(ctx context.Context, runID, nodeID string) (map[string]interface{}, error) {
+	outputsJSON, err := s.client.HGet(ctx, s.keyOutputs(runID), nodeID).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, nil // No outputs yet
+		}
+		return nil, fmt.Errorf("get node outputs: %w", err)
+	}
+
+	var outputs map[string]interface{}
+	if err := json.Unmarshal([]byte(outputsJSON), &outputs); err != nil {
+		return nil, fmt.Errorf("unmarshal outputs: %w", err)
+	}
+
+	return outputs, nil
 }
 
 // AppendEvent adds an event to the run's stream.

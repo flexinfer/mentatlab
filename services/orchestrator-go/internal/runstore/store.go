@@ -29,6 +29,10 @@ type RunStore interface {
 	UpdateNodeState(ctx context.Context, runID, nodeID string, state *types.NodeState) error
 	GetNodeState(ctx context.Context, runID, nodeID string) (*types.NodeState, error)
 
+	// Node outputs for expression evaluation in control flow
+	SetNodeOutputs(ctx context.Context, runID, nodeID string, outputs map[string]interface{}) error
+	GetNodeOutputs(ctx context.Context, runID, nodeID string) (map[string]interface{}, error)
+
 	// Event streaming
 	// AppendEvent adds an event to the run's event stream and returns the created event.
 	AppendEvent(ctx context.Context, runID string, input *types.EventInput) (*types.Event, error)
