@@ -10,7 +10,7 @@ services:
       - "8080:8080"
     environment:
       # Match FastAPI app setting in services/gateway/app/main.py
-      - ORCHESTRATOR_BASE_URL=http://orchestrator:7070
+      - ORCHESTRATOR_BASE_URL=http://orchestrator:8081
       - TRUSTED_HOSTS=gateway,orchestrator,localhost,127.0.0.1
       - UVICORN_HOST=0.0.0.0
       - UVICORN_PORT=8080
