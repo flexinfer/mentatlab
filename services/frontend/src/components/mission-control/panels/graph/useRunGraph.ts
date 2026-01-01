@@ -4,6 +4,7 @@ import { orchestratorService } from "@/services/api/orchestratorService";
 import type {
   Run as ApiRun,
   PlanEdge as ApiPlanEdge,
+  PlanNode as ApiPlanNode,
 } from "@/types/orchestrator";
 import { streamRegistry } from "@/services/streaming/streamRegistry";
 import {
@@ -11,11 +12,16 @@ import {
   type NormalizedRunEvent,
 } from "@/services/streaming/parse";
 import type { NodeCardData, NodeStatus } from "./NodeCard";
+import type { ConditionalNodeData } from "@/nodes/ConditionalNode";
+import type { ForEachNodeData } from "@/nodes/ForEachNode";
 
 export type RunStatus = "queued" | "running" | "succeeded" | "failed" | string;
 
+// Union type for all node data types in the graph
+export type AnyNodeData = NodeCardData | ConditionalNodeData | ForEachNodeData;
+
 export type UseRunGraphState = {
-  nodes: RFNode<NodeCardData>[];
+  nodes: RFNode<AnyNodeData>[];
   edges: Edge[];
   runStatus: RunStatus;
   selectedNodeId: string | null;
@@ -92,7 +98,7 @@ function mapPlanEdgesToRF(
 export function useRunGraph(
   runId: string | null | undefined
 ): UseRunGraphState {
-  const [nodes, setNodes] = React.useState<RFNode<NodeCardData>[]>([]);
+  const [nodes, setNodes] = React.useState<RFNode<AnyNodeData>[]>([]);
   const [edges, setEdges] = React.useState<Edge[]>([]);
   const [runStatus, setRunStatus] = React.useState<RunStatus>("queued");
   const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(
@@ -126,7 +132,7 @@ export function useRunGraph(
 
         // Seed per-node runtime meta from run.nodes if present
         const meta = new Map<string, NodeRuntimeMeta>();
-        const rfNodes: RFNode<NodeCardData>[] = (plan.nodes || []).map((pn) => {
+        const rfNodes: RFNode<any>[] = (plan.nodes || []).map((pn: ApiPlanNode) => {
           const nodeId = pn.id;
           const rs = run.nodes?.[nodeId]?.status || "queued";
           const m: NodeRuntimeMeta = {
@@ -137,13 +143,55 @@ export function useRunGraph(
             lastSeq: 0,
           };
           meta.set(nodeId, m);
+
+          // Determine node type based on control flow config
+          const basePosition = {
+            x: Math.random() * 300 - 150,
+            y: Math.random() * 200 - 100,
+          };
+
+          // Conditional node (if/switch branching)
+          if (pn.conditional) {
+            return {
+              id: nodeId,
+              type: "conditional",
+              position: basePosition,
+              data: {
+                id: nodeId,
+                label: pn.label || pn.id,
+                type: pn.conditional.type || "if",
+                expression: pn.conditional.expression || "",
+                branches: pn.conditional.branches || {},
+                default: pn.conditional.default,
+                status: m.status,
+              } as ConditionalNodeData,
+            } as RFNode<ConditionalNodeData>;
+          }
+
+          // For-each loop node
+          if (pn.for_each) {
+            return {
+              id: nodeId,
+              type: "forEach",
+              position: basePosition,
+              data: {
+                id: nodeId,
+                label: pn.label || pn.id,
+                collection: pn.for_each.collection || "",
+                itemVar: pn.for_each.item_var || "item",
+                indexVar: pn.for_each.index_var,
+                maxParallel: pn.for_each.max_parallel || 1,
+                body: pn.for_each.body || [],
+                status: m.status,
+              } as ForEachNodeData,
+            } as RFNode<ForEachNodeData>;
+          }
+
+          // Standard agent/task node
           return {
             id: nodeId,
             type: "nodeCard",
-            position: {
-              x: Math.random() * 300 - 150,
-              y: Math.random() * 200 - 100,
-            }, // simple scatter; layout can be improved later
+            position: basePosition,
             data: {
               id: nodeId,
               title: pn.label || pn.id,
@@ -296,6 +344,111 @@ export function useRunGraph(
         ) {
           const st = ev.data?.status || ev.data?.state || ev.data;
           setRunStatus(asRunStatus(st));
+        }
+        // Control flow: condition evaluated
+        else if (typeLc === "condition_evaluated") {
+          const nxId =
+            ev.nodeId || ev.data?.node_id || ev.data?.id || ev.data?.node;
+          if (!nxId) return;
+          const selectedBranch = ev.data?.selected_branch || ev.data?.branch;
+          setNodes((prev) =>
+            prev.map((n) =>
+              n.id === nxId
+                ? {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      selectedBranch,
+                      status: "succeeded",
+                    },
+                  }
+                : n
+            )
+          );
+        }
+        // Control flow: branch skipped
+        else if (typeLc === "branch_skipped") {
+          const nxId =
+            ev.nodeId || ev.data?.node_id || ev.data?.id || ev.data?.node;
+          if (!nxId) return;
+          // Mark the node as skipped
+          setNodes((prev) =>
+            prev.map((n) =>
+              n.id === nxId
+                ? {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      status: "skipped",
+                    },
+                  }
+                : n
+            )
+          );
+        }
+        // Control flow: loop started
+        else if (typeLc === "loop_started") {
+          const nxId =
+            ev.nodeId || ev.data?.node_id || ev.data?.id || ev.data?.node;
+          if (!nxId) return;
+          const itemCount = ev.data?.item_count;
+          setNodes((prev) =>
+            prev.map((n) =>
+              n.id === nxId
+                ? {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      status: "running",
+                      totalIterations: itemCount,
+                      currentIteration: 0,
+                    },
+                  }
+                : n
+            )
+          );
+        }
+        // Control flow: loop iteration
+        else if (typeLc === "loop_iteration") {
+          const nxId =
+            ev.nodeId || ev.data?.node_id || ev.data?.id || ev.data?.node;
+          if (!nxId) return;
+          const index = ev.data?.index;
+          const total = ev.data?.total;
+          setNodes((prev) =>
+            prev.map((n) => {
+              if (n.id !== nxId || n.type !== "forEach") return n;
+              const forEachData = n.data as ForEachNodeData;
+              return {
+                ...n,
+                data: {
+                  ...forEachData,
+                  currentIteration: typeof index === "number" ? index + 1 : forEachData.currentIteration,
+                  totalIterations: total ?? forEachData.totalIterations,
+                },
+              };
+            })
+          );
+        }
+        // Control flow: loop complete
+        else if (typeLc === "loop_complete") {
+          const nxId =
+            ev.nodeId || ev.data?.node_id || ev.data?.id || ev.data?.node;
+          if (!nxId) return;
+          const hasError = ev.data?.error;
+          setNodes((prev) =>
+            prev.map((n) =>
+              n.id === nxId
+                ? {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      status: hasError ? "failed" : "succeeded",
+                    },
+                  }
+                : n
+            )
+          );
         }
         // Logs ignored here (console will consume)
       },

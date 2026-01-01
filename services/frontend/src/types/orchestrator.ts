@@ -12,6 +12,33 @@ export type RunStatus =
   | "canceled"
   | "cancelled";
 
+// --- Control Flow Types ---
+export interface ConditionalBranch {
+  condition?: string;  // For switch cases
+  targets: string[];   // Downstream node IDs
+}
+
+export interface ConditionalConfig {
+  type: 'if' | 'switch';
+  expression: string;
+  branches: Record<string, ConditionalBranch>;
+  default?: string;
+}
+
+export interface ForEachConfig {
+  collection: string;      // Expression yielding array
+  item_var: string;        // Variable name for each item
+  index_var?: string;      // Optional index variable
+  max_parallel?: number;   // 0 = sequential
+  body: string[];          // Node IDs in the loop body
+}
+
+export interface SubflowConfig {
+  flow_id: string;
+  input_mapping?: Record<string, string>;
+  output_mapping?: Record<string, string>;
+}
+
 // --- Plan Definitions ---
 export interface PlanNode {
   id: string;
@@ -22,6 +49,10 @@ export interface PlanNode {
   max_retries?: number;
   timeoutMs?: number;
   backoff_seconds?: number;
+  // Control flow (only one should be set)
+  conditional?: ConditionalConfig;
+  for_each?: ForEachConfig;
+  subflow?: SubflowConfig;
 }
 
 export interface PlanEdge {

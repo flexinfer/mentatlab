@@ -36,14 +36,24 @@ import { PanelShell } from '@/components/ui/PanelShell';
 import useStore from '../../../store';
 import { orchestratorService } from '../../../services/api/orchestratorService';
 import { useToast } from '../../../contexts/ToastContext';
+import ConditionalNode from '@/nodes/ConditionalNode';
+import ForEachNode from '@/nodes/ForEachNode';
 
 type Props = {
   runId: string | null;
   onSelectNode?: (nodeId: string | null) => void;
 };
 
+/**
+ * Node types registered for ReactFlow.
+ * - nodeCard: Standard agent/task node
+ * - conditional: If/switch branching node (amber)
+ * - forEach: Loop iteration node (purple)
+ */
 const nodeTypes = {
   nodeCard: NodeCard,
+  conditional: ConditionalNode,
+  forEach: ForEachNode,
 } as any;
 
 const MiniMapAny = MiniMap as any;

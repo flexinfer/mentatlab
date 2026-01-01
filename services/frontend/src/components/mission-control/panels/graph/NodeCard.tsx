@@ -2,7 +2,7 @@ import React from 'react';
 import { Handle, Position } from 'reactflow';
 import Badge from '@/components/ui/Badge';
 
-export type NodeStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+export type NodeStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
 
 export type NodeCardData = {
   id: string;
@@ -33,6 +33,8 @@ export default function NodeCard({ data, selected }: { data: NodeCardData; selec
         return <Badge variant="success">Succeeded</Badge>;
       case 'failed':
         return <Badge variant="danger">Failed</Badge>;
+      case 'skipped':
+        return <Badge>Skipped</Badge>;
       default:
         return <Badge>Unknown</Badge>;
     }
