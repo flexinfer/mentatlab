@@ -291,6 +291,139 @@ def run_flow(
         raise typer.Exit(code=1)
 
 
+# Completion command for shell integration
+@app.command("completion")
+def generate_completion(
+    shell: str = typer.Argument(
+        ..., help="Shell to generate completion for: bash, zsh, fish, or powershell"
+    ),
+):
+    """Generate shell completion script.
+
+    To install completions:
+
+    \b
+    # Bash (add to ~/.bashrc):
+    eval "$(mentatctl completion bash)"
+
+    \b
+    # Zsh (add to ~/.zshrc):
+    eval "$(mentatctl completion zsh)"
+
+    \b
+    # Fish:
+    mentatctl completion fish > ~/.config/fish/completions/mentatctl.fish
+
+    \b
+    # PowerShell:
+    mentatctl completion powershell >> $PROFILE
+    """
+    import subprocess
+    import os
+
+    shell = shell.lower()
+    valid_shells = {"bash", "zsh", "fish", "powershell"}
+
+    if shell not in valid_shells:
+        typer.echo(f"❌ Unsupported shell: {shell}", err=True)
+        typer.echo(f"   Supported shells: {', '.join(valid_shells)}", err=True)
+        raise typer.Exit(code=1)
+
+    # Get the path to this script
+    script_name = "mentatctl"
+
+    # Typer uses click under the hood, which provides completion via _<APP>_COMPLETE env var
+    env_var = f"_{script_name.upper()}_COMPLETE"
+
+    if shell == "bash":
+        completion_var = f"{env_var}=bash_source"
+    elif shell == "zsh":
+        completion_var = f"{env_var}=zsh_source"
+    elif shell == "fish":
+        completion_var = f"{env_var}=fish_source"
+    else:  # powershell
+        completion_var = f"{env_var}=powershell_source"
+
+    # Generate completion by running ourselves with the completion env var
+    env = os.environ.copy()
+    env[env_var] = completion_var.split("=")[1]
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "cli.mentatctl.main"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if result.stdout:
+            typer.echo(result.stdout)
+        else:
+            # Fallback: generate a basic completion script
+            if shell == "bash":
+                typer.echo(
+                    f"""
+# mentatctl bash completion
+_mentatctl_completion() {{
+    local IFS=$'\\n'
+    COMPREPLY=( $(compgen -W "agent runs dev validate run debug completion" -- "${{COMP_WORDS[COMP_CWORD]}}") )
+}}
+complete -F _mentatctl_completion mentatctl
+"""
+                )
+            elif shell == "zsh":
+                typer.echo(
+                    f"""
+# mentatctl zsh completion
+#compdef mentatctl
+
+_mentatctl() {{
+    local -a commands
+    commands=(
+        'agent:Manage agents - register, list, inspect, delete'
+        'runs:Manage orchestrator runs - list, inspect, cancel, watch'
+        'dev:Development commands for local testing'
+        'validate:Validate a flow configuration file'
+        'run:Execute a flow'
+        'debug:Check connectivity to all MentatLab services'
+        'completion:Generate shell completion script'
+    )
+    _describe 'command' commands
+}}
+
+compdef _mentatctl mentatctl
+"""
+                )
+            elif shell == "fish":
+                typer.echo(
+                    """
+# mentatctl fish completion
+complete -c mentatctl -n "__fish_use_subcommand" -a agent -d "Manage agents"
+complete -c mentatctl -n "__fish_use_subcommand" -a runs -d "Manage runs"
+complete -c mentatctl -n "__fish_use_subcommand" -a dev -d "Development commands"
+complete -c mentatctl -n "__fish_use_subcommand" -a validate -d "Validate a flow"
+complete -c mentatctl -n "__fish_use_subcommand" -a run -d "Execute a flow"
+complete -c mentatctl -n "__fish_use_subcommand" -a debug -d "Check connectivity"
+complete -c mentatctl -n "__fish_use_subcommand" -a completion -d "Generate completions"
+"""
+                )
+            else:  # powershell
+                typer.echo(
+                    """
+# mentatctl PowerShell completion
+Register-ArgumentCompleter -Native -CommandName mentatctl -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $commands = @('agent', 'runs', 'dev', 'validate', 'run', 'debug', 'completion')
+    $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    }
+}
+"""
+                )
+    except Exception as e:
+        typer.echo(f"❌ Error generating completions: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
 # Debug command for connection diagnostics
 @app.command("debug")
 def debug_connections(

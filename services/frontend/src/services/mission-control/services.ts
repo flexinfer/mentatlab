@@ -896,20 +896,221 @@ export class ReportService {
 // CostSimulator
 //
 
-export class CostSimulator {
-  estimateFlow(flow: Flow): CostEstimate {
-    // Heuristic placeholder: count nodes; assume per-node budget
-    const nodeCount = flow.graph.nodes.length;
-    const tokens = nodeCount * 500; // fake
-    const tokenCostUsd = tokens * 0.000002; // fake $/token
-    const storageBytes = nodeCount * 50_000; // fake
-    const storageCostUsd = storageBytes / 1_000_000 * 0.02; // fake $/MB
-    const egressBytes = nodeCount * 25_000; // fake
-    const egressCostUsd = egressBytes / 1_000_000 * 0.08; // fake $/MB
-    const wallTimeMs = nodeCount * 250; // fake
+/**
+ * Cost profiles for different node categories.
+ * Based on industry-standard pricing (2024):
+ * - OpenAI GPT-4: ~$30/1M input tokens, ~$60/1M output tokens
+ * - Claude: ~$15/1M input tokens, ~$75/1M output tokens
+ * - S3 storage: ~$0.023/GB/month
+ * - S3 egress: ~$0.09/GB
+ * - Compute: ~$0.05/vCPU-hour
+ */
+interface NodeCostProfile {
+  /** Estimated tokens for LLM calls (input + output) */
+  tokens: number;
+  /** Estimated storage in bytes */
+  storageBytes: number;
+  /** Estimated egress in bytes */
+  egressBytes: number;
+  /** Estimated execution time in ms */
+  wallTimeMs: number;
+}
 
-    const totalUsd = (tokenCostUsd ?? 0) + (storageCostUsd ?? 0) + (egressCostUsd ?? 0);
-    return { tokens, tokenCostUsd, storageBytes, storageCostUsd, egressBytes, egressCostUsd, wallTimeMs, totalUsd };
+const COST_PROFILES: Record<string, NodeCostProfile> = {
+  // AI nodes - expensive (LLM tokens)
+  ai: { tokens: 4000, storageBytes: 10_000, egressBytes: 5_000, wallTimeMs: 3000 },
+  'ai:chat': { tokens: 8000, storageBytes: 20_000, egressBytes: 10_000, wallTimeMs: 5000 },
+  'ai:completion': { tokens: 2000, storageBytes: 5_000, egressBytes: 2_500, wallTimeMs: 2000 },
+  'ai:embedding': { tokens: 500, storageBytes: 4_000, egressBytes: 4_000, wallTimeMs: 500 },
+  'ai:vision': { tokens: 10000, storageBytes: 500_000, egressBytes: 50_000, wallTimeMs: 8000 },
+  'ai:transcription': { tokens: 0, storageBytes: 100_000, egressBytes: 20_000, wallTimeMs: 10000 },
+
+  // Media nodes - storage/egress heavy
+  media: { tokens: 0, storageBytes: 1_000_000, egressBytes: 500_000, wallTimeMs: 2000 },
+  'media:upload': { tokens: 0, storageBytes: 5_000_000, egressBytes: 0, wallTimeMs: 1000 },
+  'media:download': { tokens: 0, storageBytes: 0, egressBytes: 5_000_000, wallTimeMs: 1000 },
+  'media:image:resize': { tokens: 0, storageBytes: 500_000, egressBytes: 250_000, wallTimeMs: 500 },
+  'media:image:filter': { tokens: 0, storageBytes: 500_000, egressBytes: 250_000, wallTimeMs: 300 },
+  'media:video:transcode': { tokens: 0, storageBytes: 50_000_000, egressBytes: 25_000_000, wallTimeMs: 60000 },
+  'media:audio:transcode': { tokens: 0, storageBytes: 5_000_000, egressBytes: 2_500_000, wallTimeMs: 5000 },
+
+  // Processing nodes - compute only
+  processing: { tokens: 0, storageBytes: 1_000, egressBytes: 500, wallTimeMs: 100 },
+  transform: { tokens: 0, storageBytes: 2_000, egressBytes: 1_000, wallTimeMs: 50 },
+  filter: { tokens: 0, storageBytes: 500, egressBytes: 250, wallTimeMs: 25 },
+  aggregate: { tokens: 0, storageBytes: 5_000, egressBytes: 2_500, wallTimeMs: 150 },
+
+  // Logic nodes - minimal cost
+  logic: { tokens: 0, storageBytes: 100, egressBytes: 50, wallTimeMs: 10 },
+  branch: { tokens: 0, storageBytes: 100, egressBytes: 50, wallTimeMs: 5 },
+  merge: { tokens: 0, storageBytes: 200, egressBytes: 100, wallTimeMs: 10 },
+  loop: { tokens: 0, storageBytes: 100, egressBytes: 50, wallTimeMs: 5 },
+
+  // Integration nodes - network I/O
+  integration: { tokens: 0, storageBytes: 10_000, egressBytes: 10_000, wallTimeMs: 500 },
+  'http:request': { tokens: 0, storageBytes: 5_000, egressBytes: 10_000, wallTimeMs: 300 },
+  webhook: { tokens: 0, storageBytes: 2_000, egressBytes: 5_000, wallTimeMs: 200 },
+  database: { tokens: 0, storageBytes: 10_000, egressBytes: 5_000, wallTimeMs: 100 },
+
+  // Input/Output nodes
+  input: { tokens: 0, storageBytes: 1_000, egressBytes: 0, wallTimeMs: 10 },
+  output: { tokens: 0, storageBytes: 0, egressBytes: 1_000, wallTimeMs: 10 },
+
+  // Default fallback
+  default: { tokens: 100, storageBytes: 1_000, egressBytes: 500, wallTimeMs: 100 },
+};
+
+// Pricing constants (USD)
+const PRICING = {
+  tokenInputPer1M: 15.0,   // ~Claude pricing
+  tokenOutputPer1M: 75.0,  // ~Claude pricing
+  storagePerGBMonth: 0.023, // S3 standard
+  egressPerGB: 0.09,       // S3 egress
+};
+
+export class CostSimulator {
+  /**
+   * Get cost profile for a node based on its type and category.
+   */
+  private getNodeProfile(node: { type: string; category?: string }): NodeCostProfile {
+    // Try exact type match first
+    if (COST_PROFILES[node.type]) {
+      return COST_PROFILES[node.type];
+    }
+
+    // Try type prefix (e.g., "ai:chat:gpt4" → "ai:chat" → "ai")
+    const typeParts = node.type.split(':');
+    for (let i = typeParts.length - 1; i >= 1; i--) {
+      const prefix = typeParts.slice(0, i).join(':');
+      if (COST_PROFILES[prefix]) {
+        return COST_PROFILES[prefix];
+      }
+    }
+
+    // Fall back to category
+    if (node.category && COST_PROFILES[node.category]) {
+      return COST_PROFILES[node.category];
+    }
+
+    // Default profile
+    return COST_PROFILES.default;
+  }
+
+  /**
+   * Estimate costs for a flow execution.
+   */
+  estimateFlow(flow: Flow): CostEstimate {
+    const nodes = flow.graph?.nodes ?? [];
+
+    if (nodes.length === 0) {
+      return {
+        tokens: 0,
+        tokenCostUsd: 0,
+        storageBytes: 0,
+        storageCostUsd: 0,
+        egressBytes: 0,
+        egressCostUsd: 0,
+        wallTimeMs: 0,
+        totalUsd: 0,
+      };
+    }
+
+    // Aggregate costs from all nodes
+    let totalTokens = 0;
+    let totalStorageBytes = 0;
+    let totalEgressBytes = 0;
+    let maxWallTimeMs = 0; // Assume parallel execution, take max path
+    let sequentialTimeMs = 0; // Also track sequential for comparison
+
+    for (const node of nodes) {
+      const profile = this.getNodeProfile(node);
+      totalTokens += profile.tokens;
+      totalStorageBytes += profile.storageBytes;
+      totalEgressBytes += profile.egressBytes;
+      sequentialTimeMs += profile.wallTimeMs;
+      maxWallTimeMs = Math.max(maxWallTimeMs, profile.wallTimeMs);
+    }
+
+    // Estimate wall time based on graph structure
+    // Use a heuristic: sqrt(sequential) * max gives a reasonable parallel estimate
+    const estimatedWallTimeMs = Math.ceil(
+      Math.sqrt(sequentialTimeMs / maxWallTimeMs) * maxWallTimeMs
+    );
+
+    // Calculate costs
+    // Assume 40% input tokens, 60% output tokens (typical for agents)
+    const inputTokens = Math.floor(totalTokens * 0.4);
+    const outputTokens = totalTokens - inputTokens;
+    const tokenCostUsd =
+      (inputTokens / 1_000_000) * PRICING.tokenInputPer1M +
+      (outputTokens / 1_000_000) * PRICING.tokenOutputPer1M;
+
+    // Storage: assume 1 month retention
+    const storageCostUsd = (totalStorageBytes / 1_000_000_000) * PRICING.storagePerGBMonth;
+
+    // Egress
+    const egressCostUsd = (totalEgressBytes / 1_000_000_000) * PRICING.egressPerGB;
+
+    const totalUsd = tokenCostUsd + storageCostUsd + egressCostUsd;
+
+    return {
+      tokens: totalTokens,
+      tokenCostUsd: Math.round(tokenCostUsd * 1000000) / 1000000, // 6 decimal places
+      storageBytes: totalStorageBytes,
+      storageCostUsd: Math.round(storageCostUsd * 1000000) / 1000000,
+      egressBytes: totalEgressBytes,
+      egressCostUsd: Math.round(egressCostUsd * 1000000) / 1000000,
+      wallTimeMs: estimatedWallTimeMs,
+      totalUsd: Math.round(totalUsd * 1000000) / 1000000,
+    };
+  }
+
+  /**
+   * Get a breakdown of costs by category.
+   */
+  estimateByCategory(flow: Flow): Record<string, CostEstimate> {
+    const nodes = flow.graph?.nodes ?? [];
+    const byCategory: Record<string, CostEstimate> = {};
+
+    for (const node of nodes) {
+      const category = node.category || 'other';
+      const profile = this.getNodeProfile(node);
+
+      if (!byCategory[category]) {
+        byCategory[category] = {
+          tokens: 0,
+          tokenCostUsd: 0,
+          storageBytes: 0,
+          storageCostUsd: 0,
+          egressBytes: 0,
+          egressCostUsd: 0,
+          wallTimeMs: 0,
+          totalUsd: 0,
+        };
+      }
+
+      const cat = byCategory[category];
+      cat.tokens = (cat.tokens ?? 0) + profile.tokens;
+      cat.storageBytes = (cat.storageBytes ?? 0) + profile.storageBytes;
+      cat.egressBytes = (cat.egressBytes ?? 0) + profile.egressBytes;
+      cat.wallTimeMs = (cat.wallTimeMs ?? 0) + profile.wallTimeMs;
+    }
+
+    // Calculate costs for each category
+    for (const category of Object.keys(byCategory)) {
+      const cat = byCategory[category];
+      const inputTokens = Math.floor((cat.tokens ?? 0) * 0.4);
+      const outputTokens = (cat.tokens ?? 0) - inputTokens;
+
+      cat.tokenCostUsd =
+        (inputTokens / 1_000_000) * PRICING.tokenInputPer1M +
+        (outputTokens / 1_000_000) * PRICING.tokenOutputPer1M;
+      cat.storageCostUsd = ((cat.storageBytes ?? 0) / 1_000_000_000) * PRICING.storagePerGBMonth;
+      cat.egressCostUsd = ((cat.egressBytes ?? 0) / 1_000_000_000) * PRICING.egressPerGB;
+      cat.totalUsd = (cat.tokenCostUsd ?? 0) + (cat.storageCostUsd ?? 0) + (cat.egressCostUsd ?? 0);
+    }
+
+    return byCategory;
   }
 }
 
