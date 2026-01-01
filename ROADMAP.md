@@ -1,62 +1,43 @@
-# MentatLab Revamp Plan
+# Project Roadmap
 
-## Objective
+> Last Updated: January 2026
 
-Transform MentatLab into a high-performance, "super responsive" graph agent orchestration machine with a premium aesthetic and robust architecture.
+## Current Status
 
-## 1. Frontend Revamp (The "Graph Machine")
+MentatLab is a robust research platform for AI agents with a comprehensive mission control UI and K8s integration. Recent work has focused on performance and production readiness.
 
-**Goal**: Create a stunning, responsive, canvas-first UI.
+### Completed Enhancements (v1.0)
+- ✅ **Performance**: Console panel virtualization (100K+ events), Web Worker SSE parsing
+- ✅ **UX**: Keyboard shortcuts system (`?`), Undo/Redo history, Canvas operations
+- ✅ **Scheduling**: Enhanced K8s integration (Pod logs, Job watching, CronJobs, Retries)
+- ✅ **Observability**: Lineage overlay, Network health visualization, Metrics dashboard
+- ✅ **Governance**: Policy guardrails overlay (Budget, PII, Safety)
+- ✅ **Persistence**: Redis RunStore with connection pooling and TTL cleanup
 
-- **Aesthetic**: Cyberpunk / Sci-Fi / Glassmorphism.
-  - Dark mode by default.
-  - Neon accents for active states.
-  - Translucent panels (glass effect) for overlays.
-- **Tech Stack**:
-  - **Framework**: React + Vite.
-  - **Styling**: Tailwind CSS v4 (already installed).
-  - **Graph**: ReactFlow (optimize for performance).
-  - **State**: Zustand (for snappy updates).
-- **Key Features**:
-  - **Live Graph**: Real-time visualization of agent states and message flows.
-  - **Command Center**: A "Mission Control" interface for global actions.
-  - **Performance**: Minimize re-renders, use WebWorkers if needed for heavy data processing.
+## Roadmap
 
-## 2. Backend Optimization (Go Gateway)
+### Phase 1: Developer Experience (Immediate)
+- [ ] **Enhanced mentatctl CLI**: Improved local dev workflow
+- [ ] **Agent Hot Reload**: Faster iteration cycles
+- [ ] **Manifest Validator UI**: Visual validation of agent configs
 
-**Goal**: Reduce latency and handle high-concurrency streaming.
+### Phase 2: Observability (Short Term)
+- [ ] **OpenTelemetry Integration**: Complete tracing support
+- [ ] **Advanced Metrics**: Custom dashboards and alerting
+- [ ] **Tracing UI**: Visual trace exploration
 
-- **New Service**: `services/gateway-go`
-- **Language**: Go (Golang).
-- **Responsibilities**:
-  - **Reverse Proxy**: Forward API requests to the Orchestrator.
-  - **WebSocket Hub**: Handle real-time communication between Frontend and Agents/Orchestrator.
-  - **Static Assets**: Serve agent UI assets efficiently.
-- **Why Go?**: Superior performance for IO-bound tasks (proxying, streaming) compared to Python/FastAPI.
+### Phase 3: Marketplace & Community (v1.1 - Q2 2026)
+- [ ] **Agent Marketplace**: Web-based discovery platform with search & ratings
+- [ ] **Publisher Profiles**: Reputation system and verification
+- [ ] **Review System**: Community reviews and moderation
+- [ ] **Security Scanning**: Automated vulnerability analysis for published agents
+- [ ] **WASM Runtime**: Secure, sandboxed execution for marketplace agents
 
-## 3. Orchestrator Optimization (Go)
+## References
 
-**Goal**: High-throughput agent scheduling and graph execution.
-
-- **New Service**: `services/orchestrator-go`
-- **Language**: Go (Golang).
-- **Responsibilities**:
-  - **Graph Engine**: Efficient DAG traversal and execution.
-  - **Scheduler**: Native Kubernetes integration using `client-go`.
-  - **State Management**: Fast, concurrent access to RunStore (Redis/Memory).
-- **Why Go?**:
-  - Native concurrency (goroutines) is perfect for managing thousands of active agents/nodes.
-  - Strong typing and compilation ensure robustness.
-  - `client-go` is the gold standard for K8s interaction.
-
-## Execution Plan
-
-1. **Scaffold Go Services** (Completed):
-   - `services/gateway-go`: Reverse proxy & WebSocket hub implemented.
-   - `services/orchestrator-go`: Core logic & basic engine implemented.
-2. **Frontend Design System** (Completed): Defined the new "Deep Space" Tailwind theme.
-3. **Graph UI Overhaul** (Completed): Rebuilt the main canvas view with the new design.
-4. **Migration** (In Progress):
-   - Port logic from Python to Go incrementally.
-   - Next: Implement full Kubernetes integration in `orchestrator-go`.
-   - Next: Connect Frontend to Go Gateway WebSockets.
+| Document | Purpose |
+|----------|---------|
+| [README.md](README.md) | Project overview |
+| [AGENTS.md](AGENTS.md) | Agent guidance |
+| [ENHANCEMENTS_SUMMARY.md](ENHANCEMENTS_SUMMARY.md) | Detailed status of recent features |
+| [docs/v1.1_milestone_spec.md](docs/v1.1_milestone_spec.md) | Detailed spec for v1.1 Marketplace |
