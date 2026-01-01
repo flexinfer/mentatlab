@@ -23,7 +23,9 @@ import { KeyboardShortcutsDialog } from '@/components/ui/KeyboardShortcutsDialog
 import { CommandPalette, type Command } from '@/components/ui/CommandPalette';
 import { PanelErrorBoundary } from '@/components/ui/PanelErrorBoundary';
 import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner';
+import { SaveStatusIndicator } from '@/components/ui/SaveStatusIndicator';
 import { streamRegistry } from '@/services/streaming/streamRegistry';
+import { useAutoSave } from '@/hooks/useAutoSave';
 
 export function MissionControlLayout() {
   const [activeRunId, setActiveRunId] = React.useState<string | null>(null);
@@ -32,6 +34,14 @@ export function MissionControlLayout() {
 
   // Flow store actions for undo/redo
   const { undo, redo, canUndo, canRedo } = useFlowStore();
+
+  // Auto-save hook for flow persistence
+  const { saveNow } = useAutoSave({
+    enabled: true,
+    debounceMs: 1500,
+    onSave: (flowId) => console.log(`[AutoSave] Flow ${flowId} saved`),
+    onError: (error, flowId) => console.error(`[AutoSave] Failed to save ${flowId}:`, error),
+  });
   // THEME: dark mode persisted
   const [dark, setDark] = React.useState<boolean>(() => {
     try { return (localStorage.getItem('theme') ?? 'light') === 'dark'; } catch { return false; }
@@ -243,8 +253,7 @@ export function MissionControlLayout() {
       ctrlKey: true,
       description: 'Flow: Save flow',
       action: () => {
-        // Flow persistence is handled by FlowStore auto-save
-        console.log('[Shortcuts] Save flow triggered');
+        saveNow();
       },
       preventDefault: true,
     },
@@ -935,6 +944,9 @@ function StatusBar({ isEnabled }: { isEnabled?: (f: keyof typeof FeatureFlags) =
   return (
     <footer className="row-start-3 col-span-2 px-3 flex items-center justify-between text-[11px] border-t bg-card/80 backdrop-blur">
       <div className="flex items-center gap-3 text-gray-600 dark:text-gray-300">
+        {/* Save Status */}
+        <SaveStatusIndicator enabled={true} compact={false} />
+        <span className="text-gray-300">|</span>
         <span className="inline-flex items-center gap-1">
           <span className={['w-1.5 h-1.5 rounded-full', statusBadge.color].join(' ')} />
           {statusBadge.text}
