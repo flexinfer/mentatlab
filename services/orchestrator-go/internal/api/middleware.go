@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -60,6 +61,11 @@ func (h *Handlers) LoggingMiddleware(next http.Handler) http.Handler {
 			requestID = uuid.New().String()
 		}
 		w.Header().Set("X-Request-ID", requestID)
+
+		// Store request ID in context for downstream handlers (e.g., error responses)
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, RequestIDKey, requestID)
+		r = r.WithContext(ctx)
 
 		// Wrap response writer to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}

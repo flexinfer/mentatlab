@@ -1,6 +1,9 @@
 // stores/index.ts
 // Ensure Immer is configured for Map/Set drafts before creating any stores
 import './immerSetup';
+
+// Re-export the ReactFlow store (nodes, edges, clipboard operations)
+export { default as useReactFlowStore } from '../store';
 import { create } from 'zustand';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';

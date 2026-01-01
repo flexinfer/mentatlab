@@ -8,10 +8,12 @@ import ConsolePanel from '../panels/ConsolePanel';
 import RunsPanel from '../panels/RunsPanel';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { ReactFlowProvider } from 'reactflow';
-import { useStreamingStore, useFlowStore, usePanelLayoutStore } from '../../../store/index';
+import { useStreamingStore, useFlowStore, usePanelLayoutStore, useReactFlowStore } from '../../../store/index';
+import { useToast } from '../../../contexts/ToastContext';
 import { StreamConnectionState } from '../../../types/streaming';
 import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
+import { NodeContextMenu } from '../menus/NodeContextMenu';
 import InspectorPanel from '../panels/InspectorPanel';
 import NetworkPanel from '../panels/NetworkPanel';
 import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
@@ -34,6 +36,10 @@ export function MissionControlLayout() {
 
   // Flow store actions for undo/redo
   const { undo, redo, canUndo, canRedo } = useFlowStore();
+
+  // ReactFlow store for clipboard operations
+  const { copySelected, pasteClipboard, duplicateSelected, deleteSelected, selectAll, deselectAll, nudgeSelected, contextMenu, closeContextMenu } = useReactFlowStore();
+  const toast = useToast();
 
   // Auto-save hook for flow persistence
   const { saveNow } = useAutoSave({
@@ -269,9 +275,14 @@ export function MissionControlLayout() {
           setSettingsOpen(false);
         } else if (cogpakUi) {
           setCogpakUi(null);
+        } else if (contextMenu.isOpen) {
+          closeContextMenu();
+        } else {
+          // Final fallback: deselect all nodes
+          deselectAll();
         }
       }),
-      description: 'UI: Close dialogs/overlays',
+      description: 'UI: Close dialogs/overlays or deselect',
     },
     {
       key: 'l',
@@ -300,14 +311,57 @@ export function MissionControlLayout() {
       },
       preventDefault: true,
     },
+    // Clipboard operations
     {
-      key: 'd',
-      ctrlKey: true,
-      description: 'Flow: Start demo run',
-      action: () => {
-        startDemoRun();
-      },
-      preventDefault: true,
+      ...commonShortcuts.copy(() => {
+        const count = copySelected();
+        if (count > 0) {
+          toast.success(`Copied ${count} node${count > 1 ? 's' : ''}`);
+        }
+      }),
+      description: 'Edit: Copy selected nodes',
+    },
+    {
+      ...commonShortcuts.paste(() => {
+        const count = pasteClipboard();
+        if (count > 0) {
+          toast.success(`Pasted ${count} node${count > 1 ? 's' : ''}`);
+        }
+      }),
+      description: 'Edit: Paste nodes',
+    },
+    {
+      ...commonShortcuts.duplicate(() => {
+        const count = duplicateSelected();
+        if (count > 0) {
+          toast.success(`Duplicated ${count} node${count > 1 ? 's' : ''}`);
+        }
+      }),
+      description: 'Edit: Duplicate selected nodes',
+    },
+    {
+      ...commonShortcuts.selectAll(() => {
+        selectAll();
+      }),
+      description: 'Edit: Select all nodes',
+    },
+    {
+      ...commonShortcuts.delete(() => {
+        const count = deleteSelected();
+        if (count > 0) {
+          toast.info(`Deleted ${count} node${count > 1 ? 's' : ''}`);
+        }
+      }),
+      description: 'Edit: Delete selected nodes',
+    },
+    {
+      ...commonShortcuts.backspace(() => {
+        const count = deleteSelected();
+        if (count > 0) {
+          toast.info(`Deleted ${count} node${count > 1 ? 's' : ''}`);
+        }
+      }),
+      description: 'Edit: Delete selected nodes',
     },
     {
       key: 't',
@@ -318,7 +372,61 @@ export function MissionControlLayout() {
       },
       preventDefault: true,
     },
-  ], [commandPaletteOpen, shortcutsDialogOpen, lineageOverlayOpen, policyOverlayOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo, dark, setDark]);
+    // Arrow key nudging
+    {
+      key: 'ArrowUp',
+      description: 'Edit: Nudge selected nodes up',
+      action: () => nudgeSelected(0, -10),
+      preventDefault: true,
+    },
+    {
+      key: 'ArrowDown',
+      description: 'Edit: Nudge selected nodes down',
+      action: () => nudgeSelected(0, 10),
+      preventDefault: true,
+    },
+    {
+      key: 'ArrowLeft',
+      description: 'Edit: Nudge selected nodes left',
+      action: () => nudgeSelected(-10, 0),
+      preventDefault: true,
+    },
+    {
+      key: 'ArrowRight',
+      description: 'Edit: Nudge selected nodes right',
+      action: () => nudgeSelected(10, 0),
+      preventDefault: true,
+    },
+    // Shift+Arrow for larger nudge
+    {
+      key: 'ArrowUp',
+      shiftKey: true,
+      description: 'Edit: Nudge selected nodes up (large)',
+      action: () => nudgeSelected(0, -50),
+      preventDefault: true,
+    },
+    {
+      key: 'ArrowDown',
+      shiftKey: true,
+      description: 'Edit: Nudge selected nodes down (large)',
+      action: () => nudgeSelected(0, 50),
+      preventDefault: true,
+    },
+    {
+      key: 'ArrowLeft',
+      shiftKey: true,
+      description: 'Edit: Nudge selected nodes left (large)',
+      action: () => nudgeSelected(-50, 0),
+      preventDefault: true,
+    },
+    {
+      key: 'ArrowRight',
+      shiftKey: true,
+      description: 'Edit: Nudge selected nodes right (large)',
+      action: () => nudgeSelected(50, 0),
+      preventDefault: true,
+    },
+  ], [commandPaletteOpen, shortcutsDialogOpen, lineageOverlayOpen, policyOverlayOpen, settingsOpen, cogpakUi, startOrchestratorRun, startDemoRun, undo, redo, canUndo, canRedo, dark, setDark, copySelected, pasteClipboard, duplicateSelected, deleteSelected, selectAll, deselectAll, nudgeSelected, contextMenu, closeContextMenu, toast]);
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts(shortcuts);
@@ -618,6 +726,9 @@ export function MissionControlLayout() {
 
       {/* Connection Status Banner - shows when disconnected/error */}
       <ConnectionStatusBanner onRetry={startLive} />
+
+      {/* Node Context Menu - appears on right-click of nodes */}
+      <NodeContextMenu />
     </div>
   );
 }

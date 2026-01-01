@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/flexinfer/mentatlab/services/gateway-go/metrics"
+	"github.com/flexinfer/mentatlab/services/gateway-go/middleware"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -199,29 +201,41 @@ func (h *Hub) broadcastMessage(msg *streamMessage) {
 		streamID = msg.RunID // Fall back to run_id
 	}
 
+	// Get message type for metrics/logging
+	msgType := msg.Type
+	if msgType == "" {
+		msgType = "unknown"
+	}
+
 	// Send to global clients
 	for client := range h.globalClients {
-		h.sendToClient(client, msg.Raw)
+		h.sendToClient(client, msg.Raw, msgType)
 	}
 
 	// Send to stream-specific clients
 	if streamID != "" {
 		if clients, ok := h.clients[streamID]; ok {
 			for client := range clients {
-				h.sendToClient(client, msg.Raw)
+				h.sendToClient(client, msg.Raw, msgType)
 			}
 		}
 	}
 }
 
 // sendToClient sends a message to a single client.
-func (h *Hub) sendToClient(client *Client, message []byte) {
+func (h *Hub) sendToClient(client *Client, message []byte, msgType string) {
 	select {
 	case client.send <- message:
 		// Message sent successfully
 	default:
-		// Client buffer full - will be cleaned up on next unregister
-		h.logger.Warn("client buffer full, dropping message", slog.String("stream_id", client.streamID))
+		// Client buffer full - record metric and log with details
+		metrics.WebSocketMessagesDropped.WithLabelValues(msgType).Inc()
+		h.logger.Warn("client buffer full, dropping message",
+			slog.String("stream_id", client.streamID),
+			slog.String("message_type", msgType),
+			slog.String("user", client.userEmail),
+			slog.Int("message_size", len(message)),
+		)
 	}
 }
 
@@ -310,7 +324,10 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request, streamID string) 
 				slog.String("stream_id", streamID),
 				slog.String("remote_addr", r.RemoteAddr),
 			)
-			http.Error(w, `{"error": "authentication required"}`, http.StatusUnauthorized)
+			middleware.RespondErrorWithDetails(w, r, http.StatusUnauthorized, middleware.ErrCodeAuthRequired, "WebSocket authentication failed", map[string]interface{}{
+				"stream_id": streamID,
+				"reason":    err.Error(),
+			})
 			return
 		}
 	}

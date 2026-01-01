@@ -229,4 +229,32 @@ export const commonShortcuts = {
     action,
     preventDefault: true,
   }),
+  copy: (action: () => void): KeyboardShortcut => ({
+    key: 'c',
+    ctrlKey: true,
+    description: 'Copy selected',
+    action,
+    preventDefault: true,
+  }),
+  paste: (action: () => void): KeyboardShortcut => ({
+    key: 'v',
+    ctrlKey: true,
+    description: 'Paste',
+    action,
+    preventDefault: true,
+  }),
+  duplicate: (action: () => void): KeyboardShortcut => ({
+    key: 'd',
+    ctrlKey: true,
+    description: 'Duplicate selected',
+    action,
+    preventDefault: true,
+  }),
+  selectAll: (action: () => void): KeyboardShortcut => ({
+    key: 'a',
+    ctrlKey: true,
+    description: 'Select all',
+    action,
+    preventDefault: true,
+  }),
 };

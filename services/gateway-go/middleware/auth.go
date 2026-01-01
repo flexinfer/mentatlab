@@ -141,7 +141,7 @@ func (m *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 
 		if token == "" {
 			m.logger.Warn("missing authentication token", slog.String("path", r.URL.Path))
-			http.Error(w, `{"error": "authentication required"}`, http.StatusUnauthorized)
+			RespondError(w, r, http.StatusUnauthorized, ErrCodeAuthRequired, "Authentication token is required")
 			return
 		}
 
@@ -149,7 +149,9 @@ func (m *AuthMiddleware) Middleware(next http.Handler) http.Handler {
 		claims, err := m.validateToken(r.Context(), token)
 		if err != nil {
 			m.logger.Warn("invalid token", slog.String("error", err.Error()), slog.String("path", r.URL.Path))
-			http.Error(w, `{"error": "invalid token"}`, http.StatusUnauthorized)
+			RespondErrorWithDetails(w, r, http.StatusUnauthorized, ErrCodeInvalidToken, "Authentication token is invalid or expired", map[string]interface{}{
+				"reason": err.Error(),
+			})
 			return
 		}
 

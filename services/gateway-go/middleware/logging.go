@@ -53,7 +53,10 @@ func (l *LoggingMiddleware) Middleware(next http.Handler) http.Handler {
 		requestID := r.Header.Get("X-Request-ID")
 		if requestID == "" {
 			requestID = uuid.New().String()
+			// Set on request header so downstream handlers (like reverse proxy) can access it
+			r.Header.Set("X-Request-ID", requestID)
 		}
+		// Set on response header for client correlation
 		w.Header().Set("X-Request-ID", requestID)
 
 		// Wrap response writer to capture status code

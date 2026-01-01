@@ -33,6 +33,9 @@ import NodeCard, { type NodeCardData } from './graph/NodeCard';
 import { useRunGraph, type RunStatus } from './graph/useRunGraph';
 import Badge from '@/components/ui/Badge';
 import { PanelShell } from '@/components/ui/PanelShell';
+import useStore from '../../../store';
+import { orchestratorService } from '../../../services/api/orchestratorService';
+import { useToast } from '../../../contexts/ToastContext';
 
 type Props = {
   runId: string | null;
@@ -67,6 +70,10 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
     fitViewNonce,
   } = useRunGraph(runId || null);
 
+  // Context menu state from store
+  const openContextMenu = useStore((s) => s.openContextMenu);
+  const toast = useToast();
+
   const reactFlowRef = React.useRef<any>(null);
 
   const fitView = React.useCallback(() => {
@@ -93,11 +100,38 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
     [onSelectNode, setSelectedNodeId]
   );
 
-  const handleRetryFailed = React.useCallback(() => {
-    // Placeholder hook to integrate later server-side retry API
+  const handleRetryFailed = React.useCallback(async () => {
+    if (!runId) {
+      toast.warning('No run selected');
+      return;
+    }
+
     const failed = nodes.filter((n) => n.data?.status === 'failed').map((n) => n.id);
-    console.log('[GraphPanel] Retry requested for failed nodes:', failed);
-  }, [nodes]);
+    if (failed.length === 0) {
+      toast.info('No failed nodes to retry');
+      return;
+    }
+
+    try {
+      toast.info(`Retrying ${failed.length} failed node${failed.length > 1 ? 's' : ''}...`);
+      const result = await orchestratorService.retryNodes(runId, failed);
+      toast.success(
+        `Retried ${result.retriedNodes.length} node${result.retriedNodes.length > 1 ? 's' : ''}`
+      );
+    } catch (err: any) {
+      console.error('[GraphPanel] Retry failed:', err);
+      toast.error(err?.message || 'Failed to retry nodes');
+    }
+  }, [nodes, runId, toast]);
+
+  // Context menu handler for right-click on nodes
+  const handleNodeContextMenu = React.useCallback(
+    (event: React.MouseEvent, node: RFNode<NodeCardData>) => {
+      event.preventDefault();
+      openContextMenu({ x: event.clientX, y: event.clientY }, node.id);
+    },
+    [openContextMenu]
+  );
 
   return (
     <PanelShell
@@ -125,7 +159,8 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
             <button
               className="h-6 px-2 rounded border bg-background hover:bg-muted"
               onClick={handleRetryFailed}
-              title="Retry failed nodes (placeholder)"
+              disabled={!runId}
+              title={runId ? 'Retry failed nodes' : 'No run selected'}
             >
               ↻ Retry Failed
             </button>
@@ -164,6 +199,7 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
             nodes={nodes}
             edges={edges as Edge[]}
             onSelectionChange={handleSelectionChange as any}
+            onNodeContextMenu={handleNodeContextMenu as any}
             onInit={(instance: any) => {
               reactFlowRef.current = instance;
               // initial fit at first mount handled by fitViewNonce effect as well

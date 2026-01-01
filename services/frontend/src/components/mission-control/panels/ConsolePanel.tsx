@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useRunConsole, ConsoleLevel, ConsoleType, ConsoleFilters } from './console/useRunConsole';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useRunConsole, ConsoleLevel, ConsoleType, ConsoleFilters, ConsoleItem } from './console/useRunConsole';
 import Badge from '@/components/ui/Badge';
 import CodeInline from '@/components/ui/CodeInline';
 import { PanelShell } from '@/components/ui/PanelShell';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { cn } from '@/lib/cn';
+import { useToast } from '../../../contexts/ToastContext';
 
 /**
  * Mission Control Console Panel
@@ -41,6 +42,86 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
   const [levelSet, setLevelSet] = useState<Set<ConsoleLevel>>(filters.levels ?? new Set(['debug', 'info', 'warn', 'error']));
   const [nodeFilter, setNodeFilter] = useState<string | null>(filters.nodeId ?? null);
   const [query, setQuery] = useState<string>(filters.query ?? '');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const toast = useToast();
+
+  // Export functions
+  const downloadFile = useCallback((content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const exportAsJSON = useCallback(() => {
+    const data = filtered.map((item) => ({
+      timestamp: item.ts,
+      type: item.type,
+      level: item.level,
+      nodeId: item.nodeId,
+      message: item.message,
+      data: item.data,
+    }));
+    const json = JSON.stringify(data, null, 2);
+    const filename = `console-export-${runId || 'all'}-${Date.now()}.json`;
+    downloadFile(json, filename, 'application/json');
+    toast.success(`Exported ${filtered.length} events to JSON`);
+    setExportMenuOpen(false);
+  }, [filtered, runId, downloadFile, toast]);
+
+  const exportAsText = useCallback(() => {
+    const lines = filtered.map((item) => {
+      const time = item.ts ? formatTime(item.ts) : '';
+      const level = item.level ? `[${item.level.toUpperCase()}]` : '';
+      const node = item.nodeId ? `<${item.nodeId}>` : '';
+      const msg = item.message || (item.data ? JSON.stringify(item.data) : '');
+      return `${time} ${item.type} ${level} ${node} ${msg}`.trim();
+    });
+    const text = lines.join('\n');
+    const filename = `console-export-${runId || 'all'}-${Date.now()}.txt`;
+    downloadFile(text, filename, 'text/plain');
+    toast.success(`Exported ${filtered.length} events to text`);
+    setExportMenuOpen(false);
+  }, [filtered, runId, downloadFile, toast]);
+
+  const exportAsCSV = useCallback(() => {
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = typeof val === 'object' ? JSON.stringify(val) : String(val);
+      return str.includes(',') || str.includes('"') || str.includes('\n')
+        ? `"${str.replace(/"/g, '""')}"`
+        : str;
+    };
+    const headers = ['timestamp', 'type', 'level', 'nodeId', 'message', 'data'];
+    const rows = filtered.map((item) =>
+      [item.ts, item.type, item.level, item.nodeId, item.message, item.data ? JSON.stringify(item.data) : '']
+        .map(escapeCSV)
+        .join(',')
+    );
+    const csv = [headers.join(','), ...rows].join('\n');
+    const filename = `console-export-${runId || 'all'}-${Date.now()}.csv`;
+    downloadFile(csv, filename, 'text/csv');
+    toast.success(`Exported ${filtered.length} events to CSV`);
+    setExportMenuOpen(false);
+  }, [filtered, runId, downloadFile, toast]);
+
+  // Close export menu when clicking outside
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [exportMenuOpen]);
 
   // Keep UI controls in sync if external selection changes
   useEffect(() => {
@@ -246,6 +327,39 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
             >
               Clear
             </button>
+
+            {/* Export dropdown */}
+            <div ref={exportMenuRef} className="relative ml-2">
+              <button
+                className="h-6 px-2 text-[11px] rounded border bg-card hover:bg-muted"
+                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                title="Export console events"
+              >
+                Export ▾
+              </button>
+              {exportMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[120px] rounded-md border bg-popover shadow-md py-1">
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-accent hover:text-accent-foreground"
+                    onClick={exportAsJSON}
+                  >
+                    Export as JSON
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-accent hover:text-accent-foreground"
+                    onClick={exportAsText}
+                  >
+                    Export as Text
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-[11px] hover:bg-accent hover:text-accent-foreground"
+                    onClick={exportAsCSV}
+                  >
+                    Export as CSV
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Counts */}
             <span className="ml-3 text-[11px] text-gray-500">

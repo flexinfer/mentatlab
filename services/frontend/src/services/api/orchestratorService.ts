@@ -8,6 +8,7 @@ import {
   CreateRunRequest,
   CreateRunResponse,
   RunPlan,
+  Artifact,
 } from "@/types/orchestrator";
 import OrchestratorSSE from "./streaming/orchestratorSSE";
 
@@ -91,6 +92,72 @@ class OrchestratorService {
       payload
     );
     return this.extract<{ checkpointId: string }>(res);
+  }
+
+  /**
+   * Retry failed nodes in a run.
+   */
+  async retryNodes(
+    runId: string,
+    nodeIds: string[]
+  ): Promise<{ status: RunStatus; retriedNodes: string[] }> {
+    const res = await this.client.post(
+      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/retry`,
+      { nodeIds }
+    );
+    return this.extract<{ status: RunStatus; retriedNodes: string[] }>(res);
+  }
+
+  /**
+   * List artifacts for a run.
+   */
+  async listArtifacts(runId: string): Promise<Artifact[]> {
+    const res = await this.client.get(
+      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/artifacts`
+    );
+    const payload = this.extract<any>(res);
+    return (payload.artifacts ?? payload) as Artifact[];
+  }
+
+  /**
+   * Upload an artifact to a run (multipart form).
+   */
+  async uploadArtifact(
+    runId: string,
+    file: File,
+    metadata?: { name?: string; type?: string }
+  ): Promise<Artifact> {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (metadata?.name) formData.append("name", metadata.name);
+    if (metadata?.type) formData.append("type", metadata.type);
+
+    const res = await this.client.post(
+      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/artifacts`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+    return this.extract<Artifact>(res);
+  }
+
+  /**
+   * Delete an artifact by URI.
+   */
+  async deleteArtifact(uri: string): Promise<void> {
+    await this.client.delete(`${this.baseUrl()}/artifacts`, {
+      params: { uri },
+    });
+  }
+
+  /**
+   * Get a presigned download URL for an artifact.
+   */
+  async getArtifactDownloadUrl(uri: string): Promise<{ url: string }> {
+    const res = await this.client.post(
+      `${this.baseUrl()}/artifacts/download-url`,
+      { uri }
+    );
+    return this.extract<{ url: string }>(res);
   }
 
   /**

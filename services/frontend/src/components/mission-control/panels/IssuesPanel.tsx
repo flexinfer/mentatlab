@@ -2,6 +2,7 @@ import React from 'react';
 import type { Flow } from '../../../types/graph';
 import { linter, type LintIssue } from '../../../services/mission-control/services';
 import useStore from '../../../store';
+import { useToast } from '../../../contexts/ToastContext';
 
 type IssuesPanelProps = {
   flow?: Flow;
@@ -11,7 +12,7 @@ type IssuesPanelProps = {
 export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
   const [issues, setIssues] = React.useState(() => [] as ReturnType<typeof linter.analyze>);
   const [status, setStatus] = React.useState<'idle' | 'running' | 'done'>('idle');
-  const [toast, setToast] = React.useState<string | null>(null);
+  const toast = useToast();
 
   // Get store state and actions for applying fixes
   const nodes = useStore((s) => s.nodes);
@@ -77,8 +78,7 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
     // Check if this fix can be auto-applied
     if (!linter.canAutoApply(issue)) {
       // For UI-only actions, just show a message
-      setToast(`${issue.fix.title} - open the relevant panel to apply`);
-      setTimeout(() => setToast(null), 2500);
+      toast.info(`${issue.fix.title} - open the relevant panel to apply`);
       return;
     }
 
@@ -107,26 +107,18 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
         setEdges(newEdges);
       }
 
-      setToast(`Applied: ${issue.fix.title}`);
-      setTimeout(() => setToast(null), 2000);
+      toast.success(`Applied: ${issue.fix.title}`);
 
       // Re-run lint to refresh issues
       setTimeout(runLint, 100);
     } catch (e) {
       console.error('[IssuesPanel] Failed to apply quick fix', e);
-      setToast('Failed to apply fix');
-      setTimeout(() => setToast(null), 2000);
+      toast.error('Failed to apply fix');
     }
-  }, [buildCurrentFlow, setNodes, setEdges, runLint]);
+  }, [buildCurrentFlow, setNodes, setEdges, runLint, toast]);
 
   return (
     <div className="h-full w-full flex flex-col">
-      {/* Toast notification */}
-      {toast && (
-        <div className="px-2 py-1 border-b text-[12px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20">
-          {toast}
-        </div>
-      )}
       <div className="px-2 py-1 border-b bg-card/60 backdrop-blur flex items-center justify-between">
         <div className="text-[11px] text-gray-600 dark:text-gray-300">
           <span className="font-medium">Issues</span>

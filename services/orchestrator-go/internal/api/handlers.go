@@ -81,7 +81,7 @@ func (h *Handlers) Ready(w http.ResponseWriter, r *http.Request) {
 	// Check RunStore health
 	info, err := h.store.AdapterInfo(ctx)
 	if err != nil {
-		h.respondError(w, http.StatusServiceUnavailable, "runstore unhealthy", err)
+		h.respondError(w, r,http.StatusServiceUnavailable, "runstore unhealthy", err)
 		return
 	}
 
@@ -115,13 +115,13 @@ func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 
 	var req CreateRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	runID, err := h.store.CreateRun(ctx, req.Name, req.Plan)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to create run", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to create run", err)
 		return
 	}
 
@@ -152,7 +152,7 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 	runID := vars["id"]
 
 	if h.scheduler == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "scheduler not available", errors.New("scheduler not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "scheduler not available", errors.New("scheduler not configured"))
 		return
 	}
 
@@ -160,21 +160,21 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 	run, err := h.store.GetRun(ctx, runID)
 	if err != nil {
 		if errors.Is(err, runstore.ErrRunNotFound) {
-			h.respondError(w, http.StatusNotFound, "run not found", err)
+			h.respondError(w, r,http.StatusNotFound, "run not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to get run", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to get run", err)
 		return
 	}
 
 	// Enqueue and start via scheduler
 	if err := h.scheduler.EnqueueRun(ctx, runID, run.Name, run.Plan); err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to enqueue run", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to enqueue run", err)
 		return
 	}
 
 	if err := h.scheduler.StartRun(ctx, runID); err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to start run", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to start run", err)
 		return
 	}
 
@@ -209,7 +209,7 @@ func (h *Handlers) ListRuns(w http.ResponseWriter, r *http.Request) {
 
 	runIDs, err := h.store.ListRuns(ctx)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to list runs", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to list runs", err)
 		return
 	}
 
@@ -241,10 +241,10 @@ func (h *Handlers) GetRun(w http.ResponseWriter, r *http.Request) {
 	run, err := h.store.GetRun(ctx, runID)
 	if err != nil {
 		if errors.Is(err, runstore.ErrRunNotFound) {
-			h.respondError(w, http.StatusNotFound, "run not found", err)
+			h.respondError(w, r,http.StatusNotFound, "run not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to get run", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to get run", err)
 		return
 	}
 
@@ -259,10 +259,10 @@ func (h *Handlers) DeleteRun(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.store.CancelRun(ctx, runID); err != nil {
 		if errors.Is(err, runstore.ErrRunNotFound) {
-			h.respondError(w, http.StatusNotFound, "run not found", err)
+			h.respondError(w, r,http.StatusNotFound, "run not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to delete run", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to delete run", err)
 		return
 	}
 
@@ -283,10 +283,10 @@ func (h *Handlers) CancelRun(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if err := h.store.CancelRun(ctx, runID); err != nil {
 			if errors.Is(err, runstore.ErrRunNotFound) {
-				h.respondError(w, http.StatusNotFound, "run not found", err)
+				h.respondError(w, r,http.StatusNotFound, "run not found", err)
 				return
 			}
-			h.respondError(w, http.StatusInternalServerError, "failed to cancel run", err)
+			h.respondError(w, r,http.StatusInternalServerError, "failed to cancel run", err)
 			return
 		}
 	}
@@ -302,7 +302,7 @@ func (h *Handlers) ScheduleAgent(w http.ResponseWriter, r *http.Request) {
 
 	var req types.AgentScheduleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
@@ -355,7 +355,7 @@ func (h *Handlers) ScheduleAgent(w http.ResponseWriter, r *http.Request) {
 
 	runID, err := h.store.CreateRun(ctx, agentID, plan)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to schedule agent", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to schedule agent", err)
 		return
 	}
 
@@ -384,7 +384,7 @@ func (h *Handlers) ScheduleAgent(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ValidateManifest(w http.ResponseWriter, r *http.Request) {
 	var manifest map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&manifest); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
@@ -427,7 +427,7 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	if h.registry != nil {
 		agents, err := h.registry.List(ctx, opts)
 		if err != nil {
-			h.respondError(w, http.StatusInternalServerError, "failed to list agents", err)
+			h.respondError(w, r,http.StatusInternalServerError, "failed to list agents", err)
 			return
 		}
 		h.respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -453,23 +453,23 @@ func (h *Handlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if h.registry == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
 		return
 	}
 
 	var req registry.CreateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	agent, err := h.registry.Create(ctx, &req)
 	if err != nil {
 		if errors.Is(err, registry.ErrAgentExists) {
-			h.respondError(w, http.StatusConflict, "agent already exists", err)
+			h.respondError(w, r,http.StatusConflict, "agent already exists", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to create agent", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to create agent", err)
 		return
 	}
 
@@ -484,17 +484,17 @@ func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 	agentID := vars["id"]
 
 	if h.registry == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
 		return
 	}
 
 	agent, err := h.registry.Get(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, registry.ErrAgentNotFound) {
-			h.respondError(w, http.StatusNotFound, "agent not found", err)
+			h.respondError(w, r,http.StatusNotFound, "agent not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to get agent", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to get agent", err)
 		return
 	}
 
@@ -508,23 +508,23 @@ func (h *Handlers) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	agentID := vars["id"]
 
 	if h.registry == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
 		return
 	}
 
 	var req registry.UpdateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	agent, err := h.registry.Update(ctx, agentID, &req)
 	if err != nil {
 		if errors.Is(err, registry.ErrAgentNotFound) {
-			h.respondError(w, http.StatusNotFound, "agent not found", err)
+			h.respondError(w, r,http.StatusNotFound, "agent not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to update agent", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to update agent", err)
 		return
 	}
 
@@ -539,16 +539,16 @@ func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	agentID := vars["id"]
 
 	if h.registry == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
 		return
 	}
 
 	if err := h.registry.Delete(ctx, agentID); err != nil {
 		if errors.Is(err, registry.ErrAgentNotFound) {
-			h.respondError(w, http.StatusNotFound, "agent not found", err)
+			h.respondError(w, r,http.StatusNotFound, "agent not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to delete agent", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to delete agent", err)
 		return
 	}
 
@@ -563,23 +563,23 @@ func (h *Handlers) CreateFlow(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if h.flowStore == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
 	var req flowstore.CreateFlowRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	flow, err := h.flowStore.Create(ctx, &req)
 	if err != nil {
 		if errors.Is(err, flowstore.ErrFlowExists) {
-			h.respondError(w, http.StatusConflict, "flow already exists", err)
+			h.respondError(w, r,http.StatusConflict, "flow already exists", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to create flow", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to create flow", err)
 		return
 	}
 
@@ -594,17 +594,17 @@ func (h *Handlers) GetFlow(w http.ResponseWriter, r *http.Request) {
 	flowID := vars["id"]
 
 	if h.flowStore == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
 	flow, err := h.flowStore.Get(ctx, flowID)
 	if err != nil {
 		if errors.Is(err, flowstore.ErrFlowNotFound) {
-			h.respondError(w, http.StatusNotFound, "flow not found", err)
+			h.respondError(w, r,http.StatusNotFound, "flow not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to get flow", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to get flow", err)
 		return
 	}
 
@@ -618,23 +618,23 @@ func (h *Handlers) UpdateFlow(w http.ResponseWriter, r *http.Request) {
 	flowID := vars["id"]
 
 	if h.flowStore == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
 	var req flowstore.UpdateFlowRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	flow, err := h.flowStore.Update(ctx, flowID, &req)
 	if err != nil {
 		if errors.Is(err, flowstore.ErrFlowNotFound) {
-			h.respondError(w, http.StatusNotFound, "flow not found", err)
+			h.respondError(w, r,http.StatusNotFound, "flow not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to update flow", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to update flow", err)
 		return
 	}
 
@@ -649,16 +649,16 @@ func (h *Handlers) DeleteFlow(w http.ResponseWriter, r *http.Request) {
 	flowID := vars["id"]
 
 	if h.flowStore == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
 	if err := h.flowStore.Delete(ctx, flowID); err != nil {
 		if errors.Is(err, flowstore.ErrFlowNotFound) {
-			h.respondError(w, http.StatusNotFound, "flow not found", err)
+			h.respondError(w, r,http.StatusNotFound, "flow not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to delete flow", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to delete flow", err)
 		return
 	}
 
@@ -671,7 +671,7 @@ func (h *Handlers) ListFlows(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if h.flowStore == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
@@ -697,7 +697,7 @@ func (h *Handlers) ListFlows(w http.ResponseWriter, r *http.Request) {
 
 	flows, err := h.flowStore.List(ctx, opts)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to list flows", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to list flows", err)
 		return
 	}
 
@@ -727,7 +727,7 @@ func (h *Handlers) GetJobStatus(w http.ResponseWriter, r *http.Request) {
 
 	job, err := h.k8sClient.GetJob(ctx, jobID)
 	if err != nil {
-		h.respondError(w, http.StatusNotFound, "job not found", err)
+		h.respondError(w, r,http.StatusNotFound, "job not found", err)
 		return
 	}
 
@@ -772,12 +772,12 @@ func (h *Handlers) DeleteJob(w http.ResponseWriter, r *http.Request) {
 	jobID := vars["id"]
 
 	if h.k8sClient == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "k8s client not available", errors.New("k8s client not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "k8s client not available", errors.New("k8s client not configured"))
 		return
 	}
 
 	if err := h.k8sClient.DeleteJob(ctx, jobID); err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to delete job", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to delete job", err)
 		return
 	}
 
@@ -794,13 +794,13 @@ func (h *Handlers) ListRunArtifacts(w http.ResponseWriter, r *http.Request) {
 	runID := vars["id"]
 
 	if h.dataflowSvc == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
 		return
 	}
 
 	artifacts, err := h.dataflowSvc.ListRunArtifacts(ctx, runID)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to list artifacts", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to list artifacts", err)
 		return
 	}
 
@@ -828,7 +828,7 @@ func (h *Handlers) UploadArtifact(w http.ResponseWriter, r *http.Request) {
 	runID := vars["id"]
 
 	if h.dataflowSvc == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
 		return
 	}
 
@@ -843,12 +843,12 @@ func (h *Handlers) UploadArtifact(w http.ResponseWriter, r *http.Request) {
 	// JSON request for presigned URL
 	var req UploadArtifactRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	if req.Name == "" {
-		h.respondError(w, http.StatusBadRequest, "name is required", errors.New("missing name"))
+		h.respondError(w, r,http.StatusBadRequest, "name is required", errors.New("missing name"))
 		return
 	}
 
@@ -859,7 +859,7 @@ func (h *Handlers) UploadArtifact(w http.ResponseWriter, r *http.Request) {
 
 	uploadURL, err := h.dataflowSvc.GetUploadURL(ctx, runID, nodeID, req.Name, req.ContentType, 15*time.Minute)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to generate upload URL", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to generate upload URL", err)
 		return
 	}
 
@@ -876,13 +876,13 @@ func (h *Handlers) handleDirectUpload(w http.ResponseWriter, r *http.Request, ru
 
 	// Parse multipart form (max 100MB)
 	if err := r.ParseMultipartForm(100 << 20); err != nil {
-		h.respondError(w, http.StatusBadRequest, "failed to parse multipart form", err)
+		h.respondError(w, r,http.StatusBadRequest, "failed to parse multipart form", err)
 		return
 	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		h.respondError(w, http.StatusBadRequest, "file is required", err)
+		h.respondError(w, r,http.StatusBadRequest, "file is required", err)
 		return
 	}
 	defer file.Close()
@@ -904,7 +904,7 @@ func (h *Handlers) handleDirectUpload(w http.ResponseWriter, r *http.Request, ru
 
 	ref, err := h.dataflowSvc.StoreArtifact(ctx, runID, nodeID, name, file, contentType)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to store artifact", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to store artifact", err)
 		return
 	}
 
@@ -922,7 +922,7 @@ func (h *Handlers) GetArtifactDownloadURL(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 
 	if h.dataflowSvc == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
 		return
 	}
 
@@ -930,19 +930,19 @@ func (h *Handlers) GetArtifactDownloadURL(w http.ResponseWriter, r *http.Request
 		URI string `json:"uri"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	if req.URI == "" {
-		h.respondError(w, http.StatusBadRequest, "uri is required", errors.New("missing uri"))
+		h.respondError(w, r,http.StatusBadRequest, "uri is required", errors.New("missing uri"))
 		return
 	}
 
 	ref := &dataflow.ArtifactRef{URI: req.URI}
 	downloadURL, err := h.dataflowSvc.GetDownloadURL(ctx, ref, 15*time.Minute)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to generate download URL", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to generate download URL", err)
 		return
 	}
 
@@ -957,20 +957,20 @@ func (h *Handlers) GetArtifact(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if h.dataflowSvc == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
 		return
 	}
 
 	uri := r.URL.Query().Get("uri")
 	if uri == "" {
-		h.respondError(w, http.StatusBadRequest, "uri query parameter is required", errors.New("missing uri"))
+		h.respondError(w, r,http.StatusBadRequest, "uri query parameter is required", errors.New("missing uri"))
 		return
 	}
 
 	ref := &dataflow.ArtifactRef{URI: uri}
 	reader, err := h.dataflowSvc.GetArtifact(ctx, ref)
 	if err != nil {
-		h.respondError(w, http.StatusNotFound, "artifact not found", err)
+		h.respondError(w, r,http.StatusNotFound, "artifact not found", err)
 		return
 	}
 	defer reader.Close()
@@ -993,19 +993,19 @@ func (h *Handlers) DeleteArtifact(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if h.dataflowSvc == nil {
-		h.respondError(w, http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
+		h.respondError(w, r,http.StatusServiceUnavailable, "artifact storage not available", errors.New("dataflow service not configured"))
 		return
 	}
 
 	uri := r.URL.Query().Get("uri")
 	if uri == "" {
-		h.respondError(w, http.StatusBadRequest, "uri query parameter is required", errors.New("missing uri"))
+		h.respondError(w, r,http.StatusBadRequest, "uri query parameter is required", errors.New("missing uri"))
 		return
 	}
 
 	ref := &dataflow.ArtifactRef{URI: uri}
 	if err := h.dataflowSvc.DeleteArtifact(ctx, ref); err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to delete artifact", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to delete artifact", err)
 		return
 	}
 
@@ -1021,7 +1021,7 @@ func (h *Handlers) RunStoreInfo(w http.ResponseWriter, r *http.Request) {
 
 	info, err := h.store.AdapterInfo(ctx)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "failed to get runstore info", err)
+		h.respondError(w, r,http.StatusInternalServerError, "failed to get runstore info", err)
 		return
 	}
 
@@ -1037,7 +1037,7 @@ func (h *Handlers) RunStoreSelfCheck(w http.ResponseWriter, r *http.Request) {
 
 	runID, err := h.store.CreateRun(ctx, "_selfcheck", nil)
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "selfcheck failed: create", err)
+		h.respondError(w, r,http.StatusInternalServerError, "selfcheck failed: create", err)
 		return
 	}
 
@@ -1046,18 +1046,18 @@ func (h *Handlers) RunStoreSelfCheck(w http.ResponseWriter, r *http.Request) {
 		Data: map[string]string{"message": "selfcheck"},
 	})
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "selfcheck failed: append", err)
+		h.respondError(w, r,http.StatusInternalServerError, "selfcheck failed: append", err)
 		return
 	}
 
 	events, err := h.store.GetEventsSince(ctx, runID, "")
 	if err != nil {
-		h.respondError(w, http.StatusInternalServerError, "selfcheck failed: read", err)
+		h.respondError(w, r,http.StatusInternalServerError, "selfcheck failed: read", err)
 		return
 	}
 
 	if err := h.store.CancelRun(ctx, runID); err != nil {
-		h.respondError(w, http.StatusInternalServerError, "selfcheck failed: cleanup", err)
+		h.respondError(w, r,http.StatusInternalServerError, "selfcheck failed: cleanup", err)
 		return
 	}
 
@@ -1078,12 +1078,11 @@ func (h *Handlers) respondJSON(w http.ResponseWriter, status int, data interface
 	}
 }
 
-func (h *Handlers) respondError(w http.ResponseWriter, status int, message string, err error) {
+func (h *Handlers) respondError(w http.ResponseWriter, r *http.Request, status int, message string, err error) {
 	h.logger.Error(message, "error", err, "status", status)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{
-		"error":   message,
-		"details": err.Error(),
-	})
+	code := HTTPStatusToErrorCode(status)
+	details := map[string]interface{}{
+		"reason": err.Error(),
+	}
+	writeErrorResponse(w, r, status, code, message, details)
 }

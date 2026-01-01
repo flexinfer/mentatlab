@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
 
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
@@ -19,15 +21,29 @@ func (h *Handlers) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	vars := mux.Vars(r)
 	runID := vars["id"]
+	startTime := time.Now()
+
+	// Extract request ID for logging
+	requestID := GetRequestID(ctx, r)
+
+	// Track active SSE connections
+	metrics.SSEActiveConnections.Inc()
+	defer metrics.SSEActiveConnections.Dec()
+
+	h.logger.Info("SSE connection opened",
+		slog.String("run_id", runID),
+		slog.String("request_id", requestID),
+		slog.String("remote_addr", r.RemoteAddr),
+	)
 
 	// Check if run exists
 	_, err := h.store.GetRunMeta(ctx, runID)
 	if err != nil {
 		if errors.Is(err, runstore.ErrRunNotFound) {
-			h.respondError(w, http.StatusNotFound, "run not found", err)
+			h.respondError(w, r, http.StatusNotFound, "run not found", err)
 			return
 		}
-		h.respondError(w, http.StatusInternalServerError, "failed to get run", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to get run", err)
 		return
 	}
 
@@ -43,7 +59,7 @@ func (h *Handlers) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	// Flush headers
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		h.respondError(w, http.StatusInternalServerError, "streaming not supported", nil)
+		h.respondError(w, r, http.StatusInternalServerError, "streaming not supported", nil)
 		return
 	}
 	flusher.Flush()
@@ -88,13 +104,28 @@ func (h *Handlers) StreamEvents(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-done:
 			// Client disconnected
-			h.logger.Debug("client disconnected", "run_id", runID)
+			duration := time.Since(startTime)
+			metrics.SSEConnectionDuration.Observe(duration.Seconds())
+			h.logger.Info("SSE connection closed (client disconnect)",
+				slog.String("run_id", runID),
+				slog.String("request_id", requestID),
+				slog.Duration("duration", duration),
+				slog.String("reason", "client_disconnect"),
+			)
 			return
 
 		case evt, ok := <-eventCh:
 			if !ok {
 				// Channel closed, run completed or cancelled
 				h.sendRunCompleteEvent(w, flusher, runID, ctx)
+				duration := time.Since(startTime)
+				metrics.SSEConnectionDuration.Observe(duration.Seconds())
+				h.logger.Info("SSE connection closed (run completed)",
+					slog.String("run_id", runID),
+					slog.String("request_id", requestID),
+					slog.Duration("duration", duration),
+					slog.String("reason", "run_completed"),
+				)
 				return
 			}
 			h.writeSSE(w, flusher, evt)

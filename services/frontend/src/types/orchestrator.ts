@@ -81,6 +81,18 @@ export interface CreateRunResponse {
   plan?: unknown;
 }
 
+// --- Artifacts ---
+export interface Artifact {
+  id: string;
+  runId: string;
+  name: string;
+  uri: string;
+  type?: string; // e.g., 'file', 'image', 'log'
+  size?: number; // bytes
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
 // --- Events & Checkpoints ---
 export interface Checkpoint {
   id: string;

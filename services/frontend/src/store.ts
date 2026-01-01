@@ -19,10 +19,24 @@ import { StreamSession } from './types/streaming';
 // Re-export streaming store for compatibility
 export { useStreamingStore } from './store/streamingStore';
 
+// Clipboard state for copy/paste operations
+interface ClipboardState {
+  nodes: Node[];
+  edges: Edge[];
+}
+
+// Context menu state
+interface ContextMenuState {
+  isOpen: boolean;
+  position: { x: number; y: number };
+  nodeId: string | null;
+}
+
 export type RFState = NodeOperations & {
   nodes: Node[];
   edges: Edge[];
   selectedNodeId: string | null;
+  clipboard: ClipboardState | null;
   streamingSessions: Map<string, StreamSession>;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
@@ -37,6 +51,15 @@ export type RFState = NodeOperations & {
   addStreamingSession: (session: StreamSession) => void;
   updateStreamingSession: (streamId: string, status: StreamSession['status']) => void;
   removeStreamingSession: (streamId: string) => void;
+
+  // Clipboard operations
+  copySelected: () => number; // Returns number of nodes copied
+  pasteClipboard: () => number; // Returns number of nodes pasted
+  duplicateSelected: () => number; // Copy + paste in one operation
+  deleteSelected: () => number; // Delete selected nodes
+  selectAll: () => void; // Select all nodes
+  deselectAll: () => void; // Deselect all nodes
+  nudgeSelected: (dx: number, dy: number) => void; // Move selected nodes
   
   // Streaming state
   activeStreamId: string | null;
@@ -48,14 +71,21 @@ export type RFState = NodeOperations & {
   addDataPoint: (data: any) => void;
   addConsoleMessage: (message: any) => void;
   setConnectionStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+
+  // Context menu state
+  contextMenu: ContextMenuState;
+  openContextMenu: (position: { x: number; y: number }, nodeId: string) => void;
+  closeContextMenu: () => void;
 };
 
 const useStore = create<RFState>((set, get) => ({
   nodes: [],
   edges: [],
   selectedNodeId: null,
+  clipboard: null,
+  contextMenu: { isOpen: false, position: { x: 0, y: 0 }, nodeId: null },
   streamingSessions: new Map(),
-  
+
   // Streaming state
   activeStreamId: null,
   streams: {},
@@ -301,6 +331,130 @@ const useStore = create<RFState>((set, get) => ({
   setConnectionStatus: (status) => {
     console.log('[Store] Setting connection status:', status);
     set({ connectionStatus: status });
+  },
+
+  // Clipboard operations
+  copySelected: () => {
+    const state = get();
+    const selectedNodes = state.nodes.filter((node) => node.selected);
+    if (selectedNodes.length === 0) return 0;
+
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+    // Copy edges that connect selected nodes (internal edges only)
+    const internalEdges = state.edges.filter(
+      (edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target)
+    );
+
+    set({ clipboard: { nodes: selectedNodes, edges: internalEdges } });
+    return selectedNodes.length;
+  },
+
+  pasteClipboard: () => {
+    const state = get();
+    if (!state.clipboard || state.clipboard.nodes.length === 0) return 0;
+
+    // Generate new IDs and offset positions
+    const idMap = new Map<string, string>();
+    const newNodes = state.clipboard.nodes.map((node) => {
+      const newId = uuidv4();
+      idMap.set(node.id, newId);
+      return {
+        ...node,
+        id: newId,
+        position: {
+          x: node.position.x + 50,
+          y: node.position.y + 50,
+        },
+        selected: true, // Select pasted nodes
+        data: { ...node.data }, // Deep copy data
+      };
+    });
+
+    // Remap edge references
+    const newEdges = state.clipboard.edges.map((edge) => ({
+      ...edge,
+      id: uuidv4(),
+      source: idMap.get(edge.source) ?? edge.source,
+      target: idMap.get(edge.target) ?? edge.target,
+    }));
+
+    // Deselect existing nodes
+    const updatedNodes = state.nodes.map((n) => ({ ...n, selected: false }));
+
+    set({
+      nodes: [...updatedNodes, ...newNodes],
+      edges: [...state.edges, ...newEdges],
+    });
+
+    return newNodes.length;
+  },
+
+  duplicateSelected: () => {
+    const copied = get().copySelected();
+    if (copied === 0) return 0;
+    return get().pasteClipboard();
+  },
+
+  deleteSelected: () => {
+    const state = get();
+    const selectedNodes = state.nodes.filter((node) => node.selected);
+    if (selectedNodes.length === 0) return 0;
+
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+    const remainingNodes = state.nodes.filter((node) => !node.selected);
+    const remainingEdges = state.edges.filter(
+      (edge) => !selectedIds.has(edge.source) && !selectedIds.has(edge.target)
+    );
+
+    set({
+      nodes: remainingNodes,
+      edges: remainingEdges,
+      selectedNodeId: null,
+    });
+
+    return selectedNodes.length;
+  },
+
+  selectAll: () => {
+    set((state) => ({
+      nodes: state.nodes.map((node) => ({ ...node, selected: true })),
+    }));
+  },
+
+  deselectAll: () => {
+    set((state) => ({
+      nodes: state.nodes.map((node) => ({ ...node, selected: false })),
+      selectedNodeId: null,
+    }));
+  },
+
+  nudgeSelected: (dx, dy) => {
+    set((state) => ({
+      nodes: state.nodes.map((node) =>
+        node.selected
+          ? {
+              ...node,
+              position: {
+                x: node.position.x + dx,
+                y: node.position.y + dy,
+              },
+            }
+          : node
+      ),
+    }));
+  },
+
+  // Context menu operations
+  openContextMenu: (position, nodeId) => {
+    set({
+      contextMenu: { isOpen: true, position, nodeId },
+    });
+  },
+
+  closeContextMenu: () => {
+    set({
+      contextMenu: { isOpen: false, position: { x: 0, y: 0 }, nodeId: null },
+    });
   },
 }));
 

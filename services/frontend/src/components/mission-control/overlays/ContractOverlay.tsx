@@ -5,6 +5,7 @@ import {
   isPinStreamType,
   type PinType,
 } from '../../../types/graph';
+import { useToast } from '../../../contexts/ToastContext';
 
 /**
  * ContractOverlay
@@ -61,11 +62,11 @@ export default function ContractOverlay() {
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
   const setEdges = useStore((s) => s.setEdges);
+  const toast = useToast();
 
   // Local dismissed set (ephemeral)
   const [dismissed, setDismissed] = React.useState<Set<string>>(() => new Set());
   const [hovered, setHovered] = React.useState<string | null>(null);
-  const [toast, setToast] = React.useState<string | null>(null);
   const [tick, setTick] = React.useState(0); // used when lint trigger events arrive
 
   // Optional: listen to global lint trigger events to force a recompute if needed
@@ -126,12 +127,6 @@ export default function ContractOverlay() {
     return allIssues.filter((i) => !dismissed.has(i.id)).slice(0, 200);
   }, [allIssues, dismissed]);
 
-  // Toast helper
-  const showToast = (msg: string, ms = 2000) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), ms);
-  };
-
   // Apply fix for contract issues - removes the problematic edge
   const onApplyFix = React.useCallback((issue: Issue) => {
     try {
@@ -141,14 +136,14 @@ export default function ContractOverlay() {
       // Find and remove the edge
       const currentEdge = edges.find((e: any) => e.id === edgeToRemove);
       if (!currentEdge) {
-        showToast('Edge not found');
+        toast.warning('Edge not found');
         return;
       }
 
       const updatedEdges = edges.filter((e: any) => e.id !== edgeToRemove);
       setEdges(updatedEdges);
 
-      showToast(`Removed edge: ${edgeToRemove}`);
+      toast.success(`Removed edge: ${edgeToRemove}`);
 
       // Also dismiss the issue since the edge is now gone
       setDismissed((prev) => {
@@ -158,9 +153,9 @@ export default function ContractOverlay() {
       });
     } catch (e) {
       console.error('[ContractOverlay] Failed to apply fix', e);
-      showToast('Failed to apply fix');
+      toast.error('Failed to apply fix');
     }
-  }, [edges, setEdges]);
+  }, [edges, setEdges, toast]);
 
   const onDismiss = (id: string) => {
     setDismissed((prev) => {
@@ -179,13 +174,6 @@ export default function ContractOverlay() {
       className="pointer-events-auto absolute top-2 left-2 z-50 rounded-lg border bg-card/95 backdrop-blur shadow-sm w-[320px] text-xs"
       style={{ maxHeight: 260, overflow: 'hidden' }}
     >
-      {/* ephemeral toast/banner */}
-      {toast && (
-        <div data-testid="contract-overlay-toast" className="px-2 py-1 border-b text-[12px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20">
-          {toast}
-        </div>
-      )}
-
       <div className="h-8 border-b flex items-center justify-between px-2">
         <div className="font-medium">Contract Checks</div>
         <div

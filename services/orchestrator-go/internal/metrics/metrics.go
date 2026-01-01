@@ -152,4 +152,25 @@ var (
 			Help:      "Number of nodes pending execution",
 		},
 	)
+
+	// SSEActiveConnections tracks active SSE connections.
+	SSEActiveConnections = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "mentatlab",
+			Subsystem: "orchestrator",
+			Name:      "sse_active_connections",
+			Help:      "Number of active SSE connections",
+		},
+	)
+
+	// SSEConnectionDuration tracks SSE connection duration.
+	SSEConnectionDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Namespace: "mentatlab",
+			Subsystem: "orchestrator",
+			Name:      "sse_connection_duration_seconds",
+			Help:      "SSE connection duration in seconds",
+			Buckets:   []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
+		},
+	)
 )

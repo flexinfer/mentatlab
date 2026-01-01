@@ -103,4 +103,15 @@ var (
 		},
 		[]string{"target"},
 	)
+
+	// WebSocketMessagesDropped counts dropped WebSocket messages due to client buffer overflow.
+	WebSocketMessagesDropped = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "mentatlab",
+			Subsystem: "gateway",
+			Name:      "websocket_messages_dropped_total",
+			Help:      "Total number of WebSocket messages dropped due to client buffer overflow",
+		},
+		[]string{"message_type"}, // event type if available, or "unknown"
+	)
 )
