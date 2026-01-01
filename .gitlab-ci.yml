@@ -72,7 +72,7 @@ build-images:
           --local context="${context}" \
           --local dockerfile="${context}" \
           --opt platform=linux/amd64 \
-          --output "type=image,name=${REGISTRY_TARGET}/${name}:latest,${REGISTRY_TARGET}/${name}:${CI_COMMIT_SHORT_SHA},push=true"
+          --output "type=image,push=true,name=${REGISTRY_TARGET}/${name}:latest,name=${REGISTRY_TARGET}/${name}:${CI_COMMIT_SHORT_SHA}"
       }
 
       build_image "mentatlab-orchestrator-go" "services/orchestrator-go"
