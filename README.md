@@ -1,3 +1,5 @@
+![MentatLab Banner](assets/banner.png)
+
 # MentatLab
 
 MentatLab is a research platform for developing and testing advanced AI agents. It provides a mission control interface for monitoring agent activities, a graph-based execution engine, and a set of tools for building complex agent workflows.
