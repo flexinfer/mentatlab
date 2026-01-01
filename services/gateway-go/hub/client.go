@@ -38,6 +38,10 @@ type Client struct {
 
 	// Stream ID this client is interested in
 	streamID string
+
+	// User info for authenticated clients (nil if auth disabled)
+	userEmail string
+	userType  string // "user", "app", or "anonymous"
 }
 
 // readPump pumps messages from the websocket connection to the hub.

@@ -46,14 +46,27 @@ type Hub struct {
 	// Logger
 	logger *slog.Logger
 
+	// Allowed WebSocket origins
+	allowedOrigins map[string]bool
+
+	// Auth validator for WebSocket connections
+	authValidator AuthValidator
+
 	// Stop channel
 	stopCh chan struct{}
 }
 
+// AuthValidator validates WebSocket authentication and returns user info.
+// Returns nil user and nil error if auth is disabled.
+// Returns nil user and error if auth fails.
+type AuthValidator func(r *http.Request) (userEmail, userType string, err error)
+
 // HubConfig holds Hub configuration.
 type HubConfig struct {
-	RedisAddr string
-	Logger    *slog.Logger
+	RedisAddr      string
+	Logger         *slog.Logger
+	AllowedOrigins []string      // Allowed WebSocket origins (empty allows all - not recommended)
+	AuthValidator  AuthValidator // Optional: validates WebSocket connections
 }
 
 // NewHub creates a new Hub with the given configuration.
@@ -75,15 +88,23 @@ func NewHubWithConfig(cfg *HubConfig) *Hub {
 		logger = slog.Default()
 	}
 
+	// Build allowed origins map for O(1) lookup
+	allowedOrigins := make(map[string]bool)
+	for _, origin := range cfg.AllowedOrigins {
+		allowedOrigins[origin] = true
+	}
+
 	return &Hub{
-		clients:       make(map[string]map[*Client]bool),
-		globalClients: make(map[*Client]bool),
-		messages:      make(chan *streamMessage, 256),
-		register:      make(chan *Client),
-		unregister:    make(chan *Client),
-		redisClient:   rdb,
-		logger:        logger,
-		stopCh:        make(chan struct{}),
+		clients:        make(map[string]map[*Client]bool),
+		globalClients:  make(map[*Client]bool),
+		messages:       make(chan *streamMessage, 256),
+		register:       make(chan *Client),
+		unregister:     make(chan *Client),
+		redisClient:    rdb,
+		logger:         logger,
+		allowedOrigins: allowedOrigins,
+		authValidator:  cfg.AuthValidator,
+		stopCh:         make(chan struct{}),
 	}
 }
 
@@ -123,14 +144,21 @@ func (h *Hub) registerClient(client *Client) {
 	if client.streamID == "" || client.streamID == "*" {
 		// Subscribe to all streams
 		h.globalClients[client] = true
-		h.logger.Info("client registered for all streams")
+		h.logger.Info("client registered for all streams",
+			slog.String("user", client.userEmail),
+			slog.String("user_type", client.userType),
+		)
 	} else {
 		// Subscribe to specific stream
 		if h.clients[client.streamID] == nil {
 			h.clients[client.streamID] = make(map[*Client]bool)
 		}
 		h.clients[client.streamID][client] = true
-		h.logger.Info("client registered for stream", slog.String("stream_id", client.streamID))
+		h.logger.Info("client registered for stream",
+			slog.String("stream_id", client.streamID),
+			slog.String("user", client.userEmail),
+			slog.String("user_type", client.userType),
+		)
 	}
 }
 
@@ -271,13 +299,63 @@ func (h *Hub) RedisHealthy(ctx context.Context) bool {
 
 // ServeWs handles websocket requests from the peer.
 func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request, streamID string) {
-	upgrader.CheckOrigin = func(r *http.Request) bool { return true } // Allow all origins for now
+	// Validate authentication before upgrading connection
+	var userEmail, userType string
+	if hub.authValidator != nil {
+		var err error
+		userEmail, userType, err = hub.authValidator(r)
+		if err != nil {
+			hub.logger.Warn("websocket auth failed",
+				slog.String("error", err.Error()),
+				slog.String("stream_id", streamID),
+				slog.String("remote_addr", r.RemoteAddr),
+			)
+			http.Error(w, `{"error": "authentication required"}`, http.StatusUnauthorized)
+			return
+		}
+	}
+
+	// Configure origin validation
+	upgrader.CheckOrigin = func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+
+		// If no origin header (same-origin request), allow
+		if origin == "" {
+			return true
+		}
+
+		// If no allowed origins configured, allow all (with warning logged at startup)
+		if len(hub.allowedOrigins) == 0 {
+			return true
+		}
+
+		// Check if origin is in allowed list or if wildcard is configured
+		if hub.allowedOrigins["*"] || hub.allowedOrigins[origin] {
+			return true
+		}
+
+		hub.logger.Warn("websocket origin rejected",
+			slog.String("origin", origin),
+			slog.String("stream_id", streamID),
+			slog.String("user", userEmail),
+		)
+		return false
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		hub.logger.Error("websocket upgrade failed", slog.String("error", err.Error()))
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), streamID: streamID}
+
+	client := &Client{
+		hub:       hub,
+		conn:      conn,
+		send:      make(chan []byte, 256),
+		streamID:  streamID,
+		userEmail: userEmail,
+		userType:  userType,
+	}
 	client.hub.register <- client
 
 	// Allow collection of memory referenced by the caller by doing all work in

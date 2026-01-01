@@ -17,7 +17,7 @@ variables:
 
 lint-go:
   stage: lint
-  image: golang:1.23-alpine
+  image: golang:1.24-alpine
   script:
     - (cd services/gateway-go && go vet ./...)
     - (cd services/orchestrator-go && go vet ./...)
@@ -34,7 +34,7 @@ lint-frontend:
 
 test-go:
   stage: test
-  image: golang:1.23-alpine
+  image: golang:1.24-alpine
   script:
     - (cd services/gateway-go && go test -v ./...)
     - (cd services/orchestrator-go && go test -v ./...)

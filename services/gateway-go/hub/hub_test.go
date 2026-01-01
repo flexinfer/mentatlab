@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -449,4 +450,295 @@ func TestRedisHealthy(t *testing.T) {
 
 	// Just test it doesn't panic - actual result depends on Redis availability
 	_ = hub.RedisHealthy(ctx)
+}
+
+func TestAllowedOriginsConfiguration(t *testing.T) {
+	t.Run("no origins configured allows all", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr:      "localhost:6379",
+			Logger:         testLogger(),
+			AllowedOrigins: nil,
+		})
+		if len(hub.allowedOrigins) != 0 {
+			t.Error("expected empty allowed origins map")
+		}
+	})
+
+	t.Run("origins are stored in map", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr:      "localhost:6379",
+			Logger:         testLogger(),
+			AllowedOrigins: []string{"https://app.example.com", "https://admin.example.com"},
+		})
+		if len(hub.allowedOrigins) != 2 {
+			t.Errorf("expected 2 allowed origins, got %d", len(hub.allowedOrigins))
+		}
+		if !hub.allowedOrigins["https://app.example.com"] {
+			t.Error("expected https://app.example.com to be allowed")
+		}
+		if !hub.allowedOrigins["https://admin.example.com"] {
+			t.Error("expected https://admin.example.com to be allowed")
+		}
+	})
+
+	t.Run("wildcard origin", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr:      "localhost:6379",
+			Logger:         testLogger(),
+			AllowedOrigins: []string{"*"},
+		})
+		if !hub.allowedOrigins["*"] {
+			t.Error("expected wildcard to be in allowed origins")
+		}
+	})
+}
+
+func TestWebSocketAuthentication(t *testing.T) {
+	t.Run("auth validator called when configured", func(t *testing.T) {
+		validatorCalled := false
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr: "localhost:6379",
+			Logger:    testLogger(),
+			AuthValidator: func(r *http.Request) (string, string, error) {
+				validatorCalled = true
+				return "test@example.com", "user", nil
+			},
+		})
+
+		go func() {
+			for {
+				select {
+				case client := <-hub.register:
+					hub.registerClient(client)
+				case client := <-hub.unregister:
+					hub.unregisterClient(client)
+				case <-hub.stopCh:
+					return
+				}
+			}
+		}()
+		defer hub.Stop()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ServeWs(hub, w, r, "test-stream")
+		}))
+		defer server.Close()
+
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/streams/test-stream"
+		ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err != nil {
+			t.Fatalf("failed to connect: %v", err)
+		}
+		defer ws.Close()
+
+		if !validatorCalled {
+			t.Error("auth validator should have been called")
+		}
+	})
+
+	t.Run("auth failure rejects connection", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr: "localhost:6379",
+			Logger:    testLogger(),
+			AuthValidator: func(r *http.Request) (string, string, error) {
+				return "", "", errors.New("authentication required")
+			},
+		})
+		defer hub.Stop()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ServeWs(hub, w, r, "test-stream")
+		}))
+		defer server.Close()
+
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/streams/test-stream"
+		_, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err == nil {
+			t.Error("expected connection to fail due to auth")
+		}
+		if resp != nil && resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("expected 401 status, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("user info stored in client", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr: "localhost:6379",
+			Logger:    testLogger(),
+			AuthValidator: func(r *http.Request) (string, string, error) {
+				return "alice@example.com", "user", nil
+			},
+		})
+
+		go func() {
+			for {
+				select {
+				case client := <-hub.register:
+					hub.registerClient(client)
+				case client := <-hub.unregister:
+					hub.unregisterClient(client)
+				case <-hub.stopCh:
+					return
+				}
+			}
+		}()
+		defer hub.Stop()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ServeWs(hub, w, r, "test-stream")
+		}))
+		defer server.Close()
+
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/streams/test-stream"
+		ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err != nil {
+			t.Fatalf("failed to connect: %v", err)
+		}
+		defer ws.Close()
+
+		time.Sleep(50 * time.Millisecond)
+
+		hub.mu.RLock()
+		defer hub.mu.RUnlock()
+
+		clients := hub.clients["test-stream"]
+		if len(clients) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(clients))
+		}
+
+		for client := range clients {
+			if client.userEmail != "alice@example.com" {
+				t.Errorf("expected user email 'alice@example.com', got '%s'", client.userEmail)
+			}
+			if client.userType != "user" {
+				t.Errorf("expected user type 'user', got '%s'", client.userType)
+			}
+		}
+	})
+
+	t.Run("no auth validator allows all", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr:     "localhost:6379",
+			Logger:        testLogger(),
+			AuthValidator: nil, // No auth configured
+		})
+
+		go func() {
+			for {
+				select {
+				case client := <-hub.register:
+					hub.registerClient(client)
+				case client := <-hub.unregister:
+					hub.unregisterClient(client)
+				case <-hub.stopCh:
+					return
+				}
+			}
+		}()
+		defer hub.Stop()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ServeWs(hub, w, r, "test-stream")
+		}))
+		defer server.Close()
+
+		wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/streams/test-stream"
+		ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err != nil {
+			t.Errorf("connection should succeed without auth validator: %v", err)
+		}
+		if ws != nil {
+			ws.Close()
+		}
+	})
+}
+
+func TestWebSocketOriginValidation(t *testing.T) {
+	tests := []struct {
+		name           string
+		allowedOrigins []string
+		requestOrigin  string
+		shouldConnect  bool
+	}{
+		{
+			name:           "no origins configured allows any",
+			allowedOrigins: nil,
+			requestOrigin:  "https://evil.com",
+			shouldConnect:  true,
+		},
+		{
+			name:           "allowed origin connects",
+			allowedOrigins: []string{"https://app.example.com"},
+			requestOrigin:  "https://app.example.com",
+			shouldConnect:  true,
+		},
+		{
+			name:           "disallowed origin rejected",
+			allowedOrigins: []string{"https://app.example.com"},
+			requestOrigin:  "https://evil.com",
+			shouldConnect:  false,
+		},
+		{
+			name:           "wildcard allows any",
+			allowedOrigins: []string{"*"},
+			requestOrigin:  "https://any.domain.com",
+			shouldConnect:  true,
+		},
+		{
+			name:           "no origin header same-origin allowed",
+			allowedOrigins: []string{"https://app.example.com"},
+			requestOrigin:  "",
+			shouldConnect:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := NewHubWithConfig(&HubConfig{
+				RedisAddr:      "localhost:6379",
+				Logger:         testLogger(),
+				AllowedOrigins: tt.allowedOrigins,
+			})
+
+			// Start hub loop
+			go func() {
+				for {
+					select {
+					case client := <-hub.register:
+						hub.registerClient(client)
+					case client := <-hub.unregister:
+						hub.unregisterClient(client)
+					case <-hub.stopCh:
+						return
+					}
+				}
+			}()
+			defer hub.Stop()
+
+			// Create test server
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ServeWs(hub, w, r, "test-stream")
+			}))
+			defer server.Close()
+
+			// Prepare WebSocket dial with origin header
+			wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/streams/test-stream"
+			dialer := websocket.Dialer{}
+			header := http.Header{}
+			if tt.requestOrigin != "" {
+				header.Set("Origin", tt.requestOrigin)
+			}
+
+			ws, _, err := dialer.Dial(wsURL, header)
+			connected := err == nil
+
+			if connected != tt.shouldConnect {
+				t.Errorf("expected connect=%v, got %v (err=%v)", tt.shouldConnect, connected, err)
+			}
+
+			if ws != nil {
+				ws.Close()
+			}
+		})
+	}
 }

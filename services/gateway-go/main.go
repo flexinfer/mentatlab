@@ -104,22 +104,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Hub with structured logging
-	wsHub := hub.NewHubWithConfig(&hub.HubConfig{
-		RedisAddr: cfg.RedisAddr,
-		Logger:    logger,
-	})
-	go wsHub.Run()
-
-	// Initialize middleware
+	// Initialize auth middleware first (needed by hub for WebSocket auth)
 	authMiddleware := middleware.NewAuthMiddleware(&middleware.AuthConfig{
 		TeamDomain:          cfg.CFTeamDomain,
 		PolicyAUD:           cfg.CFPolicyAUD,
 		ServiceClientID:     cfg.CFServiceClientID,
 		ServiceClientSecret: cfg.CFServiceClientSecret,
 		Enabled:             cfg.AuthEnabled,
-		SkipPaths:           []string{"/health", "/healthz", "/ready", "/metrics", "/ws/"},
+		SkipPaths:           []string{"/health", "/healthz", "/ready", "/metrics"},
 	}, logger)
+
+	// Initialize Hub with structured logging, origin validation, and auth
+	wsHub := hub.NewHubWithConfig(&hub.HubConfig{
+		RedisAddr:      cfg.RedisAddr,
+		Logger:         logger,
+		AllowedOrigins: cfg.AllowedOrigins,
+		AuthValidator: func(r *http.Request) (string, string, error) {
+			userInfo, err := authMiddleware.ValidateWebSocketToken(r)
+			if err != nil {
+				return "", "", err
+			}
+			return userInfo.Email, userInfo.Type, nil
+		},
+	})
+	go wsHub.Run()
+
+	// Log warning if no origins configured (allows all)
+	if len(cfg.AllowedOrigins) == 0 {
+		logger.Warn("CORS_ORIGINS not configured - allowing all WebSocket origins (not recommended for production)")
+	}
 
 	securityMiddleware := middleware.NewSecurityMiddleware(&middleware.SecurityConfig{
 		AllowedOrigins: cfg.AllowedOrigins,

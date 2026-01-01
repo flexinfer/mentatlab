@@ -75,6 +75,13 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/jobs/{id}/status", s.handlers.GetJobStatus).Methods("GET")
 	api.HandleFunc("/jobs/{id}", s.handlers.DeleteJob).Methods("DELETE")
 
+	// Artifact management
+	api.HandleFunc("/runs/{id}/artifacts", s.handlers.ListRunArtifacts).Methods("GET")
+	api.HandleFunc("/runs/{id}/artifacts", s.handlers.UploadArtifact).Methods("POST")
+	api.HandleFunc("/artifacts", s.handlers.GetArtifact).Methods("GET")
+	api.HandleFunc("/artifacts", s.handlers.DeleteArtifact).Methods("DELETE")
+	api.HandleFunc("/artifacts/download-url", s.handlers.GetArtifactDownloadURL).Methods("POST")
+
 	// RunStore diagnostics
 	api.HandleFunc("/runstore/info", s.handlers.RunStoreInfo).Methods("GET")
 	api.HandleFunc("/runstore/selfcheck", s.handlers.RunStoreSelfCheck).Methods("GET")

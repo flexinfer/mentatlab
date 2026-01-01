@@ -335,3 +335,55 @@ func GetUserFromContext(ctx context.Context) *UserInfo {
 	user, _ := ctx.Value(UserContextKey).(*UserInfo)
 	return user
 }
+
+// ValidateWebSocketToken validates a token from a WebSocket connection.
+// This is used for WebSocket auth since headers can't be set after upgrade.
+// Token can come from query string (?token=xxx) or CF-Access-JWT-Assertion header.
+func (m *AuthMiddleware) ValidateWebSocketToken(r *http.Request) (*UserInfo, error) {
+	if !m.config.Enabled {
+		// Auth disabled - return anonymous user
+		return &UserInfo{Email: "anonymous", Type: "anonymous"}, nil
+	}
+
+	// Try query string first (for browser WebSocket connections)
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		token = r.URL.Query().Get("cf_token")
+	}
+
+	// Fall back to header (for programmatic WebSocket connections)
+	if token == "" {
+		token = r.Header.Get("CF-Access-JWT-Assertion")
+	}
+	if token == "" {
+		auth := r.Header.Get("Authorization")
+		if strings.HasPrefix(auth, "Bearer ") {
+			token = strings.TrimPrefix(auth, "Bearer ")
+		}
+	}
+
+	if token == "" {
+		return nil, errors.New("authentication required: provide token via query param or CF-Access-JWT-Assertion header")
+	}
+
+	claims, err := m.validateToken(r.Context(), token)
+	if err != nil {
+		return nil, fmt.Errorf("invalid token: %w", err)
+	}
+
+	userInfo := &UserInfo{
+		Email:  claims.Email,
+		Type:   claims.Type,
+		Groups: claims.Identity.Groups,
+	}
+	if userInfo.Email == "" {
+		userInfo.Email = claims.Identity.Email
+	}
+
+	return userInfo, nil
+}
+
+// IsEnabled returns whether authentication is enabled.
+func (m *AuthMiddleware) IsEnabled() bool {
+	return m.config.Enabled
+}
