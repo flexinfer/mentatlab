@@ -91,18 +91,31 @@ e2e-test:
   stage: e2e
   image: docker:24-cli
   services:
-    - docker:24-dind
+    - name: docker:24-dind
+      alias: docker
+      # Command to start with no TLS (secure within K8s pod)
+      command: ["--tls=false"]
   variables:
-    DOCKER_HOST: tcp://docker:2376
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_CERT_PATH: "/certs/client"
-    DOCKER_TLS_VERIFY: "1"
+    # Use non-TLS connection for K8s-based runners
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
     # Use built images from registry
     ORCHESTRATOR_IMAGE: "${REGISTRY}/mentatlab-orchestrator-go:${CI_COMMIT_SHORT_SHA}"
     GATEWAY_IMAGE: "${REGISTRY}/mentatlab-gateway-go:${CI_COMMIT_SHORT_SHA}"
     FRONTEND_IMAGE: "${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}"
   before_script:
     - apk add --no-cache docker-compose curl jq
+    # Wait for Docker daemon to be ready
+    - |
+      echo "Waiting for Docker daemon..."
+      for i in $(seq 1 30); do
+        if docker info >/dev/null 2>&1; then
+          echo "Docker daemon ready"
+          break
+        fi
+        echo "[$i/30] Docker not ready yet..."
+        sleep 2
+      done
     - docker info
   script:
     - |
