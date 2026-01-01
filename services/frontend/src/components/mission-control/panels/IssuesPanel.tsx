@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Flow } from '../../../types/graph';
-import { linter } from '../../../services/mission-control/services';
+import { linter, type LintIssue } from '../../../services/mission-control/services';
+import useStore from '../../../store';
 
 type IssuesPanelProps = {
   flow?: Flow;
@@ -10,6 +11,13 @@ type IssuesPanelProps = {
 export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
   const [issues, setIssues] = React.useState(() => [] as ReturnType<typeof linter.analyze>);
   const [status, setStatus] = React.useState<'idle' | 'running' | 'done'>('idle');
+  const [toast, setToast] = React.useState<string | null>(null);
+
+  // Get store state and actions for applying fixes
+  const nodes = useStore((s) => s.nodes);
+  const edges = useStore((s) => s.edges);
+  const setNodes = useStore((s) => s.setNodes);
+  const setEdges = useStore((s) => s.setEdges);
 
   const runLint = React.useCallback(() => {
     setStatus('running');
@@ -38,8 +46,87 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
     runLint();
   }, [runLint]);
 
+  // Build current flow from store state
+  // Note: ReactFlow uses source/target, but Flow type uses from/to
+  const buildCurrentFlow = React.useCallback((): Flow => {
+    return flow ?? {
+      apiVersion: 'v1',
+      kind: 'Flow',
+      meta: { id: 'current', name: 'Current Flow', version: '0.0.0', createdAt: new Date().toISOString(), description: '' },
+      graph: {
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          type: n.type ?? 'default',
+          params: n.data ?? {},
+          position: n.position,
+        })),
+        edges: edges.map((e) => ({
+          from: e.source,  // Map ReactFlow 'source' to Flow 'from'
+          to: e.target,    // Map ReactFlow 'target' to Flow 'to'
+          sourceHandle: e.sourceHandle ?? undefined,
+          targetHandle: e.targetHandle ?? undefined,
+        })),
+      },
+    };
+  }, [flow, nodes, edges]);
+
+  // Apply a quick fix to the flow and update the store
+  const applyQuickFix = React.useCallback((issue: LintIssue) => {
+    if (!issue.fix) return;
+
+    // Check if this fix can be auto-applied
+    if (!linter.canAutoApply(issue)) {
+      // For UI-only actions, just show a message
+      setToast(`${issue.fix.title} - open the relevant panel to apply`);
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+
+    try {
+      const currentFlow = buildCurrentFlow();
+      const updatedFlow = linter.applyQuickFix(currentFlow, issue);
+
+      // Update store with modified nodes/edges
+      // Note: Flow uses from/to, ReactFlow uses source/target
+      if (updatedFlow.graph) {
+        const newNodes = updatedFlow.graph.nodes.map((n) => ({
+          id: n.id,
+          type: n.type,
+          position: n.position ?? { x: 0, y: 0 },
+          data: n.params ?? {},
+        }));
+        const newEdges = updatedFlow.graph.edges.map((e, idx) => ({
+          id: `edge-${idx}`,  // Generate id since Flow Edge doesn't have one
+          source: e.from,     // Map Flow 'from' to ReactFlow 'source'
+          target: e.to,       // Map Flow 'to' to ReactFlow 'target'
+          sourceHandle: e.sourceHandle,
+          targetHandle: e.targetHandle,
+        }));
+
+        setNodes(newNodes);
+        setEdges(newEdges);
+      }
+
+      setToast(`Applied: ${issue.fix.title}`);
+      setTimeout(() => setToast(null), 2000);
+
+      // Re-run lint to refresh issues
+      setTimeout(runLint, 100);
+    } catch (e) {
+      console.error('[IssuesPanel] Failed to apply quick fix', e);
+      setToast('Failed to apply fix');
+      setTimeout(() => setToast(null), 2000);
+    }
+  }, [buildCurrentFlow, setNodes, setEdges, runLint]);
+
   return (
     <div className="h-full w-full flex flex-col">
+      {/* Toast notification */}
+      {toast && (
+        <div className="px-2 py-1 border-b text-[12px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20">
+          {toast}
+        </div>
+      )}
       <div className="px-2 py-1 border-b bg-card/60 backdrop-blur flex items-center justify-between">
         <div className="text-[11px] text-gray-600 dark:text-gray-300">
           <span className="font-medium">Issues</span>
@@ -95,14 +182,11 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
                   </div>
                   {issue.fix && (
                     <button
-                      className="shrink-0 h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
-                      onClick={() => {
-                        const f = issue.fix;
-                        if (f) alert(`Quick fix: ${f.title} (placeholder)`);
-                      }}
-                      title={issue.fix ? issue.fix.title : 'Quick Fix'}
+                      className="shrink-0 h-6 px-2 text-[11px] rounded border bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                      onClick={() => applyQuickFix(issue)}
+                      title={issue.fix.title}
                     >
-                      Quick Fix
+                      {linter.canAutoApply(issue) ? 'Apply Fix' : 'Quick Fix'}
                     </button>
                   )}
                 </div>

@@ -1,0 +1,98 @@
+# ServiceMonitor configurations for Prometheus Operator
+# These enable automatic metrics scraping from MentatLab services
+# Requires Prometheus Operator to be installed in the cluster
+
+---
+# Gateway ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gateway
+  namespace: mentatlab
+  labels:
+    app: gateway
+    component: backend
+    # Match your Prometheus Operator's serviceMonitorSelector
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: gateway
+  namespaceSelector:
+    matchNames:
+      - mentatlab
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
+      # Add relabeling to include service info
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+      metricRelabelings:
+        # Drop high-cardinality metrics if needed
+        - sourceLabels: [__name__]
+          regex: 'go_gc_.*'
+          action: drop
+
+---
+# Orchestrator ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: orchestrator
+  namespace: mentatlab
+  labels:
+    app: orchestrator
+    component: backend
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: orchestrator
+  namespaceSelector:
+    matchNames:
+      - mentatlab
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'go_gc_.*'
+          action: drop
+
+---
+# Redis ServiceMonitor (optional - requires redis_exporter sidecar)
+# Uncomment if you add redis_exporter to the redis deployment
+# apiVersion: monitoring.coreos.com/v1
+# kind: ServiceMonitor
+# metadata:
+#   name: redis
+#   namespace: mentatlab
+#   labels:
+#     app: redis
+#     component: database
+#     release: prometheus
+# spec:
+#   selector:
+#     matchLabels:
+#       app: redis
+#   namespaceSelector:
+#     matchNames:
+#       - mentatlab
+#   endpoints:
+#     - port: metrics
+#       path: /metrics
+#       interval: 30s

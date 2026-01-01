@@ -60,6 +60,7 @@ function compatible(a?: PinType, b?: PinType): boolean {
 export default function ContractOverlay() {
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
+  const setEdges = useStore((s) => s.setEdges);
 
   // Local dismissed set (ephemeral)
   const [dismissed, setDismissed] = React.useState<Set<string>>(() => new Set());
@@ -131,25 +132,35 @@ export default function ContractOverlay() {
     window.setTimeout(() => setToast(null), ms);
   };
 
-  // Import linter lazily to call applyQuickFix (stub)
-  const onApplyFix = async (issue: Issue) => {
+  // Apply fix for contract issues - removes the problematic edge
+  const onApplyFix = React.useCallback((issue: Issue) => {
     try {
-      // Dynamic import to avoid cyclic deps in some setups
-      const mod = await import('../../../services/mission-control/services');
-      const l = (mod as any).linter;
-      // Call stub applier with a minimal flow object (MC1: no mutation)
-      try {
-        l?.applyQuickFix?.({} as any, { id: issue.id, kind: issue.kind as any, target: { type: 'edge', id: issue.edgeId }, rule: 'contract', message: issue.reason, fix: { id: 'stub', title: 'Apply suggested fix', action: 'stub' } } as any);
-      } catch (e) {
-        // ignore applier errors for MC1
-        console.debug('[ContractOverlay] applyQuickFix failed', e);
+      // For contract violations, the fix is to remove the problematic edge
+      const edgeToRemove = issue.edgeId;
+
+      // Find and remove the edge
+      const currentEdge = edges.find((e: any) => e.id === edgeToRemove);
+      if (!currentEdge) {
+        showToast('Edge not found');
+        return;
       }
-      showToast(`Applied '${(issue as any)?.fix?.title ?? 'suggested fix'}' (stub)`);
+
+      const updatedEdges = edges.filter((e: any) => e.id !== edgeToRemove);
+      setEdges(updatedEdges);
+
+      showToast(`Removed edge: ${edgeToRemove}`);
+
+      // Also dismiss the issue since the edge is now gone
+      setDismissed((prev) => {
+        const n = new Set(prev);
+        n.add(issue.id);
+        return n;
+      });
     } catch (e) {
-      console.error('[ContractOverlay] failed to apply fix', e);
-      showToast('Applied (stub)');
+      console.error('[ContractOverlay] Failed to apply fix', e);
+      showToast('Failed to apply fix');
     }
-  };
+  }, [edges, setEdges]);
 
   const onDismiss = (id: string) => {
     setDismissed((prev) => {
@@ -233,11 +244,11 @@ export default function ContractOverlay() {
 
                   <div className="flex gap-1">
                     <button
-                      className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
+                      className="h-6 px-2 text-[11px] rounded border bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40"
                       onClick={() => onApplyFix(i)}
-                      title="Apply quick fix (stub)"
+                      title="Remove this edge to fix the contract violation"
                     >
-                      Apply fix
+                      Remove Edge
                     </button>
                     <button
                       className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
@@ -275,13 +286,13 @@ export default function ContractOverlay() {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      className="px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-sm"
+                      className="px-2 py-1 rounded bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 text-sm hover:bg-red-100 dark:hover:bg-red-900/40"
                       onClick={() => {
                         onApplyFix(i);
                         setHovered(null);
                       }}
                     >
-                      Apply fix
+                      Remove Edge
                     </button>
                     <button
                       className="px-2 py-1 rounded bg-background dark:bg-card border text-sm"

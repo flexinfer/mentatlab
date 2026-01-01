@@ -14,16 +14,18 @@ from jsonschema import validate, ValidationError
 from typing import Optional, List, Dict, Any
 
 from .agent_commands import agent
+from .runs_commands import runs
 
 # Main CLI application
 app = typer.Typer(
     name="mentatctl",
-    help="Mentat CLI - Command line interface for managing flows and agents",
+    help="Mentat CLI - Command line interface for managing flows, agents, and runs",
     no_args_is_help=True,
 )
 
-# Add agent subcommands
+# Add subcommand groups
 app.add_command(agent, name="agent")
+app.add_command(runs, name="runs")
 
 # Development commands group
 dev_app = typer.Typer(
