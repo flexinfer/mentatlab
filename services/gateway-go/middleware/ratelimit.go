@@ -89,6 +89,20 @@ func NewRateLimiter(cfg *RateLimitConfig) *RateLimiter {
 	if cfg == nil {
 		cfg = DefaultRateLimitConfig()
 	}
+
+	// Apply defaults for zero values
+	if cfg.RequestsPerSecond <= 0 {
+		cfg.RequestsPerSecond = 100
+	}
+	if cfg.BurstSize <= 0 {
+		cfg.BurstSize = 200
+	}
+	if cfg.CleanupInterval <= 0 {
+		cfg.CleanupInterval = time.Minute
+	}
+	if cfg.BucketTTL <= 0 {
+		cfg.BucketTTL = 5 * time.Minute
+	}
 	if cfg.KeyFunc == nil {
 		cfg.KeyFunc = defaultKeyFunc
 	}
