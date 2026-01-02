@@ -1,4 +1,9 @@
 FROM golang:1.24-alpine AS builder
+
+# Accept cache proxy for Go modules
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
+
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download

@@ -20,6 +20,8 @@ variables:
 lint-go:
   stage: lint
   image: golang:1.24-alpine
+  before_script:
+    - echo "Using GOPROXY=${GOPROXY}"
   script:
     - (cd services/gateway-go && go vet ./...)
     - (cd services/orchestrator-go && go vet ./...)
@@ -27,6 +29,9 @@ lint-go:
 lint-frontend:
   stage: lint
   image: node:20-alpine
+  before_script:
+    - echo "Using npm registry=${npm_config_registry}"
+    - npm config set registry "${npm_config_registry}"
   script:
     - cd services/frontend
     - npm ci
@@ -37,6 +42,8 @@ lint-frontend:
 test-go:
   stage: test
   image: golang:1.24-alpine
+  before_script:
+    - echo "Using GOPROXY=${GOPROXY}"
   script:
     - (cd services/gateway-go && go test -v ./...)
     - (cd services/orchestrator-go && go test -v ./...)
@@ -44,6 +51,9 @@ test-go:
 test-frontend:
   stage: test
   image: node:20-alpine
+  before_script:
+    - echo "Using npm registry=${npm_config_registry}"
+    - npm config set registry "${npm_config_registry}"
   script:
     - cd services/frontend
     - npm ci
@@ -66,6 +76,11 @@ build-images:
       done
       buildctl --addr "${BUILDKIT_HOST}" debug info
     - |
+      echo "Using cache proxies:"
+      echo "  GOPROXY=${GOPROXY}"
+      echo "  npm_config_registry=${npm_config_registry}"
+      echo "  PIP_INDEX_URL=${PIP_INDEX_URL}"
+
       REGISTRY_TARGET="${REGISTRY}"
       build_image() {
         local name="$1" context="$2"
@@ -74,6 +89,11 @@ build-images:
           --local context="${context}" \
           --local dockerfile="${context}" \
           --opt platform=linux/amd64 \
+          --opt "build-arg:GOPROXY=${GOPROXY}" \
+          --opt "build-arg:npm_config_registry=${npm_config_registry}" \
+          --opt "build-arg:NPM_CONFIG_REGISTRY=${npm_config_registry}" \
+          --opt "build-arg:PIP_INDEX_URL=${PIP_INDEX_URL}" \
+          --opt "build-arg:PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}" \
           --output "type=image,push=true,name=${REGISTRY_TARGET}/${name}:latest,name=${REGISTRY_TARGET}/${name}:${CI_COMMIT_SHORT_SHA}"
       }
 

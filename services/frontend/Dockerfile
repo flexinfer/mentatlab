@@ -1,6 +1,10 @@
 # Frontend (Vite) - production-like image serving with vite preview
 FROM node:20-alpine
 
+# Accept cache proxy for npm packages
+ARG npm_config_registry=https://registry.npmjs.org
+ENV npm_config_registry=${npm_config_registry}
+
 WORKDIR /app
 
 # Ensure curl is available for healthchecks (alpine base already has wget busybox, but we use curl)
