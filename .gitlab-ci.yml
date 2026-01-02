@@ -8,6 +8,7 @@ stages:
   - lint
   - test
   - build
+  - e2e
   - deploy
 
 variables:
@@ -88,7 +89,8 @@ build-images:
 # --- E2E Testing ---
 
 e2e-test:
-  stage: test
+  stage: e2e
+  needs: [build-images]  # Wait for images to be built and pushed
   image: docker:24-cli
   services:
     - name: docker:24-dind
@@ -123,7 +125,6 @@ e2e-test:
 
       # Create docker-compose override for CI
       cat > docker-compose.ci.yml << 'EOF'
-      version: '3.9'
       services:
         orchestrator:
           image: ${ORCHESTRATOR_IMAGE:-registry.harbor.lan/library/mentatlab-orchestrator-go:latest}
