@@ -193,10 +193,43 @@ e2e-test:
 
 deploy:
   stage: deploy
-  image: alpine:3.21
+  image: bitnami/kubectl:1.31
+  needs: [build-images]
+  variables:
+    NAMESPACE: mentatlab
+  before_script:
+    - |
+      # Set up kubeconfig from CI variable
+      mkdir -p ~/.kube
+      echo "${KUBECONFIG_K3S}" > ~/.kube/config
+      chmod 600 ~/.kube/config
+    - kubectl version --client
+    - kubectl cluster-info
   script:
-    - echo "Images are built/pushed by the build stage (or via ./build-and-push.sh)."
-    - echo "Apply/update Kubernetes manifests via GitOps (platform/gitops) or mentatlab/k8s."
+    - |
+      echo "=== Deploying MentatLab to ${NAMESPACE} ==="
+      cd k8s
+
+      # Update image tags to the commit SHA using kustomize
+      echo "Setting image tags to ${CI_COMMIT_SHORT_SHA}..."
+      kustomize edit set image \
+        "registry.harbor.lan/library/mentatlab-orchestrator-go=${REGISTRY}/mentatlab-orchestrator-go:${CI_COMMIT_SHORT_SHA}" \
+        "registry.harbor.lan/library/mentatlab-gateway-go=${REGISTRY}/mentatlab-gateway-go:${CI_COMMIT_SHORT_SHA}" \
+        "registry.harbor.lan/library/mentatlab-frontend=${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}" \
+        "registry.harbor.lan/library/mentatlab-echoagent=${REGISTRY}/mentatlab-echoagent:${CI_COMMIT_SHORT_SHA}"
+
+      # Apply manifests
+      echo "Applying manifests..."
+      kustomize build . | kubectl apply -f -
+
+      # Wait for rollouts
+      echo "Waiting for deployments to roll out..."
+      kubectl rollout status deployment/orchestrator -n ${NAMESPACE} --timeout=3m
+      kubectl rollout status deployment/gateway -n ${NAMESPACE} --timeout=3m
+      kubectl rollout status deployment/frontend -n ${NAMESPACE} --timeout=3m
+
+      echo "=== Deployment complete ==="
+      kubectl get pods -n ${NAMESPACE}
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       when: manual
