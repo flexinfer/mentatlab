@@ -180,7 +180,7 @@ e2e-test:
 
       # Test 4: Frontend loads
       echo "Test 4: Frontend..."
-      curl -sf http://localhost:5173 | grep -q "<!DOCTYPE html>" || (echo "FAIL: Frontend" && exit 1)
+      curl -sf http://localhost:5173 | grep -qi "<!DOCTYPE html>" || (echo "FAIL: Frontend" && exit 1)
       echo "PASS: Frontend"
 
       echo "=== All E2E Tests Passed ==="
