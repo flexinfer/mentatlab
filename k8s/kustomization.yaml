@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mentatlab
+
+resources:
+  - namespace.yaml
+  - orchestrator-rbac.yaml
+  - redis.yaml
+  - orchestrator.yaml
+  - gateway.yaml
+  - frontend.yaml
+  - echoagent.yaml
+  - ingress.yaml
+  - network-policies.yaml
+  - hpa.yaml
+  - servicemonitor.yaml
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/part-of: mentatlab
+  app.kubernetes.io/managed-by: flux

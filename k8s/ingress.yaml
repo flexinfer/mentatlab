@@ -6,11 +6,17 @@ metadata:
   labels:
     app: mentatlab
   annotations:
-    # Explicitly set class via annotation as well for broader controller compatibility
-    kubernetes.io/ingress.class: __INGRESS_CLASS__
+    cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # WebSocket support
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 spec:
-  # Will be set by deploy.sh based on cluster IngressClass (default/traefik/nginx)
-  ingressClassName: __INGRESS_CLASS__
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - mentatlab.flexinfer.ai
+      secretName: mentatlab-tls
   rules:
     - host: mentatlab.lan
       http:
