@@ -8,7 +8,7 @@ stages:
   - lint
   - test
   - build
-  - e2e
+  - deploy
 
 variables:
   REGISTRY: registry.harbor.lan/library
@@ -88,7 +88,7 @@ build-images:
 # --- E2E Testing ---
 
 e2e-test:
-  stage: e2e
+  stage: test
   image: docker:24-cli
   services:
     - name: docker:24-dind
@@ -189,3 +189,13 @@ e2e-test:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   allow_failure: true  # E2E tests are advisory initially
+
+deploy:
+  stage: deploy
+  image: alpine:3.21
+  script:
+    - echo "Images are built/pushed by the build stage (or via ./build-and-push.sh)."
+    - echo "Apply/update Kubernetes manifests via GitOps (platform/gitops) or mentatlab/k8s."
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
