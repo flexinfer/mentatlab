@@ -14,7 +14,10 @@ WORKDIR /app
 
 # Install dependencies first (better layer caching)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install torch directly from PyPI (devpi cache has corrupted wheel)
+# Then install remaining deps from cache proxy
+RUN pip install --no-cache-dir torch --index-url https://pypi.org/simple && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy source (including ctm module)
 COPY src/ ./src/
