@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Frontend (Vite) - production-like image serving with vite preview
 FROM node:20-alpine
 
@@ -13,8 +14,9 @@ RUN apk add --no-cache curl
 # Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
 
-# Install dependencies (ci for reproducibility)
-RUN npm ci
+# Install dependencies with cache mount for faster builds
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 # Copy application source
 COPY . .

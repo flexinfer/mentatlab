@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # CTM-Cogpack Cog-Pak Dockerfile
 FROM python:3.12-slim
 
@@ -16,8 +17,10 @@ WORKDIR /app
 COPY requirements.txt .
 # Install torch directly from PyPI (devpi cache has corrupted wheel)
 # Then install remaining deps from cache proxy
-RUN pip install --no-cache-dir torch --index-url https://pypi.org/simple && \
-    pip install --no-cache-dir -r requirements.txt
+# Use cache mount for pip to speed up rebuilds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install torch --index-url https://pypi.org/simple && \
+    pip install -r requirements.txt
 
 # Copy source (including ctm module)
 COPY src/ ./src/

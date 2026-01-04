@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM golang:1.24-alpine AS builder
 
 # Accept cache proxy for Go modules
@@ -6,9 +7,12 @@ ENV GOPROXY=${GOPROXY}
 
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o orchestrator ./cmd/orchestrator/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o orchestrator ./cmd/orchestrator/
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates curl
