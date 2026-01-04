@@ -238,9 +238,14 @@ deploy:
         "registry.harbor.lan/library/mentatlab-frontend=${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}" \
         "registry.harbor.lan/library/mentatlab-echoagent=${REGISTRY}/mentatlab-echoagent:${CI_COMMIT_SHORT_SHA}"
 
-      # Apply manifests
+      # Delete deployments with corrupted selectors (one-time fix for commonLabels migration)
+      # This is safe because we're about to recreate them with correct selectors
+      echo "Cleaning up deployments with corrupted selectors..."
+      kubectl delete deployment -n ${NAMESPACE} --all --ignore-not-found=true
+
+      # Apply manifests using server-side apply for better conflict handling
       echo "Applying manifests..."
-      kustomize build . | kubectl apply -f -
+      kustomize build . | kubectl apply --server-side -f -
 
       # Wait for rollouts
       echo "Waiting for deployments to roll out..."

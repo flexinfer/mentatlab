@@ -16,7 +16,9 @@ resources:
   - hpa.yaml
   - servicemonitor.yaml
 
-# Common labels for all resources
-commonLabels:
-  app.kubernetes.io/part-of: mentatlab
-  app.kubernetes.io/managed-by: flux
+# Common labels for all resources (use 'labels' not 'commonLabels' to avoid modifying immutable selectors)
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: mentatlab
+      app.kubernetes.io/managed-by: flux
+    includeSelectors: false
