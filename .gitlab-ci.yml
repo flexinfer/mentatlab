@@ -213,7 +213,7 @@ e2e-test:
 
 deploy:
   stage: deploy
-  image: bitnami/kubectl:1.31
+  image: alpine/k8s:1.31.0
   needs: [build-images]
   variables:
     NAMESPACE: mentatlab
