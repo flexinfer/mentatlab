@@ -177,7 +177,11 @@ spec:
               kubernetes.io/metadata.name: ingress-nginx
       ports:
         - protocol: TCP
-          port: 80
+          port: 5173
+    # Allow health checks (kubelet probes)
+    - ports:
+        - protocol: TCP
+          port: 5173
   egress:
     # Frontend is static - only needs DNS for startup
     - to:
