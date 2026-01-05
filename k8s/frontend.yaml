@@ -87,8 +87,12 @@ spec:
               mountPath: /tmp
             - name: cache
               mountPath: /home/node/.cache
+            - name: vite-temp
+              mountPath: /app/node_modules/.vite-temp
       volumes:
         - name: tmp
           emptyDir: {}
         - name: cache
+          emptyDir: {}
+        - name: vite-temp
           emptyDir: {}
