@@ -41,7 +41,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: gateway
-          image: registry.harbor.lan/library/mentatlab-gateway-go:v1.0.0
+          image: registry.harbor.lan/library/mentatlab-gateway-go:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

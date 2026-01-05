@@ -42,7 +42,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: orchestrator
-          image: registry.harbor.lan/library/mentatlab-orchestrator-go:v1.0.0
+          image: registry.harbor.lan/library/mentatlab-orchestrator-go:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 7070

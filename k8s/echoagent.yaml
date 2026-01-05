@@ -26,7 +26,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: echoagent
-          image: registry.harbor.lan/library/mentatlab-echoagent:v1.0.0
+          image: registry.harbor.lan/library/mentatlab-echoagent:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082
