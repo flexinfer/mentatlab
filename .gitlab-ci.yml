@@ -243,9 +243,9 @@ deploy:
       echo "Cleaning up deployments with corrupted selectors..."
       kubectl delete deployment -n ${NAMESPACE} --all --ignore-not-found=true
 
-      # Apply manifests using server-side apply for better conflict handling
+      # Apply manifests using server-side apply with force-conflicts to take ownership from Flux
       echo "Applying manifests..."
-      kustomize build . | kubectl apply --server-side -f -
+      kustomize build . | kubectl apply --server-side --force-conflicts -f -
 
       # Wait for rollouts
       echo "Waiting for deployments to roll out..."
