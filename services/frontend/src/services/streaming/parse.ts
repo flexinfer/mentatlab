@@ -20,9 +20,11 @@
  * - If given a MessageEvent, we JSON.parse(evt.data) when possible.
  * - We try multiple common homes for fields: data.ts / data.timestamp, data.node_id / data.node / data.id
  * - Optionally uses Web Worker for parsing when enabled via feature flag
+ * - Use parseEventData() from @/schemas for type-safe data extraction
  */
 
 import { getStreamParserWorker } from './workerManager';
+import { parseEventData as zodParseEventData } from '@/schemas/event.schema';
 
 export interface NormalizedRunEvent {
   seq: number;
@@ -175,3 +177,23 @@ export function getParsingStats() {
   const worker = getStreamParserWorker();
   return worker.getStats();
 }
+
+/**
+ * Parse event data with Zod schema validation.
+ * Returns typed data based on event type, or undefined if validation fails.
+ *
+ * @example
+ * const event = parseRunEvent(rawEvent);
+ * if (event.type === 'log') {
+ *   const logData = parseTypedEventData(event);
+ *   // logData is LogEventData | undefined
+ * }
+ */
+export function parseTypedEventData(event: NormalizedRunEvent): unknown {
+  // Handle nested data structure (backend Event.Data contains typed event)
+  const dataToValidate = event.data?.data ?? event.data;
+  return zodParseEventData(event.type, dataToValidate);
+}
+
+// Re-export Zod validation for direct use
+export { parseEventData as validateEventData } from '@/schemas/event.schema';
