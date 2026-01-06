@@ -1,0 +1,1365 @@
+openapi: 3.0.3
+info:
+  title: MentatLab Orchestrator API
+  description: |
+    RESTful API for the MentatLab orchestrator service.
+
+    ## Overview
+    The orchestrator manages agent workflow execution as DAGs (Directed Acyclic Graphs).
+    It provides endpoints for:
+    - **Runs**: Create, start, cancel, and monitor workflow executions
+    - **Agents**: Register and manage agent definitions
+    - **Flows**: Store and retrieve reusable workflow definitions
+    - **Artifacts**: Upload and download run artifacts
+    - **Jobs**: Monitor Kubernetes job status (when running in K8s mode)
+
+    ## Event Streaming
+    Run events are streamed via Server-Sent Events (SSE) at `/api/v1/runs/{id}/events`.
+    Events include logs, checkpoints, node status changes, progress updates, and control flow events.
+
+    ## Authentication
+    Currently no authentication is required. In production, requests should be
+    proxied through the gateway which handles authentication.
+  version: 1.0.0
+  contact:
+    name: MentatLab Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:7070
+    description: Local development
+  - url: http://orchestrator:7070
+    description: Kubernetes internal
+
+tags:
+  - name: health
+    description: Health and readiness checks
+  - name: runs
+    description: Run management and execution
+  - name: agents
+    description: Agent registry operations
+  - name: flows
+    description: Flow definition storage
+  - name: artifacts
+    description: Artifact upload and download
+  - name: jobs
+    description: Kubernetes job management
+  - name: diagnostics
+    description: RunStore diagnostics
+
+paths:
+  # Health endpoints
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /healthz:
+    get:
+      tags: [health]
+      summary: Health check (alias)
+      operationId: getHealthz
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /ready:
+    get:
+      tags: [health]
+      summary: Readiness check
+      description: Checks if the service and its dependencies are ready to serve requests
+      operationId: getReady
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Run management
+  /api/v1/runs:
+    post:
+      tags: [runs]
+      summary: Create a new run
+      description: Creates a new run with an optional execution plan. Use `auto_start` to immediately begin execution.
+      operationId: createRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRunRequest'
+      responses:
+        '201':
+          description: Run created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRunResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      tags: [runs]
+      summary: List runs
+      description: Returns a paginated list of run IDs
+      operationId: listRuns
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of results (max 500)
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of runs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRunsResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/runs/{id}:
+    get:
+      tags: [runs]
+      summary: Get run details
+      operationId: getRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Run details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [runs]
+      summary: Delete a run
+      operationId: deleteRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '204':
+          description: Run deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/runs/{id}/start:
+    post:
+      tags: [runs]
+      summary: Start run execution
+      description: Starts executing a previously created run
+      operationId: startRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Run started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartRunResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/runs/{id}/cancel:
+    post:
+      tags: [runs]
+      summary: Cancel a running execution
+      operationId: cancelRun
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Run cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: cancelled
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/runs/{id}/events:
+    get:
+      tags: [runs]
+      summary: Stream run events (SSE)
+      description: |
+        Server-Sent Events stream for real-time run updates.
+
+        Each event has the format:
+        ```
+        id: <event_id>
+        event: <event_type>
+        data: <json_payload>
+        ```
+
+        Event types include: `log`, `checkpoint`, `node_status`, `run_status`,
+        `progress`, `error`, `stream_start`, `stream_end`, `stream_data`,
+        and control flow events.
+      operationId: streamRunEvents
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - name: last_event_id
+          in: query
+          description: Resume from this event ID (for reconnection)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Agent management
+  /api/v1/agents:
+    get:
+      tags: [agents]
+      summary: List registered agents
+      operationId: listAgents
+      parameters:
+        - name: capabilities
+          in: query
+          description: Filter by capabilities (comma-separated)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAgentsResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [agents]
+      summary: Register a new agent
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentRequest'
+      responses:
+        '201':
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Agent already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/agents/{id}:
+    get:
+      tags: [agents]
+      summary: Get agent details
+      operationId: getAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    put:
+      tags: [agents]
+      summary: Update an agent
+      operationId: updateAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAgentRequest'
+      responses:
+        '200':
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    delete:
+      tags: [agents]
+      summary: Delete an agent
+      operationId: deleteAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '204':
+          description: Agent deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/agents/schedule:
+    post:
+      tags: [agents]
+      summary: Schedule an agent for execution
+      description: Creates and starts a run for the specified agent manifest
+      operationId: scheduleAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentScheduleRequest'
+      responses:
+        '202':
+          description: Agent scheduled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentScheduleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/agents/validate:
+    post:
+      tags: [agents]
+      summary: Validate an agent manifest
+      operationId: validateManifest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Agent manifest to validate
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # Flow management
+  /api/v1/flows:
+    get:
+      tags: [flows]
+      summary: List flows
+      operationId: listFlows
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: created_by
+          in: query
+          description: Filter by creator
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of flows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListFlowsResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    post:
+      tags: [flows]
+      summary: Create a flow
+      operationId: createFlow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFlowRequest'
+      responses:
+        '201':
+          description: Flow created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Flow already exists
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/flows/{id}:
+    get:
+      tags: [flows]
+      summary: Get flow details
+      operationId: getFlow
+      parameters:
+        - $ref: '#/components/parameters/FlowId'
+      responses:
+        '200':
+          description: Flow details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flow'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    put:
+      tags: [flows]
+      summary: Update a flow
+      operationId: updateFlow
+      parameters:
+        - $ref: '#/components/parameters/FlowId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFlowRequest'
+      responses:
+        '200':
+          description: Flow updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flow'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    delete:
+      tags: [flows]
+      summary: Delete a flow
+      operationId: deleteFlow
+      parameters:
+        - $ref: '#/components/parameters/FlowId'
+      responses:
+        '204':
+          description: Flow deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # Artifact management
+  /api/v1/runs/{id}/artifacts:
+    get:
+      tags: [artifacts]
+      summary: List run artifacts
+      operationId: listRunArtifacts
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: List of artifacts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListArtifactsResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    post:
+      tags: [artifacts]
+      summary: Upload an artifact
+      description: |
+        Supports two modes:
+        1. **Direct upload**: Send `multipart/form-data` with a file field
+        2. **Presigned URL**: Send JSON with name/content_type to get an upload URL
+      operationId: uploadArtifact
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+                node_id:
+                  type: string
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadArtifactRequest'
+      responses:
+        '200':
+          description: Upload URL generated (JSON mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadURLResponse'
+        '201':
+          description: Artifact uploaded (multipart mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactRef'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/artifacts:
+    get:
+      tags: [artifacts]
+      summary: Get artifact content
+      description: Streams the artifact content directly
+      operationId: getArtifact
+      parameters:
+        - name: uri
+          in: query
+          required: true
+          description: Artifact URI
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Artifact content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+    delete:
+      tags: [artifacts]
+      summary: Delete an artifact
+      operationId: deleteArtifact
+      parameters:
+        - name: uri
+          in: query
+          required: true
+          description: Artifact URI
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Artifact deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/artifacts/download-url:
+    post:
+      tags: [artifacts]
+      summary: Get presigned download URL
+      operationId: getArtifactDownloadURL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [uri]
+              properties:
+                uri:
+                  type: string
+                  description: Artifact URI
+      responses:
+        '200':
+          description: Download URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadURLResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # Job management
+  /api/v1/jobs/{id}/status:
+    get:
+      tags: [jobs]
+      summary: Get Kubernetes job status
+      operationId: getJobStatus
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/jobs/{id}:
+    delete:
+      tags: [jobs]
+      summary: Delete a Kubernetes job
+      operationId: deleteJob
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '204':
+          description: Job deleted
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  # Diagnostics
+  /api/v1/runstore/info:
+    get:
+      tags: [diagnostics]
+      summary: Get RunStore adapter info
+      operationId: getRunStoreInfo
+      responses:
+        '200':
+          description: RunStore info
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/v1/runstore/selfcheck:
+    get:
+      tags: [diagnostics]
+      summary: RunStore self-check
+      description: Creates a test run, appends an event, reads it back, and deletes it
+      operationId: runStoreSelfCheck
+      responses:
+        '200':
+          description: Self-check passed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  latency_ms:
+                    type: integer
+                  event_count:
+                    type: integer
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  parameters:
+    RunId:
+      name: id
+      in: path
+      required: true
+      description: Run ID
+      schema:
+        type: string
+
+    AgentId:
+      name: id
+      in: path
+      required: true
+      description: Agent ID
+      schema:
+        type: string
+
+    FlowId:
+      name: id
+      in: path
+      required: true
+      description: Flow ID
+      schema:
+        type: string
+
+    JobId:
+      name: id
+      in: path
+      required: true
+      description: Kubernetes job ID
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    ServiceUnavailable:
+      description: Service or dependency unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    # Health responses
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+
+    ReadyResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ready
+        runstore:
+          type: object
+          additionalProperties: true
+
+    # Error response
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable message
+        details:
+          type: object
+          additionalProperties: true
+
+    # Run types
+    RunStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, cancelled]
+      description: Current state of a run
+
+    NodeStatus:
+      type: string
+      enum: [pending, running, succeeded, failed, skipped]
+      description: Current state of a node
+
+    Run:
+      type: object
+      required: [id, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        plan:
+          $ref: '#/components/schemas/Plan'
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Plan:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeSpec'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/EdgeSpec'
+
+    NodeSpec:
+      type: object
+      required: [id, type]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          description: Node type (agent, conditional, for_each, subflow)
+        agent_id:
+          type: string
+        command:
+          type: array
+          items:
+            type: string
+        image:
+          type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        inputs:
+          type: array
+          items:
+            type: string
+          description: IDs of upstream nodes
+        timeout:
+          type: integer
+          description: Timeout in nanoseconds (Go duration)
+        retries:
+          type: integer
+        conditional:
+          $ref: '#/components/schemas/ConditionalConfig'
+        for_each:
+          $ref: '#/components/schemas/ForEachConfig'
+        subflow:
+          $ref: '#/components/schemas/SubflowConfig'
+
+    EdgeSpec:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+
+    ConditionalConfig:
+      type: object
+      properties:
+        expression:
+          type: string
+        then_node:
+          type: string
+        else_node:
+          type: string
+
+    ForEachConfig:
+      type: object
+      properties:
+        collection:
+          type: string
+        item_var:
+          type: string
+        body_node:
+          type: string
+        max_parallel:
+          type: integer
+
+    SubflowConfig:
+      type: object
+      properties:
+        flow_id:
+          type: string
+        inputs:
+          type: object
+          additionalProperties: true
+
+    CreateRunRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        plan:
+          $ref: '#/components/schemas/Plan'
+        auto_start:
+          type: boolean
+          description: Start execution immediately after creation
+
+    CreateRunResponse:
+      type: object
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+        sse_url:
+          type: string
+          description: URL for SSE event stream (when auto_start is true)
+
+    StartRunResponse:
+      type: object
+      properties:
+        runId:
+          type: string
+        status:
+          type: string
+        sseUrl:
+          type: string
+
+    ListRunsResponse:
+      type: object
+      properties:
+        runs:
+          type: array
+          items:
+            type: string
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # Event types
+    EventType:
+      type: string
+      enum:
+        - stream_start
+        - stream_end
+        - stream_data
+        - log
+        - checkpoint
+        - node_status
+        - run_status
+        - progress
+        - error
+        - condition_evaluated
+        - branch_selected
+        - branch_skipped
+        - loop_started
+        - loop_iteration
+        - loop_complete
+
+    LogLevel:
+      type: string
+      enum: [debug, info, warning, error]
+
+    Event:
+      type: object
+      required: [id, run_id, type, timestamp]
+      properties:
+        id:
+          type: string
+        run_id:
+          type: string
+        type:
+          $ref: '#/components/schemas/EventType'
+        node_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/LogEventData'
+            - $ref: '#/components/schemas/CheckpointEventData'
+            - $ref: '#/components/schemas/NodeStatusEventData'
+            - $ref: '#/components/schemas/RunStatusEventData'
+            - $ref: '#/components/schemas/ProgressEventData'
+            - type: object
+
+    LogEventData:
+      type: object
+      required: [level, message]
+      properties:
+        level:
+          $ref: '#/components/schemas/LogLevel'
+        message:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+
+    CheckpointEventData:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+        artifact_ref:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    NodeStatusEventData:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/NodeStatus'
+        exit_code:
+          type: integer
+        error:
+          type: string
+
+    RunStatusEventData:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/RunStatus'
+        error:
+          type: string
+
+    ProgressEventData:
+      type: object
+      required: [current, total]
+      properties:
+        current:
+          type: integer
+        total:
+          type: integer
+        message:
+          type: string
+
+    # Agent types
+    Agent:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        command:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateAgentRequest:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        command:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+
+    UpdateAgentRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        image:
+          type: string
+        command:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+
+    ListAgentsResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Agent'
+        count:
+          type: integer
+
+    AgentScheduleRequest:
+      type: object
+      required: [agent_manifest]
+      properties:
+        agent_manifest:
+          type: object
+          additionalProperties: true
+          description: Agent manifest with id, image, command, env, etc.
+
+    AgentScheduleResponse:
+      type: object
+      properties:
+        resource_id:
+          type: string
+        status:
+          type: string
+        stream_id:
+          type: string
+        sse_url:
+          type: string
+
+    ValidationResult:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+
+    # Flow types
+    Flow:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        plan:
+          $ref: '#/components/schemas/Plan'
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateFlowRequest:
+      type: object
+      required: [name, plan]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        plan:
+          $ref: '#/components/schemas/Plan'
+
+    UpdateFlowRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        plan:
+          $ref: '#/components/schemas/Plan'
+
+    ListFlowsResponse:
+      type: object
+      properties:
+        flows:
+          type: array
+          items:
+            $ref: '#/components/schemas/Flow'
+        count:
+          type: integer
+
+    # Artifact types
+    ArtifactRef:
+      type: object
+      properties:
+        uri:
+          type: string
+        size:
+          type: integer
+          format: int64
+        content_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ListArtifactsResponse:
+      type: object
+      properties:
+        run_id:
+          type: string
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactRef'
+        count:
+          type: integer
+
+    UploadArtifactRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        content_type:
+          type: string
+        node_id:
+          type: string
+
+    UploadURLResponse:
+      type: object
+      properties:
+        upload_url:
+          type: string
+        expires_in:
+          type: string
+        path:
+          type: string
+
+    DownloadURLResponse:
+      type: object
+      properties:
+        download_url:
+          type: string
+        expires_in:
+          type: string
+
+    # Job types
+    JobStatus:
+      type: object
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed, unknown]
+        active:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        start_time:
+          type: string
+          format: date-time
+        completion_time:
+          type: string
+          format: date-time
