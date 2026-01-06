@@ -2,14 +2,21 @@
 
 // --- Run Modes & Status ---
 export type RunMode = "plan" | "redis" | "k8s";
+
+/**
+ * RunStatus - matches backend orchestrator-go/pkg/types/run.go exactly.
+ *
+ * IMPORTANT: This enum must stay in sync with the Go backend.
+ * Backend values: queued, running, succeeded, failed, cancelled
+ *
+ * Note: Frontend code should use asRunStatus() from useRunGraph.ts to normalize
+ * any legacy or variant status strings (e.g., "pending" -> "queued").
+ */
 export type RunStatus =
-  | "pending"
   | "queued"
   | "running"
-  | "completed"
   | "succeeded"
   | "failed"
-  | "canceled"
   | "cancelled";
 
 // --- Control Flow Types ---
@@ -40,15 +47,37 @@ export interface SubflowConfig {
 }
 
 // --- Plan Definitions ---
+
+/**
+ * PlanNode - single node in an execution plan.
+ *
+ * IMPORTANT: Backend uses snake_case field names.
+ * Match backend types.NodeSpec (orchestrator-go/pkg/types/run.go)
+ */
 export interface PlanNode {
   id: string;
-  agent?: string; // Agent type/image to run
-  type?: string; // Component type (UI legacy)
-  label?: string; // Display label
+  type?: string; // Node type (e.g., 'task', 'conditional', 'for_each')
+  label?: string; // Display label (UI)
+
+  // Agent configuration (use agent_id for backend compatibility)
+  agent_id?: string; // Agent ID to run (matches backend)
+  /** @deprecated Use agent_id instead */
+  agent?: string; // Legacy field - maps to agent_id
+
+  // Execution configuration
+  image?: string; // Container image (backend: NodeSpec.Image)
+  command?: string[]; // Command to run (backend: NodeSpec.Command)
+  env?: Record<string, string>; // Environment variables
+  inputs?: string[]; // Node IDs this depends on
+  timeout?: number; // Timeout in nanoseconds (Go duration)
+  retries?: number; // Max retry attempts (backend: NodeSpec.Retries)
+
+  // Legacy fields (UI-specific, may not be sent to backend)
   params?: Record<string, unknown>;
-  max_retries?: number;
-  timeoutMs?: number;
+  max_retries?: number; // Alias for retries
+  timeoutMs?: number; // Alias for timeout (in ms, needs conversion)
   backoff_seconds?: number;
+
   // Control flow (only one should be set)
   conditional?: ConditionalConfig;
   for_each?: ForEachConfig;
@@ -104,10 +133,24 @@ export interface CreateRunRequest {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * CreateRunResponse - matches backend api.CreateRunResponse.
+ *
+ * Backend fields (orchestrator-go/internal/api/handlers.go):
+ *   - runId: string (present when run is created)
+ *   - status: string (e.g., "created", "running")
+ *   - sse_url: string (optional, present when auto_start=true)
+ *
+ * IMPORTANT: Capture sse_url when present - it provides the SSE endpoint
+ */
 export interface CreateRunResponse {
   runId?: string;
+  status?: string;
+  sse_url?: string;
+  // Legacy compatibility fields
   run_id?: string;
   id?: string;
+  // Plan mode response (when mode='plan', returns generated plan)
   mode?: string;
   plan?: unknown;
 }

@@ -15,7 +15,11 @@ import type { NodeCardData, NodeStatus } from "./NodeCard";
 import type { ConditionalNodeData } from "@/nodes/ConditionalNode";
 import type { ForEachNodeData } from "@/nodes/ForEachNode";
 
-export type RunStatus = "queued" | "running" | "succeeded" | "failed" | string;
+/**
+ * RunStatus for graph display - matches backend canonical values.
+ * Use asRunStatus() to normalize any incoming status string.
+ */
+export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 // Union type for all node data types in the graph
 export type AnyNodeData = NodeCardData | ConditionalNodeData | ForEachNodeData;
@@ -50,20 +54,27 @@ function asNodeStatus(s: string | undefined | null): NodeStatus {
   return "queued";
 }
 
+/**
+ * Normalize any status string to canonical RunStatus values.
+ * Handles legacy values and common variants from backend/API transitions.
+ *
+ * Mappings:
+ *   - "pending", "queued", empty → "queued"
+ *   - "running", "run*" → "running"
+ *   - "succeeded", "completed", "success", "ok", "succ*" → "succeeded"
+ *   - "failed", "error", "fail*" → "failed"
+ *   - "cancelled", "canceled" → "cancelled"
+ */
 function asRunStatus(s: string | undefined | null): RunStatus {
   const v = String(s || "").toLowerCase();
   if (!v) return "queued";
   if (["queued", "pending"].includes(v)) return "queued";
   if (v.startsWith("run")) return "running";
-  if (v.startsWith("succ") || v === "completed") return "succeeded";
-  if (
-    v.startsWith("fail") ||
-    v === "failed" ||
-    v === "error" ||
-    v === "canceled"
-  )
-    return "failed";
-  return v;
+  if (v.startsWith("succ") || v === "completed" || v === "ok") return "succeeded";
+  if (v === "cancelled" || v === "canceled") return "cancelled";
+  if (v.startsWith("fail") || v === "error") return "failed";
+  // Fallback: return as-is if unrecognized (TypeScript will flag if not in union)
+  return "queued";
 }
 
 /**

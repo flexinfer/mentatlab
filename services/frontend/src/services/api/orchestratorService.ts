@@ -200,7 +200,7 @@ class OrchestratorService {
    */
   async startDemoRunAndStream(
     handlers: any
-  ): Promise<{ runId: string; stop: () => void }> {
+  ): Promise<{ runId: string; sseUrl?: string; stop: () => void }> {
     const plan: RunPlan = {
       nodes: [
         { id: "Perception" },
@@ -218,12 +218,15 @@ class OrchestratorService {
       metadata: { kind: "demo" },
     };
 
-    const { runId, run_id } = await this.createRun({ plan });
-    const id = runId || run_id;
+    const response = await this.createRun({ plan });
+    const id = response.runId || response.run_id;
     if (!id) throw new Error("Failed to create demo run");
 
+    // Use sse_url from response if available (backend provides it when auto_start=true)
+    const sseUrl = response.sse_url;
+
     const sse = this.streamRunEvents(id, handlers);
-    return { runId: id, stop: () => sse.close() };
+    return { runId: id, sseUrl, stop: () => sse.close() };
   }
 }
 

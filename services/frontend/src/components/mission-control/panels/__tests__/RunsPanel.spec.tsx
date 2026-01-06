@@ -51,7 +51,7 @@ describe("RunsPanel (integration-ish)", () => {
       id: "run-123",
       mode: "redis",
       createdAt: new Date().toISOString(),
-      status: "pending",
+      status: "queued",
     });
     (orchestratorService.listCheckpoints as jest.Mock).mockResolvedValue([]);
 
@@ -106,7 +106,7 @@ describe("RunsPanel (integration-ish)", () => {
       id: "r",
       mode: "redis",
       createdAt: new Date().toISOString(),
-      status: "pending",
+      status: "queued",
     });
 
     render(<RunsPanel />);
