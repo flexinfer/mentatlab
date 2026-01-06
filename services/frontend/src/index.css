@@ -2,9 +2,52 @@
 @config "../tailwind.config.js";
 
 @layer base {
+  /* Light Mode (default) - Clean Professional Theme */
   :root {
-    /* Cyberpunk / Sci-Fi Theme Palette */
-    
+    /* Base Backgrounds - Clean White/Gray */
+    --background: 210 20% 98%;     /* Near white */
+    --foreground: 222 47% 11%;     /* Dark slate for text */
+
+    /* Surface / Cards */
+    --card: 0 0% 100%;             /* Pure white cards */
+    --card-foreground: 222 47% 11%;
+
+    /* Popovers */
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Primary - Teal/Cyan (softer for light mode) */
+    --primary: 190 80% 40%;        /* Teal */
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Purple (softer) */
+    --secondary: 280 60% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Muted - Light Gray */
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 16% 47%;
+
+    /* Accent - Pink (softer) */
+    --accent: 320 70% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Destructive - Red */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders & Inputs */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+
+    /* Focus Rings */
+    --ring: 190 80% 40%;
+
+    --radius: 0.25rem;
+  }
+
+  /* Dark Mode - Cyberpunk / Sci-Fi Theme */
+  .dark {
     /* Base Backgrounds - Deep Void */
     --background: 240 20% 4%;      /* #08080c */
     --foreground: 180 100% 90%;    /* Pale Cyan Text */
@@ -40,11 +83,9 @@
     /* Borders & Inputs */
     --border: 240 20% 20%;
     --input: 240 20% 20%;
-    
+
     /* Focus Rings */
     --ring: 190 100% 50%;          /* Match Primary */
-
-    --radius: 0.25rem;             /* Sharper corners for sci-fi feel */
   }
 }
 
@@ -64,9 +105,19 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    
-    /* Subtle grid background */
-    background-image: 
+
+    /* Subtle grid background - light mode */
+    background-image:
+      linear-gradient(to right, rgba(0, 120, 150, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0, 120, 150, 0.05) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .dark body,
+  body.dark,
+  .dark {
+    /* Subtle grid background - dark mode (neon cyan) */
+    background-image:
       linear-gradient(to right, rgba(0, 240, 255, 0.03) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
     background-size: 40px 40px;

@@ -91,10 +91,14 @@ export function parseRunEvent(input: MessageEvent | { id?: any; event?: string; 
   const ts = (data && (data.ts || data.time || data.timestamp)) as string | undefined;
 
   // Node ID
-  const nodeId = (data && (data.node_id || data.nodeId || data.node || data.id)) as string | undefined;
+  const nodeId = (data && (data.node_id || data.nodeId || data.node)) as string | undefined;
 
-  // Level (logs)
-  const level = (data && (data.level || data.severity || data.log_level)) as string | undefined;
+  // Level (logs) - check both top level and nested data.data (backend Event.Data contains LogEvent)
+  const nestedData = data?.data;
+  const level = (
+    data?.level || data?.severity || data?.log_level ||
+    nestedData?.level || nestedData?.severity || nestedData?.log_level
+  ) as string | undefined;
 
   return {
     seq,

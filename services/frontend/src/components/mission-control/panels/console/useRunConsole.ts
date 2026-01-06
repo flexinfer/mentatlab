@@ -123,9 +123,13 @@ export function useRunConsole(runId: string | null | undefined, selectedNodeId?:
         const level = (n.level as ConsoleLevel | undefined);
         const nodeId = n.nodeId;
         const data = n.data;
+        // Message can be at data.message (flat) or data.data.message (nested LogEvent from backend)
+        const nestedData = data?.data;
         const message: string | undefined =
           typeof data?.message === 'string' ? data.message
-          : typeof (data?.msg) === 'string' ? data.msg
+          : typeof data?.msg === 'string' ? data.msg
+          : typeof nestedData?.message === 'string' ? nestedData.message
+          : typeof nestedData?.msg === 'string' ? nestedData.msg
           : undefined;
 
         const item: ConsoleItem = {
