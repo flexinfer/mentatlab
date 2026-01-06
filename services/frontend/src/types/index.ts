@@ -20,6 +20,9 @@ export * from './NodeOperations';
 // Export API integration types
 export * from './api-integration';
 
+// Export canonical API contract types (source of truth for backend contracts)
+export * from './api-contracts';
+
 // Re-export enums as both type and value
 export { NodeCategory, MediaNodeType } from './graph';
 export { MediaType } from './media';

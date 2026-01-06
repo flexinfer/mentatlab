@@ -1,4 +1,15 @@
-// Consolidated Orchestrator Types
+/**
+ * Orchestrator Types (Legacy)
+ *
+ * @deprecated For API contract types, import from '@/types/api-contracts' instead.
+ * This file is maintained for backwards compatibility.
+ *
+ * New code should use:
+ *   import { Run, RunStatus, EventType } from '@/types/api-contracts';
+ *
+ * For runtime validation:
+ *   import { validateRun, RunSchema } from '@/schemas';
+ */
 
 // --- Run Modes & Status ---
 export type RunMode = "plan" | "redis" | "k8s";
