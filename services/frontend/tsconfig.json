@@ -23,6 +23,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
+    /* Safety: undefined returned for array/object index access (API contract safety) */
+    "noUncheckedIndexedAccess": true,
  
     /* Path Mapping */
     "baseUrl": ".",
