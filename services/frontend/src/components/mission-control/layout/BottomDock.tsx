@@ -185,16 +185,22 @@ export function BottomDock({ className = '' }: BottomDockProps) {
     [setActiveBottomTab]
   );
 
+  // When collapsed, render a minimal Panel to maintain PanelGroup structure
   if (bottomDockCollapsed) {
     return (
-      <div className={`h-8 border-t bg-card flex items-center justify-center ${className}`}>
-        <button
-          onClick={toggleBottomDock}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Show Panel
-        </button>
-      </div>
+      <>
+        <PanelResizeHandle className="h-0.5 hover:bg-primary/20 transition-colors cursor-row-resize" />
+        <Panel defaultSize={3} minSize={3} maxSize={5} className={`bg-card border-t ${className}`}>
+          <div className="h-full flex items-center justify-center">
+            <button
+              onClick={toggleBottomDock}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Show Panel
+            </button>
+          </div>
+        </Panel>
+      </>
     );
   }
 

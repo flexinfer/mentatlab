@@ -65,11 +65,17 @@ export function LeftSidebar({ children, className = '' }: LeftSidebarProps) {
   } = useLayoutStore();
   const { setMainView } = useWorkspace();
 
+  // When collapsed, render a minimal Panel to maintain PanelGroup structure
   if (leftSidebarCollapsed) {
     return (
-      <div className="relative w-0 h-full">
-        <CollapseButton collapsed={true} onClick={toggleLeftSidebar} />
-      </div>
+      <>
+        <Panel defaultSize={2} minSize={2} maxSize={3} className="relative bg-card border-r">
+          <div className="h-full flex items-center justify-center">
+            <CollapseButton collapsed={true} onClick={toggleLeftSidebar} />
+          </div>
+        </Panel>
+        <PanelResizeHandle className="w-0.5 hover:bg-primary/20 transition-colors cursor-col-resize" />
+      </>
     );
   }
 

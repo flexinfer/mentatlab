@@ -162,37 +162,39 @@ function MissionControlInner() {
       {/* Top Bar */}
       <TopBar />
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Main Content Area - Horizontal PanelGroup */}
+      <PanelGroup direction="horizontal" className="flex-1">
         {/* Left Sidebar */}
         <LeftSidebar />
 
-        {/* Center: Canvas + Bottom Dock */}
-        <PanelGroup direction="vertical" className="flex-1">
-          {/* Main Canvas Panel */}
-          <Panel defaultSize={75} minSize={40}>
-            <div className="h-full relative">
-              {mainView === 'network' ? (
-                <NetworkPanel runId={activeRunId} />
-              ) : (
-                <ReactFlowProvider>
-                  <StreamingCanvas />
-                  {/* CogPak Overlay */}
-                  {cogpakUi && (
-                    <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
-                  )}
-                </ReactFlowProvider>
-              )}
-            </div>
-          </Panel>
+        {/* Center: Canvas + Bottom Dock (nested vertical PanelGroup) */}
+        <Panel defaultSize={65} minSize={40}>
+          <PanelGroup direction="vertical" className="h-full">
+            {/* Main Canvas Panel */}
+            <Panel defaultSize={75} minSize={40}>
+              <div className="h-full relative">
+                {mainView === 'network' ? (
+                  <NetworkPanel runId={activeRunId} />
+                ) : (
+                  <ReactFlowProvider>
+                    <StreamingCanvas />
+                    {/* CogPak Overlay */}
+                    {cogpakUi && (
+                      <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
+                    )}
+                  </ReactFlowProvider>
+                )}
+              </div>
+            </Panel>
 
-          {/* Bottom Dock */}
-          <BottomDock />
-        </PanelGroup>
+            {/* Bottom Dock */}
+            <BottomDock />
+          </PanelGroup>
+        </Panel>
 
         {/* Right Sidebar: Inspector */}
         <RightInspector runId={activeRunId} />
-      </div>
+      </PanelGroup>
 
       {/* Overlays and Dialogs */}
       <KeyboardShortcutsDialog
@@ -230,16 +232,19 @@ function MissionControlInner() {
 
 function RightInspector({ runId }: { runId: string | null }) {
   return (
-    <div className="w-80 border-l bg-card flex flex-col">
-      <div className="h-10 border-b flex items-center px-4 text-xs font-medium">
-        Inspector
-      </div>
-      <div className="flex-1 overflow-auto p-3 text-xs">
-        <PanelErrorBoundary panelName="Inspector">
-          <InspectorPanel runId={runId} />
-        </PanelErrorBoundary>
-      </div>
-    </div>
+    <>
+      <PanelResizeHandle className="w-1 hover:bg-primary/20 transition-colors cursor-col-resize" />
+      <Panel defaultSize={20} minSize={15} maxSize={30} className="bg-card flex flex-col">
+        <div className="h-10 border-b flex items-center px-4 text-xs font-medium">
+          Inspector
+        </div>
+        <div className="flex-1 overflow-auto p-3 text-xs">
+          <PanelErrorBoundary panelName="Inspector">
+            <InspectorPanel runId={runId} />
+          </PanelErrorBoundary>
+        </div>
+      </Panel>
+    </>
   );
 }
 

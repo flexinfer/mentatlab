@@ -2,7 +2,8 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import StreamingPage from './components/StreamingPage';
 import { ReactFlowProvider } from 'reactflow';
-import MissionControlLayout from './components/mission-control/layout/MissionControlLayout';
+// Use new compound layout (Phase 3 refactor)
+import { MissionControlLayout } from './components/mission-control/layout';
 import { ToastProvider } from './contexts/ToastContext';
 import { ToastContainer } from './components/ui/Toast';
 import './index.css';
