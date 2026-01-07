@@ -1,0 +1,7 @@
+creation_rules:
+  - path_regex: ^k8s/.+\.ya?ml$
+    encrypted_regex: '^(data|stringData|token|.*_TOKEN|.*_PASSWORD|.*_KEY)$'
+    age: [ "age1d8mxyz340rdexgn068097s0le3tmf3898xd5a4qpqng4zdtg8sgswnx9r9" ]
+  - path_regex: ^examples/.+/k8s/.+\.ya?ml$
+    encrypted_regex: '^(data|stringData|token|.*_TOKEN|.*_PASSWORD|.*_KEY)$'
+    age: [ "age1d8mxyz340rdexgn068097s0le3tmf3898xd5a4qpqng4zdtg8sgswnx9r9" ]

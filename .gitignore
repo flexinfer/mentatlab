@@ -28,3 +28,7 @@ examples/psyche-simulation/patches
 examples/psyche-simulation/*.log
 examples/psyche-simulation/logs
 logs/frontend.log
+
+# Local env overrides
+.env.local
+services/frontend/.env.local
