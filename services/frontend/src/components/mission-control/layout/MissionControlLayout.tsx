@@ -33,6 +33,9 @@ import NetworkPanel from '../panels/NetworkPanel';
 import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
 
+// Canvas components
+import { NodePalette, QuickAddMenu } from '../canvas';
+
 // Hooks
 import { useKeyboardShortcuts, type KeyboardShortcut, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAutoSave } from '@/hooks/useAutoSave';
@@ -77,6 +80,10 @@ function MissionControlInner() {
 
   const { mainView, setMainView: setLayoutMainView } = useLayoutStore();
 
+  // Node palette and quick add menu state
+  const [nodePaletteOpen, setNodePaletteOpen] = useState(false);
+  const [quickAddMenuOpen, setQuickAddMenuOpen] = useState(false);
+
   // Apply dark mode to document
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -120,6 +127,10 @@ function MissionControlInner() {
     setPolicyOverlayOpen,
     settingsOpen,
     setSettingsOpen,
+    nodePaletteOpen,
+    setNodePaletteOpen,
+    quickAddMenuOpen,
+    setQuickAddMenuOpen,
     cogpakUi,
     setCogpakUi,
     startOrchestratorRun,
@@ -155,6 +166,10 @@ function MissionControlInner() {
     setPolicyOverlayOpen,
     setSettingsOpen,
     setShortcutsDialogOpen,
+    nodePaletteOpen,
+    setNodePaletteOpen,
+    quickAddMenuOpen,
+    setQuickAddMenuOpen,
   });
 
   return (
@@ -172,18 +187,32 @@ function MissionControlInner() {
           <PanelGroup direction="vertical" className="h-full">
             {/* Main Canvas Panel */}
             <Panel defaultSize={75} minSize={40}>
-              <div className="h-full relative">
-                {mainView === 'network' ? (
-                  <NetworkPanel runId={activeRunId} />
-                ) : (
-                  <ReactFlowProvider>
-                    <StreamingCanvas />
-                    {/* CogPak Overlay */}
-                    {cogpakUi && (
-                      <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
-                    )}
-                  </ReactFlowProvider>
-                )}
+              <div className="h-full relative flex">
+                {/* Node Palette (collapsible) */}
+                <NodePalette
+                  collapsed={!nodePaletteOpen}
+                  onToggleCollapse={() => setNodePaletteOpen(!nodePaletteOpen)}
+                />
+
+                {/* Canvas Area */}
+                <div className="flex-1 relative">
+                  {mainView === 'network' ? (
+                    <NetworkPanel runId={activeRunId} />
+                  ) : (
+                    <ReactFlowProvider>
+                      <StreamingCanvas />
+                      {/* CogPak Overlay */}
+                      {cogpakUi && (
+                        <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
+                      )}
+                      {/* Quick Add Menu */}
+                      <QuickAddMenu
+                        isOpen={quickAddMenuOpen}
+                        onClose={() => setQuickAddMenuOpen(false)}
+                      />
+                    </ReactFlowProvider>
+                  )}
+                </div>
               </div>
             </Panel>
 
@@ -396,6 +425,10 @@ interface ShortcutDeps {
   setPolicyOverlayOpen: (open: boolean) => void;
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
+  nodePaletteOpen: boolean;
+  setNodePaletteOpen: (open: boolean) => void;
+  quickAddMenuOpen: boolean;
+  setQuickAddMenuOpen: (open: boolean) => void;
   cogpakUi: { url: string; title: string } | null;
   setCogpakUi: (ui: { url: string; title: string } | null) => void;
   startOrchestratorRun: () => Promise<void>;
@@ -448,6 +481,9 @@ function useShortcuts(deps: ShortcutDeps): KeyboardShortcut[] {
     { key: 'ArrowDown', description: 'Nudge down', action: () => deps.nudgeSelected(0, 10), preventDefault: true },
     { key: 'ArrowLeft', description: 'Nudge left', action: () => deps.nudgeSelected(-10, 0), preventDefault: true },
     { key: 'ArrowRight', description: 'Nudge right', action: () => deps.nudgeSelected(10, 0), preventDefault: true },
+    // Node palette and quick add shortcuts
+    { key: 'n', description: 'Toggle node palette', action: () => deps.setNodePaletteOpen(!deps.nodePaletteOpen), preventDefault: true },
+    { key: '/', description: 'Quick add node', action: () => deps.setQuickAddMenuOpen(true), preventDefault: true },
   ], [deps]);
 }
 
@@ -467,6 +503,10 @@ interface CommandDeps {
   setPolicyOverlayOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setShortcutsDialogOpen: (open: boolean) => void;
+  nodePaletteOpen: boolean;
+  setNodePaletteOpen: (open: boolean) => void;
+  quickAddMenuOpen: boolean;
+  setQuickAddMenuOpen: (open: boolean) => void;
 }
 
 function useCommands(deps: CommandDeps): Command[] {
@@ -481,6 +521,8 @@ function useCommands(deps: CommandDeps): Command[] {
     { id: 'toggle-policy', label: 'Toggle Policy Overlay', category: 'View', shortcut: 'Ctrl+P', action: () => deps.setPolicyOverlayOpen(true) },
     { id: 'open-settings', label: 'Open Settings', category: 'Settings', action: () => deps.setSettingsOpen(true) },
     { id: 'show-shortcuts', label: 'Keyboard Shortcuts', category: 'Help', shortcut: 'Shift+?', action: () => deps.setShortcutsDialogOpen(true) },
+    { id: 'toggle-node-palette', label: 'Toggle Node Palette', category: 'View', shortcut: 'n', action: () => deps.setNodePaletteOpen(!deps.nodePaletteOpen) },
+    { id: 'quick-add-node', label: 'Quick Add Node', category: 'Workflow', shortcut: '/', action: () => deps.setQuickAddMenuOpen(true) },
   ], [deps]);
 }
 

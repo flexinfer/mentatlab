@@ -23,3 +23,9 @@ export {
   type UseStreamingTransportOptions,
   type UseStreamingTransportReturn,
 } from './useStreamingTransport';
+
+export {
+  useCanvasDrop,
+  type UseCanvasDropOptions,
+  type UseCanvasDropReturn,
+} from './useCanvasDrop';
