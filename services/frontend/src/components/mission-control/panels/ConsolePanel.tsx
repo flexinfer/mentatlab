@@ -168,6 +168,45 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Listen for timeline checkpoint selection to correlate with console
+  useEffect(() => {
+    const handleTimelineCheckpointSelected = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent).detail as { timestamp?: string; runId?: string };
+        if (detail?.runId !== runId || !detail?.timestamp) return;
+
+        // Find the console event closest to this timestamp
+        const targetTime = new Date(detail.timestamp).getTime();
+        let closestIndex = -1;
+        let closestDelta = Infinity;
+
+        for (let i = 0; i < filtered.length; i++) {
+          const item = filtered[i];
+          if (!item?.ts) continue;
+          const itemTime = new Date(item.ts).getTime();
+          const delta = Math.abs(itemTime - targetTime);
+          if (delta < closestDelta) {
+            closestDelta = delta;
+            closestIndex = i;
+          }
+        }
+
+        // If within 5 seconds, select and scroll to it
+        if (closestIndex >= 0 && closestDelta < 5000) {
+          setSelectedEventIndex(closestIndex);
+          // The virtualized list will automatically scroll via autoscroll behavior
+          // or we can disable autoscroll and manually trigger scroll
+          setAutoscroll(false);
+        }
+      } catch {
+        // ignore correlation errors
+      }
+    };
+
+    window.addEventListener('timelineCheckpointSelected', handleTimelineCheckpointSelected);
+    return () => window.removeEventListener('timelineCheckpointSelected', handleTimelineCheckpointSelected);
+  }, [runId, filtered]);
+
   const toggleType = (t: ConsoleType) => {
     setTypeSet((prev) => {
       const next = new Set(prev);

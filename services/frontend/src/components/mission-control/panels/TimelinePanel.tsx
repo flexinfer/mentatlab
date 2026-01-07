@@ -50,12 +50,49 @@ export function TimelinePanel({ runId }: Props) {
       }
     });
 
+    // Listen for console event selection to correlate with timeline
+    const handleConsoleEventSelected = (e: Event) => {
+      try {
+        const detail = (e as CustomEvent).detail as { item?: { ts?: string; type?: string }; runId?: string };
+        if (detail?.runId !== runId || !detail?.item?.ts) return;
+
+        // Find the checkpoint closest to this timestamp
+        const eventTime = new Date(detail.item.ts).getTime();
+        let closest: { id: string; delta: number } | null = null;
+
+        for (const cp of checkpoints) {
+          const cpTime = new Date(cp.at).getTime();
+          const delta = Math.abs(cpTime - eventTime);
+          if (!closest || delta < closest.delta) {
+            closest = { id: cp.id, delta };
+          }
+        }
+
+        // If within 5 seconds, select and scroll to it
+        if (closest && closest.delta < 5000) {
+          setSelectedCheckpointId(closest.id);
+          // Scroll the checkpoint into view
+          setTimeout(() => {
+            const el = document.querySelector(`[data-checkpoint-id="${closest!.id}"]`);
+            if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
+              (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          }, 50);
+        }
+      } catch {
+        // ignore correlation errors
+      }
+    };
+
+    window.addEventListener('consoleEventSelected', handleConsoleEventSelected);
+
     return () => {
       unsub?.();
       unsubSelect?.();
+      window.removeEventListener('consoleEventSelected', handleConsoleEventSelected);
       setSelectedCheckpointId(null);
     };
-  }, [runId]);
+  }, [runId, checkpoints]);
 
   if (!runId) {
     return (
@@ -104,13 +141,18 @@ export function TimelinePanel({ runId }: Props) {
               return (
                 <li
                   key={c.id}
-                  className={['px-3 py-2 text-[11px] cursor-pointer', isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''].join(' ')}
+                  data-checkpoint-id={c.id}
+                  className={['px-3 py-2 text-[11px] cursor-pointer transition-colors', isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-muted/40'].join(' ')}
                   onClick={() => {
                     try {
                       flightRecorder.selectCheckpoint(runId!, c.id);
                     } catch {
                       // ignore selection errors
                     }
+                    // Emit event for console correlation
+                    window.dispatchEvent(new CustomEvent('timelineCheckpointSelected', {
+                      detail: { checkpointId: c.id, timestamp: c.at, runId }
+                    }));
                     try {
                       // Attempt to scroll console anchor into view
                       const el = document.getElementById(`console-${c.id}`);
