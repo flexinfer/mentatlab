@@ -1,4 +1,4 @@
-import { Handle, Position } from 'react-flow-renderer';
+import { Handle, Position } from 'reactflow';
 
 export default function ChatNode() {
   return (
