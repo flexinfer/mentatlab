@@ -21,6 +21,7 @@ compose-logs.txt
 /**/.venv
 /**/node_modules/.bin
 /**/node_modules
+.playwright-mcp/
 
 examples/psyche-simulation/test*
 examples/psyche-simulation/venv
