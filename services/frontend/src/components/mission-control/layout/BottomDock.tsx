@@ -60,15 +60,19 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-medium rounded transition-colors flex items-center gap-1.5 ${
+      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150 flex items-center gap-1.5 ${
         active
-          ? 'bg-primary/20 text-primary'
-          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+          ? 'bg-primary text-primary-foreground shadow-sm'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
       }`}
     >
       {label}
       {badge !== undefined && badge > 0 && (
-        <span className="px-1.5 py-0.5 text-[10px] rounded-full bg-primary/20 text-primary min-w-[18px] text-center">
+        <span className={`px-1.5 py-0.5 text-[10px] rounded-full min-w-[18px] text-center ${
+          active
+            ? 'bg-primary-foreground/20 text-primary-foreground'
+            : 'bg-muted-foreground/20 text-muted-foreground'
+        }`}>
           {badge > 99 ? '99+' : badge}
         </span>
       )}

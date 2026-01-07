@@ -4,6 +4,7 @@ import Badge from '@/components/ui/Badge';
 import CodeInline from '@/components/ui/CodeInline';
 import { PanelShell } from '@/components/ui/PanelShell';
 import { Input } from '@/components/ui/Input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select } from '@/components/ui/Select';
 import { cn } from '@/lib/cn';
 import { useToast } from '../../../contexts/ToastContext';
@@ -228,35 +229,27 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
         <div className="flex flex-wrap items-center gap-2 p-2 border-b bg-card/70 backdrop-blur">
           {/* Types */}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-gray-500">Types:</span>
+            <span className="text-[11px] text-muted-foreground">Types:</span>
             {typeDefs.map(({ key, label }) => (
-              <label key={key} className="inline-flex items-center gap-1 text-[11px]">
-                <Input
-                  type="checkbox"
-                  checked={typeSet.has(key)}
-                  onChange={() => toggleType(key)}
-                  size="sm"
-                  className="w-auto h-4"
-                />
-                <span>{label}</span>
-              </label>
+              <Checkbox
+                key={key}
+                label={label}
+                checked={typeSet.has(key)}
+                onChange={() => toggleType(key)}
+              />
             ))}
           </div>
 
           {/* Levels (for logs) */}
           <div className="flex items-center gap-2 ml-3">
-            <span className="text-[11px] text-gray-500">Log levels:</span>
+            <span className="text-[11px] text-muted-foreground">Log levels:</span>
             {levelDefs.map(({ key, label }) => (
-              <label key={key} className="inline-flex items-center gap-1 text-[11px]">
-                <Input
-                  type="checkbox"
-                  checked={levelSet.has(key)}
-                  onChange={() => toggleLevel(key)}
-                  size="sm"
-                  className="w-auto h-4"
-                />
-                <span>{label}</span>
-              </label>
+              <Checkbox
+                key={key}
+                label={label}
+                checked={levelSet.has(key)}
+                onChange={() => toggleLevel(key)}
+              />
             ))}
           </div>
 
@@ -295,29 +288,17 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
           </div>
 
           {/* Autoscroll */}
-          <div className="flex items-center gap-1 ml-auto">
-            <label className="inline-flex items-center gap-1 text-[11px]">
-              <Input
-                type="checkbox"
-                checked={autoscroll}
-                onChange={(e) => setAutoscroll(e.target.checked)}
-                size="sm"
-                className="w-auto h-4"
-              />
-              <span>Autoscroll</span>
-            </label>
-
-            {/* Pause stream */}
-            <label className="inline-flex items-center gap-1 text-[11px] ml-2">
-              <Input
-                type="checkbox"
-                checked={paused}
-                onChange={(e) => setPaused(e.target.checked)}
-                size="sm"
-                className="w-auto h-4"
-              />
-              <span>Pause</span>
-            </label>
+          <div className="flex items-center gap-3 ml-auto">
+            <Checkbox
+              label="Autoscroll"
+              checked={autoscroll}
+              onChange={(e) => setAutoscroll(e.target.checked)}
+            />
+            <Checkbox
+              label="Pause"
+              checked={paused}
+              onChange={(e) => setPaused(e.target.checked)}
+            />
 
             {/* Clear */}
             <button
