@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRunConsole, ConsoleLevel, ConsoleType, ConsoleFilters, ConsoleItem } from './console/useRunConsole';
-import Badge from '@/components/ui/Badge';
-import CodeInline from '@/components/ui/CodeInline';
+import { ConsoleVirtualList, formatTime } from './console/ConsoleVirtualList';
 import { PanelShell } from '@/components/ui/PanelShell';
 import { Input } from '@/components/ui/Input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -44,7 +43,18 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
   const [nodeFilter, setNodeFilter] = useState<string | null>(filters.nodeId ?? null);
   const [query, setQuery] = useState<string>(filters.query ?? '');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [selectedEventIndex, setSelectedEventIndex] = useState<number | null>(null);
   const toast = useToast();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle event click - emit custom event for timeline correlation
+  const handleItemClick = useCallback((item: ConsoleItem, index: number) => {
+    setSelectedEventIndex(index);
+    // Emit event for timeline correlation
+    window.dispatchEvent(new CustomEvent('consoleEventSelected', {
+      detail: { item, index, runId }
+    }));
+  }, [runId]);
 
   // Export functions
   const downloadFile = useCallback((content: string, filename: string, mimeType: string) => {
@@ -145,29 +155,18 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
     applyFilters(f);
   }, [typeSet, levelSet, nodeFilter, query, applyFilters]);
 
-  // Scroll container and autoscroll handling
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const isUserAtBottomRef = useRef<boolean>(true);
-
-  const scrollToBottom = () => {
-    if (!scrollContainerRef.current) return;
-    scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-  };
-
+  // Cmd+F to focus search
   useEffect(() => {
-    // On initial mount or when autoscroll enabled, jump to bottom
-    if (autoscroll) {
-      scrollToBottom();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  useEffect(() => {
-    // When filtered items change, if autoscroll is on or user is at bottom, keep pinned to bottom
-    if (autoscroll || isUserAtBottomRef.current) {
-      scrollToBottom();
-    }
-  }, [filtered, autoscroll]);
 
   const toggleType = (t: ConsoleType) => {
     setTypeSet((prev) => {
@@ -200,27 +199,6 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
     { key: 'warn', label: 'warn' },
     { key: 'error', label: 'error' },
   ];
-
-  // Helpers to color badges
-  const typeVariant = (t: ConsoleType) => {
-    switch (t) {
-      case 'log': return 'info' as const;
-      case 'checkpoint': return 'success' as const;
-      case 'node_status': return 'warning' as const;
-      case 'status': return 'default' as const;
-      default: return 'default' as const;
-    }
-  };
-
-  const levelVariant = (l?: ConsoleLevel) => {
-    switch (l) {
-      case 'debug': return 'default' as const;
-      case 'info': return 'info' as const;
-      case 'warn': return 'warning' as const;
-      case 'error': return 'danger' as const;
-      default: return 'default' as const;
-    }
-  };
 
   return (
     <PanelShell
@@ -275,11 +253,12 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
             </div>
           </div>
 
-          {/* Search */}
+          {/* Search (Cmd+F to focus) */}
           <div className="flex items-center gap-1 ml-3">
             <Input
+              ref={searchInputRef}
               type="text"
-              placeholder="Search message or data…"
+              placeholder="Search (⌘F)…"
               size="sm"
               className={cn('px-2 text-[11px] min-w-[180px]')}
               value={query}
@@ -351,100 +330,16 @@ export default function ConsolePanel({ runId, selectedNodeId = null }: { runId: 
       }
       className="h-full w-full"
     >
-      {/* Console Events List */}
-      <div className="flex-1 p-2 font-sans text-[11px]" style={{ height: 'calc(100% - 48px)' }}>
-        {filtered.length === 0 ? (
-          <div className="text-gray-500">No events.</div>
-        ) : (
-          <div
-            ref={scrollContainerRef}
-            className="h-full overflow-y-auto"
-            onScroll={(e) => {
-              const container = e.currentTarget;
-              const threshold = 8;
-              const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
-              isUserAtBottomRef.current = atBottom;
-
-              if (!atBottom && autoscroll) {
-                setAutoscroll(false);
-              } else if (atBottom && !autoscroll) {
-                setAutoscroll(true);
-              }
-            }}
-          >
-            {filtered.map((it, index) => (
-              <div key={index} className="px-2 py-1">
-                <div className="flex items-center gap-2 hover:bg-muted/40 rounded transition-colors h-8 px-2">
-                  {/* Time */}
-                  <span className="text-gray-400 min-w-[120px] tabular-nums">
-                    {formatTime(it.ts)}
-                  </span>
-                  {/* Type */}
-                  <Badge variant={typeVariant(it.type)} title={String(it.type)}>
-                    {it.type}
-                  </Badge>
-                  {/* Level */}
-                  {it.type === 'log' && it.level && (
-                    <Badge variant={levelVariant(it.level)} title={String(it.level)}>
-                      {it.level}
-                    </Badge>
-                  )}
-                  {/* Node */}
-                  {it.nodeId && (
-                    <span className="text-gray-500">· {it.nodeId}</span>
-                  )}
-                  {/* Message/Data */}
-                  <span className="flex-1 text-gray-800 dark:text-gray-200">
-                    {renderMessageOrData(it)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Console Events List (Virtualized) */}
+      <div className="flex-1 font-sans" style={{ height: 'calc(100% - 48px)' }}>
+        <ConsoleVirtualList
+          items={filtered}
+          autoscroll={autoscroll}
+          onAutoscrollChange={setAutoscroll}
+          onItemClick={handleItemClick}
+          selectedIndex={selectedEventIndex}
+        />
       </div>
     </PanelShell>
   );
-}
-
-function renderMessageOrData(it: { type: ConsoleType; message?: string; data?: any }) {
-  if (it.type === 'log' && it.message) {
-    return <span className="whitespace-pre-wrap break-words">{it.message}</span>;
-  }
-  // Compact JSON preview of payload
-  return <CodeInline value={compactData(it.data)} maxLength={240} />;
-}
-
-function compactData(d: any) {
-  if (!d) return d;
-  // Prefer a small selection if obvious fields exist
-  const { message, msg, node_id, nodeId, type, kind, level, ...rest } = d || {};
-  const head: any = {};
-  if (type) head.type = type;
-  if (kind) head.kind = kind;
-  if (level) head.level = level;
-  if (message) head.message = message;
-  if (msg) head.msg = msg;
-  if (node_id) head.node_id = node_id;
-  if (nodeId) head.nodeId = nodeId;
-  // If head has content, include it first and then show a small tail if any
-  if (Object.keys(head).length > 0) {
-    if (rest && Object.keys(rest).length) {
-      head._ = rest;
-    }
-    return head;
-  }
-  return d;
-}
-
-function formatTime(ts?: string) {
-  if (!ts) return '';
-  try {
-    const d = new Date(ts);
-    // hh:mm:ss.mmm
-    const pad = (n: number, w = 2) => n.toString().padStart(w, '0');
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
-  } catch {
-    return ts;
-  }
 }
