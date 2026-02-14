@@ -17,30 +17,31 @@ echo "================================="
 # Cleanup function
 cleanup() {
     echo -e "\n${YELLOW}Stopping services...${NC}"
-    pkill -f "uvicorn.*8080" 2>/dev/null || true
-    pkill -f "uvicorn.*8081" 2>/dev/null || true
-    pkill -f "vite.*3000" 2>/dev/null || true
+    jobs -p | xargs -r kill 2>/dev/null || true
+    lsof -ti:8080 | xargs -r kill 2>/dev/null || true
+    lsof -ti:7070 | xargs -r kill 2>/dev/null || true
+    lsof -ti:5173 | xargs -r kill 2>/dev/null || true
     echo -e "${GREEN}Services stopped${NC}"
 }
 
 trap cleanup EXIT INT TERM
 
-# Start Gateway
+# Start Orchestrator (Go, port 7070)
+echo -e "${YELLOW}Starting Orchestrator (port 7070)...${NC}"
+(cd services/orchestrator-go && go run ./cmd/orchestrator/) &
+
+# Start Gateway (Go, port 8080)
 echo -e "${YELLOW}Starting Gateway (port 8080)...${NC}"
-(cd services/gateway && pdm run uvicorn app.main:app --port 8080 --reload) &
+(cd services/gateway-go && go run main.go) &
 
-# Start Orchestrator
-echo -e "${YELLOW}Starting Orchestrator (port 8081)...${NC}"
-(cd services/orchestrator && pdm run uvicorn app.main:app --port 8081 --reload) &
-
-# Start Frontend
-echo -e "${YELLOW}Starting Frontend (port 3000)...${NC}"
+# Start Frontend (port 5173)
+echo -e "${YELLOW}Starting Frontend (port 5173)...${NC}"
 (cd services/frontend && npm run dev) &
 
 echo -e "\n${GREEN}Services starting...${NC}"
-echo "Gateway:      http://localhost:8080/docs"
-echo "Orchestrator: http://localhost:8081/docs"
-echo "Frontend:     http://localhost:3000"
+echo "  Gateway:      http://localhost:8080"
+echo "  Orchestrator: http://localhost:7070"
+echo "  Frontend:     http://localhost:5173"
 echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop${NC}"
 

@@ -1,0 +1,33 @@
+[project]
+name = "mentatlab-gateway"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic>=2.0",
+    "httpx",
+    "jsonschema>=4.25.0",
+    "redis>=4.7.1",
+    "aiohttp>=3.12.15",
+    "websockets>=15.0.1",
+]
+
+[project.optional-dependencies]
+all = []
+
+[tool.pdm]
+package-type = "application"
+
+[tool.pdm.scripts]
+start = "uvicorn services.gateway.app.main:app"
+
+[tool.pdm.dev-dependencies]
+all = [
+    "pytest",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+]

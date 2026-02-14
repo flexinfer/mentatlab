@@ -1,55 +1,53 @@
-version: '3.8'
-
 services:
   gateway:
-    platform: linux/amd64
     build:
-      context: .
-      dockerfile: services/gateway/Dockerfile
+      context: services/gateway-go
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
     environment:
-      # Match FastAPI app setting in services/gateway/app/main.py
-      - ORCHESTRATOR_BASE_URL=http://orchestrator:8081
-      - TRUSTED_HOSTS=gateway,orchestrator,localhost,127.0.0.1
-      - UVICORN_HOST=0.0.0.0
-      - UVICORN_PORT=8080
-      - UVICORN_RELOAD=true
-    # Avoid live-mounting to keep module layout intact inside container
+      - ORCHESTRATOR_BASE_URL=http://orchestrator:7070
+      - PORT=8080
     depends_on:
       - orchestrator
     networks:
       - mentat-network
 
   orchestrator:
-    platform: linux/amd64
     build:
-      context: .
-      dockerfile: services/orchestrator/Dockerfile
+      context: services/orchestrator-go
+      dockerfile: Dockerfile
     ports:
-      - "8081:8081"
+      - "7070:7070"
     environment:
-      - UVICORN_HOST=0.0.0.0
-      - UVICORN_PORT=8081
-      - UVICORN_RELOAD=true
-      - GATEWAY_BASE_URL=http://gateway:8080
-    # Avoid live-mounting to keep module layout intact inside container
+      - ORCH_RUNSTORE=${ORCH_RUNSTORE:-memory}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    networks:
+      - mentat-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks:
       - mentat-network
 
   frontend:
-    platform: linux/amd64
     build:
       context: ./services/frontend
       dockerfile: Dockerfile.dev
     ports:
       - "5173:5173"
     environment:
-      # Provide browser-consumed URLs for dev; the browser will call host:ports
       - VITE_GATEWAY_URL=http://localhost:8080
       - VITE_GATEWAY_BASE_URL=http://localhost:8080
-      - VITE_ORCHESTRATOR_URL=http://localhost:8081
-      - VITE_API_URL=http://localhost:8081
+      - VITE_ORCHESTRATOR_URL=http://localhost:7070
+      - VITE_API_URL=http://localhost:7070
       - VITE_WS_URL=ws://localhost:8080
       - VITE_CONNECT_WS=true
     volumes:
@@ -61,7 +59,6 @@ services:
       - mentat-network
 
   echo-agent:
-    platform: linux/amd64
     build:
       context: ./services/agents/echo
       dockerfile: Dockerfile
@@ -69,7 +66,6 @@ services:
       - "8082:8082"
     environment:
       - PORT=8082
-    # No live-mount needed for basic testing
     networks:
       - mentat-network
 

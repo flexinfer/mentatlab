@@ -11,8 +11,8 @@ services:
 
   orchestrator:
     build:
-      context: .
-      dockerfile: services/orchestrator/Dockerfile
+      context: services/orchestrator-go
+      dockerfile: Dockerfile
     environment:
       - ORCH_RUNSTORE=${ORCH_RUNSTORE:-memory}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
@@ -29,8 +29,8 @@ services:
 
   gateway:
     build:
-      context: .
-      dockerfile: services/gateway/Dockerfile
+      context: services/gateway-go
+      dockerfile: Dockerfile
     environment:
       - ORCHESTRATOR_BASE_URL=http://orchestrator:7070
       - PORT=8080
