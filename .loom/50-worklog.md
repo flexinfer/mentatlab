@@ -262,3 +262,17 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S1] `cli/mentatctl/templates/go/src/main.go` - Go agent template
   - [S2] `examples/conditional_routing.json` - conditional flow example
   - [S3] `docs/archive/milestone-specs/` - 13 archived files
+
+### M4 Completion: Demo Mode + mentatctl dev run - DONE
+
+- What changed:
+  - **Demo mode**: Added `DEMO_MODE` feature flag to `features.ts` (default: true). Created `src/data/exampleFlows.ts` with 4 bundled flows (echo, conditional routing, foreach batch, data pipeline). Updated `useFlowLoader.ts` to fall back to example flows when backend returns empty or is unreachable.
+  - **mentatctl dev run**: Fixed default port from 8001 → 7070. Fixed endpoint from `/agents/schedule` → `/api/v1/runs`. Implemented `--local` flag: runs agent as subprocess, feeds JSON input via stdin, parses NDJSON events from stdout (log, checkpoint, output types formatted). Added `--watch` flag with file-change polling for re-runs. Split into `_dev_run_local()` and `_dev_run_remote()`.
+  - **Agent SDK docs**: Added `type: "output"` event docs and `emitOutput()` Go helper to `docs/agent-sdk.md`.
+  - **Docs index**: Rewrote `docs/README.md` with canonical/operational/roadmap/archived doc tables.
+- What verified: `tsc --noEmit` clean, `npm test` 65/65 pass, `python3 agents/echo/main.py hello world` produces valid NDJSON.
+- **M4 status**: Complete (tracing UI deferred to future — requires OTLP query API + frontend waterfall).
+- Sources:
+  - [S1] `services/frontend/src/data/exampleFlows.ts` - bundled example flows
+  - [S2] `services/frontend/src/hooks/useFlowLoader.ts:70-75` - demo mode fallback
+  - [S3] `cli/mentatctl/main.py:98-175` - _dev_run_local subprocess execution

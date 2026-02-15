@@ -52,18 +52,16 @@ MentatLab is an AI agent orchestration platform with a Mission Control interface
 
 ## Roadmap
 
-### M4: Developer Experience — In Progress
+### M4: Developer Experience — Complete
 
-Polished CLI, documentation, and onboarding.
-
-- [x] **Archive aspirational specs**: 13 milestone spec files moved to `docs/archive/milestone-specs/`
-- [x] **Go agent template**: `cli/mentatctl/templates/go/` with full NDJSON contract implementation
-- [x] **Example flows**: `conditional_routing.json`, `foreach_batch.json`, `data_pipeline.json`
-- [x] **README update**: Accurate quickstart, architecture, configuration, docs links
-- [ ] **Verify agent-sdk.md**: Ensure docs match current implementation
-- [ ] **mentatctl hot reload**: Verify `dev run` works with subprocess driver ([Issue #2](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/2))
-- [ ] **Tracing UI**: Visual trace exploration ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7))
-- [ ] **Demo mode**: Pre-load example flows on startup
+- Archive aspirational specs: 13 files moved to `docs/archive/milestone-specs/`
+- Go agent template: `cli/mentatctl/templates/go/` with full NDJSON contract
+- Example flows: conditional routing, foreach batch, data pipeline
+- README rewritten with accurate quickstart, architecture, config table
+- Agent SDK docs: added `output` event type, `emitOutput()` Go helper
+- Demo mode: `DEMO_MODE` flag loads bundled example flows when backend is empty
+- mentatctl `dev run`: fixed endpoints, added `--local` subprocess mode with NDJSON parsing, `--watch` for file-change re-runs
+- Tracing UI deferred ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7)) — requires OTLP query backend
 
 ### Deferred (Future)
 

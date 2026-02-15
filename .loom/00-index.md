@@ -20,7 +20,7 @@
 - [x] Execute M1: Core Loop (Agent Dev + Execution)
 - [x] Execute M2: Workflow Power (conditionals, foreach, data flow)
 - [x] Execute M3: Production Hardening (observability, auth, testing)
-- [ ] Execute M4: Developer Experience (CLI, docs, examples)
+- [x] Execute M4: Developer Experience (CLI, docs, examples) — tracing UI deferred
 
 ## Key Findings (2026-02-15)
 
@@ -85,21 +85,22 @@
 **M1** ~~Wire the core loop~~ DONE
 **M2** ~~Enable workflow features~~ DONE (conditionals, foreach sub-DAG, data flow, contract overlay, canvas→RunPlan wiring; lineage/policy deferred to M3)
 **M3** ~~Harden for production~~ DONE (observability, auth, testing, K8s manifests)
-**M4** Polish developer experience (CLI, docs, examples) — IN PROGRESS
+**M4** ~~Polish developer experience~~ DONE (tracing UI deferred)
 
 ## M4 Progress — In Progress
 
 ### Completed
-- **Archive aspirational specs**: Moved 13 milestone spec files to `docs/archive/milestone-specs/` (v1.0, v1.1, v2.0 specs, summaries, implementation guides, gap analysis, rearchitecture plan)
-- **Go agent template**: Created `cli/mentatctl/templates/go/` with manifest.yaml, Dockerfile (multi-stage), go.mod, and main.go (full NDJSON contract implementation). Added `go` to `agent_commands.py` template choices.
-- **Example flows**: Created 3 new example flows: `conditional_routing.json` (switch/case routing), `foreach_batch.json` (parallel batch processing), `data_pipeline.json` (multi-stage with parallel enrichment)
-- **README.md update**: Rewrote root README with accurate `docker-compose up` quickstart, architecture diagram, configuration table, agent scaffolding instructions, example flows table, and documentation links
+- **Archive aspirational specs**: Moved 13 milestone spec files to `docs/archive/milestone-specs/`
+- **Go agent template**: Created `cli/mentatctl/templates/go/` with full NDJSON contract implementation
+- **Example flows**: 3 new flows: `conditional_routing.json`, `foreach_batch.json`, `data_pipeline.json`
+- **README.md update**: Rewrote root README with accurate quickstart, architecture, config, and docs links
+- **Agent SDK docs**: Added `type: "output"` event documentation, `emitOutput()` Go helper
+- **Docs index**: Rewrote `docs/README.md` with organized tables
+- **Demo mode**: `DEMO_MODE` feature flag + bundled example flows in `exampleFlows.ts`. `useFlowLoader` falls back to examples when backend empty or unreachable.
+- **mentatctl dev run**: Fixed endpoint (`/api/v1/runs`), port (7070), implemented `--local` subprocess mode with NDJSON parsing, added `--watch` for file-change re-runs
 
 ### Remaining
-- [ ] Verify `docs/agent-sdk.md` matches current implementation (already comprehensive at 539 lines)
-- [ ] Update `docs/README.md` index to remove links to archived specs
-- [ ] Verify `mentatctl dev run` hot reload works with subprocess driver
-- [ ] Demo mode: pre-load example flows on startup
+- [ ] Tracing UI: Visual trace exploration (deferred — requires OTLP query backend + frontend waterfall component)
 
 ## Open Questions
 
