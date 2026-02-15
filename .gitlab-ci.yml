@@ -249,13 +249,15 @@ e2e-test:
         sleep 2
       done
     - docker info
-    # Authenticate DinD with Harbor using runner-provided credentials
+    # Authenticate DinD with Harbor
+    # Requires HARBOR_USER and HARBOR_PASSWORD CI/CD variables (Settings > CI/CD > Variables)
     - |
-      if [ -f /root/.docker/config.json ]; then
-        echo "Harbor credentials found, configuring Docker auth..."
-        docker login registry.harbor.lan || echo "docker login failed; will retry with images"
+      if [ -n "${HARBOR_USER:-}" ] && [ -n "${HARBOR_PASSWORD:-}" ]; then
+        echo "Logging into Harbor with CI/CD credentials..."
+        echo "${HARBOR_PASSWORD}" | docker login registry.harbor.lan -u "${HARBOR_USER}" --password-stdin
       else
-        echo "No Docker credentials found at /root/.docker/config.json"
+        echo "WARNING: HARBOR_USER/HARBOR_PASSWORD not set — docker pull may fail"
+        echo "Set these as CI/CD variables: Settings > CI/CD > Variables"
       fi
   script:
     - |
