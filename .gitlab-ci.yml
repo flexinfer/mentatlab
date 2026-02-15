@@ -226,9 +226,10 @@ e2e-test:
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
-    ORCHESTRATOR_IMAGE: "${REGISTRY}/mentatlab-orchestrator-go:${CI_COMMIT_SHORT_SHA}"
-    GATEWAY_IMAGE: "${REGISTRY}/mentatlab-gateway-go:${CI_COMMIT_SHORT_SHA}"
-    FRONTEND_IMAGE: "${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}"
+    # Use :latest on main (BuildKit multi-name push may not reliably push SHA tag)
+    ORCHESTRATOR_IMAGE: "${REGISTRY}/mentatlab-orchestrator-go:latest"
+    GATEWAY_IMAGE: "${REGISTRY}/mentatlab-gateway-go:latest"
+    FRONTEND_IMAGE: "${REGISTRY}/mentatlab-frontend:latest"
   before_script:
     - apk add --no-cache curl jq git
     # Clone repo (global GIT_STRATEGY is none)
