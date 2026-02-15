@@ -85,3 +85,31 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S1] `.gitlab-ci.yml:221` - DinD `--insecure-registry` flag
   - [S2] `k8s/deploy.sh:125-130` - Go Dockerfile references
   - [S3] Pipeline 1094 e2e-test log - `artifact library/mentatlab-gateway-go:931dd027 not found`
+
+## 2026-02-15
+
+### M1.2: Fix frontend API wiring mismatches - DONE
+
+- What changed:
+  - `services/frontend/src/services/api/orchestratorService.ts:30-33`: `baseUrl()` now appends `/api/v1` prefix. Without this, all API calls hit `/runs` instead of `/api/v1/runs` and 404.
+  - `services/frontend/src/services/api/streaming/orchestratorSSE.ts:69-72`: `buildUrl()` now uses `/api/v1` prefix for SSE EventSource URLs.
+  - `services/frontend/src/services/api/streamingService.ts:148`: Fixed SSE URL from non-existent `/api/v1/streams/{id}/sse` to `/api/v1/runs/default/events`.
+  - `services/orchestrator-go/internal/api/handlers.go:182`: Fixed StartRun response field from `sseUrl` (camelCase) to `sse_url` (snake_case) matching `CreateRunResponse` type.
+- Why: Frontend API clients were constructing URLs without `/api/v1` prefix. Go backend serves all endpoints under `/api/v1` subrouter. SSE endpoint name was also wrong.
+- What verified: `tsc --noEmit` passes, `go test ./...` passes, pre-commit hooks pass.
+- Sources:
+  - [S1] `services/orchestrator-go/internal/api/routes.go:35-93` - all routes under `/api/v1`
+  - [S2] `services/frontend/src/config/orchestrator.ts` - `getOrchestratorBaseUrl()` returns `http://localhost:7070` (no `/api/v1`)
+  - [S3] `services/frontend/src/services/streaming/orchestratorSSE.ts:89` - correct SSE path reference
+
+### M1.1: Fix agent command resolution - DONE
+
+- What changed:
+  - `services/orchestrator-go/internal/registry/memory.go:29-57`: Added `Command` fields to all 3 default agents (echo, psyche-sim, ctm-cogpack). Previously lacked execution metadata.
+  - `services/orchestrator-go/cmd/orchestrator/main.go:97-107`: Fixed fallback command resolver. Was generating `python -m agents.mentatlab.echo` (wrong module path), now generates `python agents/echo/main.py` by stripping the dotted prefix.
+- Why: Default agents had no Command field, and the fallback resolver built paths that didn't match the actual `agents/` directory structure. Without this, scheduling a run with a default agent would either produce an empty command (node skipped) or a wrong path.
+- What verified: `go build ./cmd/orchestrator/` succeeds, `go test ./...` passes (registry test ran fresh, not cached).
+- Sources:
+  - [S1] `services/orchestrator-go/cmd/orchestrator/main.go:97-107` - command resolver closure
+  - [S2] `agents/echo/main.py` - actual echo agent location
+  - [S3] `services/orchestrator-go/internal/scheduler/scheduler.go:386` - where resolveCmd is called
