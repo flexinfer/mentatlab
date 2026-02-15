@@ -78,7 +78,7 @@ Agents communicate with the orchestrator via **newline-delimited JSON (NDJSON)**
 
 ```json
 {
-  "type": "log|checkpoint|metric|node_status|result",
+  "type": "log|checkpoint|metric|output|result",
   "level": "debug|info|warn|error",
   "message": "Human-readable message",
   "data": { "key": "value" },
@@ -114,7 +114,17 @@ Emit metrics for monitoring and cost tracking.
 {"type":"metric","data":{"name":"api_latency_ms","value":250},"ts":"2024-01-15T10:30:10Z"}
 ```
 
-#### 4. Result Events
+#### 4. Output Events
+Emit structured outputs for downstream nodes in a DAG. The orchestrator captures these and stores them via `runstore.SetNodeOutputs()`. Downstream nodes access values through the expression environment as `inputs.nodeId.key`.
+
+```json
+{"type":"output","data":{"key":"summary","value":"The quick brown fox..."},"ts":"2024-01-15T10:30:10Z"}
+{"type":"output","data":{"key":"word_count","value":150},"ts":"2024-01-15T10:30:10Z"}
+```
+
+Each output event must have `key` (string) and `value` (any JSON type) in its `data` field.
+
+#### 5. Result Events
 Final output of the agent (optional, can also use exit code + stdout).
 
 ```json
@@ -242,11 +252,16 @@ func checkpoint(stage string, progress float64, extra map[string]interface{}) {
     emit(Event{Type: "checkpoint", Data: data})
 }
 
+func emitOutput(key string, value interface{}) {
+    emit(Event{Type: "output", Data: map[string]interface{}{"key": key, "value": value}})
+}
+
 func main() {
     checkpoint("start", 0.0, nil)
     logInfo("Processing started", map[string]interface{}{"args": os.Args[1:]})
 
     // Do work...
+    emitOutput("result", "processed data")
 
     checkpoint("end", 1.0, nil)
 }
