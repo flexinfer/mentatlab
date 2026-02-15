@@ -130,12 +130,14 @@ func main() {
 		MaxParallelism:     cfg.MaxParallelism,
 		DefaultMaxRetries:  cfg.DefaultMaxRetries,
 		DefaultBackoffSecs: cfg.DefaultBackoffSecs,
+		DefaultRunTimeout:  cfg.DefaultRunTimeout,
 	}
 	sched := scheduler.New(store, subprocessDriver, resolveCmd, schedCfg, logger.With(slog.String("component", "scheduler")))
 
 	logger.Info("scheduler initialized",
 		slog.Int("max_parallelism", cfg.MaxParallelism),
 		slog.Int("default_retries", cfg.DefaultMaxRetries),
+		slog.Duration("default_run_timeout", cfg.DefaultRunTimeout),
 	)
 
 	// Initialize validator
@@ -187,6 +189,12 @@ func main() {
 		logger.Info("using in-memory flow store")
 	}
 	defer flows.Close()
+
+	// Initialize CronRunner for scheduled runs
+	cronRunner := scheduler.NewCronRunner(sched, flows, store, logger.With(slog.String("component", "cron")))
+	cronRunner.Start()
+	defer cronRunner.Stop()
+	logger.Info("cron runner started")
 
 	// Initialize K8s client (optional)
 	var k8sClient *k8s.Client
@@ -253,6 +261,7 @@ func main() {
 		FlowStore:   flows,
 		K8sClient:   k8sClient,
 		DataflowSvc: dataflowSvc,
+		CronRunner:  cronRunner,
 	}
 	handlers := api.NewHandlers(store, sched, v, cfg, logger, handlerOpts)
 	server := api.NewServer(handlers, authMiddleware, cfg.RateLimitRPS, cfg.RateLimitBurst)

@@ -184,6 +184,44 @@ class OrchestratorService {
     }
   }
 
+  // --- Gate Operations ---
+
+  async approveGate(runId: string, nodeId: string): Promise<{ status: string }> {
+    const res = await this.client.post(
+      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/approve`,
+      {}
+    );
+    return this.extract<{ status: string }>(res);
+  }
+
+  async rejectGate(runId: string, nodeId: string): Promise<{ status: string }> {
+    const res = await this.client.post(
+      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/reject`,
+      {}
+    );
+    return this.extract<{ status: string }>(res);
+  }
+
+  // --- Run Cloning ---
+
+  async cloneRun(runId: string, autoStart = false): Promise<CreateRunResponse> {
+    const res = await this.client.post(
+      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/clone`,
+      { auto_start: autoStart }
+    );
+    return this.extract<CreateRunResponse>(res);
+  }
+
+  // --- Flow Run ---
+
+  async runFlow(flowId: string, opts?: { timeout?: string; input_params?: Record<string, unknown> }): Promise<CreateRunResponse> {
+    const res = await this.client.post(
+      `${this.baseUrl()}/flows/${encodeURIComponent(flowId)}/run`,
+      opts || {}
+    );
+    return this.extract<CreateRunResponse>(res);
+  }
+
   // --- Streaming Helpers ---
 
   /**

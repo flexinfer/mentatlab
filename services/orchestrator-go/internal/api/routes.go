@@ -89,6 +89,24 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/flows/{id}", s.handlers.GetFlow).Methods("GET")
 	api.HandleFunc("/flows/{id}", s.handlers.UpdateFlow).Methods("PUT")
 	api.HandleFunc("/flows/{id}", s.handlers.DeleteFlow).Methods("DELETE")
+	api.HandleFunc("/flows/{id}/run", s.handlers.RunFlow).Methods("POST")
+
+	// Run cloning
+	api.HandleFunc("/runs/{id}/clone", s.handlers.CloneRun).Methods("POST")
+
+	// Gate approval/rejection
+	api.HandleFunc("/runs/{id}/nodes/{nodeId}/approve", s.handlers.ApproveGate).Methods("POST")
+	api.HandleFunc("/runs/{id}/nodes/{nodeId}/reject", s.handlers.RejectGate).Methods("POST")
+
+	// Webhook management
+	api.HandleFunc("/webhooks", s.handlers.CreateWebhook).Methods("POST")
+	api.HandleFunc("/webhooks/trigger/{flowId}", s.handlers.TriggerWebhook).Methods("POST")
+
+	// Schedule management (cron)
+	api.HandleFunc("/schedules", s.handlers.CreateSchedule).Methods("POST")
+	api.HandleFunc("/schedules", s.handlers.ListSchedules).Methods("GET")
+	api.HandleFunc("/schedules/{id}", s.handlers.GetSchedule).Methods("GET")
+	api.HandleFunc("/schedules/{id}", s.handlers.DeleteSchedule).Methods("DELETE")
 
 	// Job management (K8s jobs)
 	api.HandleFunc("/jobs/{id}/status", s.handlers.GetJobStatus).Methods("GET")

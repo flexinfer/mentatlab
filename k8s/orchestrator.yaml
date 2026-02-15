@@ -90,6 +90,9 @@ spec:
                   name: minio-credentials
                   key: MINIO_SECRET_KEY
                   optional: true
+            # Scheduler
+            - name: ORCH_DEFAULT_RUN_TIMEOUT
+              value: "30m"
             # Tracing
             - name: TRACING_ENABLED
               value: "true"

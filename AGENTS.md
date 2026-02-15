@@ -170,6 +170,14 @@ GitLab CI (`.gitlab-ci.yml`) runs:
 | `/api/v1/flows` | GET/POST | List/create flows |
 | `/api/v1/flows/{id}` | GET/PUT/DELETE | Flow CRUD |
 | `/api/v1/jobs/{id}/status` | GET | K8s job status |
+| `/api/v1/runs/{id}/clone` | POST | Clone a run (with optional auto_start) |
+| `/api/v1/runs/{id}/nodes/{nodeId}/approve` | POST | Approve a gate node |
+| `/api/v1/runs/{id}/nodes/{nodeId}/reject` | POST | Reject a gate node |
+| `/api/v1/flows/{id}/run` | POST | Create and start run from flow |
+| `/api/v1/webhooks` | POST | Create webhook for a flow |
+| `/api/v1/webhooks/trigger/{flowId}` | POST | Trigger run via webhook |
+| `/api/v1/schedules` | GET/POST | List/create cron schedules |
+| `/api/v1/schedules/{id}` | GET/DELETE | Get/delete schedule |
 
 ## Keyboard Shortcuts
 

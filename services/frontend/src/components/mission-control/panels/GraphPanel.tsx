@@ -38,6 +38,7 @@ import { orchestratorService } from '../../../services/api/orchestratorService';
 import { useToast } from '../../../contexts/ToastContext';
 import ConditionalNode from '@/nodes/ConditionalNode';
 import ForEachNode from '@/nodes/ForEachNode';
+import GateNode from '@/nodes/GateNode';
 
 type Props = {
   runId: string | null;
@@ -54,6 +55,7 @@ const nodeTypes = {
   nodeCard: NodeCard,
   conditional: ConditionalNode,
   forEach: ForEachNode,
+  gate: GateNode,
 } as any;
 
 const MiniMapAny = MiniMap as any;

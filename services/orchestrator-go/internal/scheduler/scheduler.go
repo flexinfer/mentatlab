@@ -29,11 +29,14 @@ type CommandResolver func(node *types.NodeSpec) []string
 type runContext struct {
 	runID          string
 	name           string
+	planTimeout    time.Duration
 	nodeSpecs      map[string]*types.NodeSpec
 	dependents     map[string]map[string]bool // node_id -> set of downstream ids
 	remainingPreds map[string]int             // node_id -> count of predecessors not yet succeeded
 	tasks          map[string]context.CancelFunc
 	tasksMu        sync.Mutex
+	gates          map[string]chan string // node_id -> channel receiving "approve" or "reject"
+	gatesMu        sync.Mutex
 	done           chan struct{}
 	cancelled      bool
 	cancelledMu    sync.Mutex
@@ -49,6 +52,7 @@ type Scheduler struct {
 	sem                chan struct{} // Parallelism limiter
 	defaultMaxRetries  int
 	defaultBackoffSecs int
+	defaultRunTimeout  time.Duration
 	logger             *slog.Logger
 	exprEval           *ExprEvaluator // Expression evaluator for control flow
 }
@@ -63,6 +67,9 @@ type Config struct {
 
 	// DefaultBackoffSecs is the initial backoff duration in seconds
 	DefaultBackoffSecs int
+
+	// DefaultRunTimeout is the default timeout for runs (0 = no timeout)
+	DefaultRunTimeout time.Duration
 }
 
 // DefaultConfig returns sensible defaults.
@@ -71,6 +78,7 @@ func DefaultConfig() *Config {
 		MaxParallelism:     0,
 		DefaultMaxRetries:  0,
 		DefaultBackoffSecs: 2,
+		DefaultRunTimeout:  0,
 	}
 }
 
@@ -96,6 +104,7 @@ func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver,
 		sem:                sem,
 		defaultMaxRetries:  cfg.DefaultMaxRetries,
 		defaultBackoffSecs: cfg.DefaultBackoffSecs,
+		defaultRunTimeout:  cfg.DefaultRunTimeout,
 		logger:             logger,
 		exprEval:           NewExprEvaluator(),
 	}
@@ -153,10 +162,12 @@ func (s *Scheduler) EnqueueRun(ctx context.Context, runID, name string, plan *ty
 	rctx := &runContext{
 		runID:          runID,
 		name:           name,
+		planTimeout:    plan.Timeout,
 		nodeSpecs:      nodeSpecs,
 		dependents:     dependents,
 		remainingPreds: remainingPreds,
 		tasks:          make(map[string]context.CancelFunc),
+		gates:          make(map[string]chan string),
 		done:           make(chan struct{}),
 	}
 	s.runs[runID] = rctx
@@ -199,8 +210,26 @@ func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
 	s.emitEvent(ctx, runID, "hello", map[string]interface{}{"runId": runID}, "", "")
 	s.emitRunStatus(ctx, runID, "running")
 
+	// Determine run timeout: plan-level overrides default
+	runTimeout := s.defaultRunTimeout
+	if rctx.planTimeout > 0 {
+		runTimeout = rctx.planTimeout
+	}
+
+	// Create timeout context if configured
+	runCtx := ctx
+	var cancelTimeout context.CancelFunc
+	if runTimeout > 0 {
+		runCtx, cancelTimeout = context.WithTimeout(ctx, runTimeout)
+	}
+
 	// Start the run loop in a goroutine
-	go s.runLoop(ctx, rctx)
+	go func() {
+		if cancelTimeout != nil {
+			defer cancelTimeout()
+		}
+		s.runLoop(runCtx, rctx)
+	}()
 
 	return nil
 }
@@ -250,7 +279,13 @@ func (s *Scheduler) runLoop(ctx context.Context, rctx *runContext) {
 	s.maybeScheduleReady(ctx, rctx)
 
 	for {
-		// Check cancellation
+		// Check context timeout/cancellation
+		if err := ctx.Err(); err != nil {
+			s.handleRunTimeout(ctx, rctx, err)
+			return
+		}
+
+		// Check explicit cancellation
 		rctx.cancelledMu.Lock()
 		cancelled := rctx.cancelled
 		rctx.cancelledMu.Unlock()
@@ -272,7 +307,12 @@ func (s *Scheduler) runLoop(ctx context.Context, rctx *runContext) {
 					break
 				}
 				// Wait a bit before retrying
-				time.Sleep(50 * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					s.handleRunTimeout(ctx, rctx, ctx.Err())
+					return
+				case <-time.After(50 * time.Millisecond):
+				}
 				continue
 			}
 		}
@@ -280,6 +320,7 @@ func (s *Scheduler) runLoop(ctx context.Context, rctx *runContext) {
 		// Wait for task completion or timeout
 		select {
 		case <-ctx.Done():
+			s.handleRunTimeout(ctx, rctx, ctx.Err())
 			return
 		case <-time.After(250 * time.Millisecond):
 			// Periodic check for retry windows and scheduling
@@ -289,6 +330,53 @@ func (s *Scheduler) runLoop(ctx context.Context, rctx *runContext) {
 			}
 		}
 	}
+}
+
+// handleRunTimeout cancels active tasks and marks the run as failed due to timeout.
+func (s *Scheduler) handleRunTimeout(ctx context.Context, rctx *runContext, err error) {
+	reason := "timeout"
+	if err == context.Canceled {
+		reason = "cancelled"
+	}
+
+	s.logger.Warn("run terminated",
+		slog.String("run_id", rctx.runID),
+		slog.String("reason", reason),
+	)
+
+	// Cancel all active node tasks
+	rctx.tasksMu.Lock()
+	for _, cancel := range rctx.tasks {
+		cancel()
+	}
+	rctx.tasksMu.Unlock()
+
+	// Close all gate channels
+	rctx.gatesMu.Lock()
+	for nodeID, ch := range rctx.gates {
+		close(ch)
+		delete(rctx.gates, nodeID)
+	}
+	rctx.gatesMu.Unlock()
+
+	// Use background context since the run context may be expired
+	bgCtx := context.Background()
+
+	finishedAt := utcISO()
+	s.store.UpdateRunStatus(bgCtx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
+	s.emitEvent(bgCtx, rctx.runID, "status", map[string]interface{}{
+		"runId":  rctx.runID,
+		"status": "failed",
+		"reason": reason,
+	}, "", "")
+
+	metrics.RunsActive.Dec()
+	metrics.RunsTotal.WithLabelValues("failed").Inc()
+
+	// Cleanup
+	s.runsMu.Lock()
+	delete(s.runs, rctx.runID)
+	s.runsMu.Unlock()
 }
 
 // maybeScheduleReady finds nodes ready to execute and starts them.
@@ -386,6 +474,12 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 
 		// Dispatch based on node type
 		if spec.IsControlFlow() {
+			// Gate nodes have special handling — they block until approval
+			if spec.Gate != nil {
+				s.executeGate(nodeCtx, rctx, nodeID, spec)
+				return
+			}
+
 			var err error
 			switch {
 			case spec.Conditional != nil:
@@ -482,14 +576,8 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 		}
 	} else {
 		// Failure - check if we should retry
-		maxRetries := spec.Retries
+		maxRetries, backoffSec := s.resolveRetryPolicy(spec, attempts)
 		if attempts < maxRetries {
-			// Schedule retry with exponential backoff
-			backoff := float64(s.defaultBackoffSecs) * math.Pow(2, float64(attempts))
-			if backoff > 60 {
-				backoff = 60 // Cap at 60 seconds
-			}
-
 			// Update state back to pending for retry
 			newState := &types.NodeState{
 				NodeID:     nodeID,
@@ -497,19 +585,19 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 				FinishedAt: &finishedAt,
 				ExitCode:   &exitCode,
 				Retries:    attempts + 1,
-				Error:      fmt.Sprintf("exit_code=%d, retry in %.0fs", exitCode, backoff),
+				Error:      fmt.Sprintf("exit_code=%d, retry in %.0fs", exitCode, backoffSec),
 			}
 			s.store.UpdateNodeState(ctx, rctx.runID, nodeID, newState)
 
 			// Emit queued status with retry info
 			s.emitNodeStatus(ctx, rctx.runID, nodeID, "queued", map[string]interface{}{
 				"attempts": attempts + 1,
-				"retryIn":  backoff,
+				"retryIn":  backoffSec,
 			})
 
 			// Schedule retry after backoff
 			go func() {
-				time.Sleep(time.Duration(backoff) * time.Second)
+				time.Sleep(time.Duration(backoffSec) * time.Second)
 				// Re-check if still should retry
 				rctx.cancelledMu.Lock()
 				cancelled := rctx.cancelled
@@ -540,6 +628,46 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 	}
 }
 
+// resolveRetryPolicy returns the max retries and backoff seconds for a node.
+// Per-node RetryPolicy takes precedence over the legacy Retries field and global defaults.
+func (s *Scheduler) resolveRetryPolicy(spec *types.NodeSpec, attempt int) (maxRetries int, backoffSec float64) {
+	if spec.RetryPolicy != nil {
+		rp := spec.RetryPolicy
+		maxRetries = rp.MaxRetries
+
+		base := rp.BackoffBase.Seconds()
+		if base <= 0 {
+			base = float64(s.defaultBackoffSecs)
+		}
+		maxBackoff := rp.BackoffMax.Seconds()
+		if maxBackoff <= 0 {
+			maxBackoff = 60
+		}
+
+		switch rp.BackoffType {
+		case types.BackoffFixed:
+			backoffSec = base
+		case types.BackoffLinear:
+			backoffSec = base * float64(attempt+1)
+		default: // exponential (default)
+			backoffSec = base * math.Pow(2, float64(attempt))
+		}
+
+		if backoffSec > maxBackoff {
+			backoffSec = maxBackoff
+		}
+		return maxRetries, backoffSec
+	}
+
+	// Fallback to legacy Retries field / global defaults
+	maxRetries = spec.Retries
+	backoffSec = float64(s.defaultBackoffSecs) * math.Pow(2, float64(attempt))
+	if backoffSec > 60 {
+		backoffSec = 60
+	}
+	return maxRetries, backoffSec
+}
+
 // checkRunCompletion determines if the run is complete and emits final status.
 func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bool {
 	// Check cancelled
@@ -560,7 +688,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 	}
 
 	// Check all node states
-	var running, pending, failed, succeeded int
+	var running, pending, failed, succeeded, waiting, skipped int
 	for nodeID := range rctx.nodeSpecs {
 		state, err := s.store.GetNodeState(ctx, rctx.runID, nodeID)
 		if err != nil {
@@ -576,13 +704,17 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 			failed++
 		case types.NodeStatusSucceeded:
 			succeeded++
+		case types.NodeStatusSkipped:
+			skipped++
+		case types.NodeStatusWaitingApproval:
+			waiting++
 		}
 	}
 
 	total := len(rctx.nodeSpecs)
 
-	// All succeeded
-	if succeeded == total {
+	// All nodes resolved (succeeded + skipped)
+	if succeeded+skipped == total {
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusSucceeded, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "succeeded")
@@ -591,8 +723,8 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		return true
 	}
 
-	// Failed with no hope of completion
-	if failed > 0 && running == 0 && pending == 0 {
+	// Failed with no hope of completion (no running, pending, or waiting nodes)
+	if failed > 0 && running == 0 && pending == 0 && waiting == 0 {
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
@@ -700,6 +832,115 @@ func (s *Scheduler) captureNodeOutputs(ctx context.Context, runID, nodeID string
 			slog.String("run_id", runID),
 			slog.String("node_id", nodeID),
 			slog.Any("error", err))
+	}
+}
+
+// executeGate blocks a node until external approval or rejection (or timeout).
+func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID string, spec *types.NodeSpec) {
+	gate := spec.Gate
+
+	// Create a channel for approval signals
+	ch := make(chan string, 1)
+	rctx.gatesMu.Lock()
+	rctx.gates[nodeID] = ch
+	rctx.gatesMu.Unlock()
+
+	defer func() {
+		rctx.gatesMu.Lock()
+		delete(rctx.gates, nodeID)
+		rctx.gatesMu.Unlock()
+
+		rctx.tasksMu.Lock()
+		delete(rctx.tasks, nodeID)
+		rctx.tasksMu.Unlock()
+	}()
+
+	// Update node state to waiting_approval
+	now := time.Now().UTC()
+	waitState := &types.NodeState{
+		NodeID:    nodeID,
+		Status:    types.NodeStatusWaitingApproval,
+		StartedAt: &now,
+	}
+	s.store.UpdateNodeState(ctx, rctx.runID, nodeID, waitState)
+	s.emitNodeStatus(ctx, rctx.runID, nodeID, "waiting_approval", map[string]interface{}{
+		"description": gate.Description,
+	})
+
+	// Set up gate timeout if configured
+	var timeoutCh <-chan time.Time
+	if gate.Timeout > 0 {
+		timer := time.NewTimer(gate.Timeout)
+		defer timer.Stop()
+		timeoutCh = timer.C
+	}
+
+	// Wait for signal
+	var decision string
+	select {
+	case decision = <-ch:
+		// Received approve or reject
+	case <-timeoutCh:
+		if gate.AutoReject {
+			decision = "reject"
+		} else {
+			decision = "approve"
+		}
+		s.logger.Info("gate timed out",
+			slog.String("run_id", rctx.runID),
+			slog.String("node_id", nodeID),
+			slog.String("decision", decision),
+		)
+	case <-ctx.Done():
+		// Run cancelled or timed out
+		return
+	}
+
+	exitCode := 0
+	if decision == "reject" {
+		exitCode = 1
+	}
+
+	s.emitEvent(ctx, rctx.runID, "gate_decision", map[string]interface{}{
+		"nodeId":   nodeID,
+		"decision": decision,
+	}, nodeID, "")
+
+	s.onNodeFinished(ctx, rctx, nodeID, exitCode)
+}
+
+// ApproveGate sends an approval signal to a waiting gate node.
+func (s *Scheduler) ApproveGate(runID, nodeID string) error {
+	return s.signalGate(runID, nodeID, "approve")
+}
+
+// RejectGate sends a rejection signal to a waiting gate node.
+func (s *Scheduler) RejectGate(runID, nodeID string) error {
+	return s.signalGate(runID, nodeID, "reject")
+}
+
+func (s *Scheduler) signalGate(runID, nodeID, decision string) error {
+	s.runsMu.Lock()
+	rctx, exists := s.runs[runID]
+	s.runsMu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("run %s not found", runID)
+	}
+
+	rctx.gatesMu.Lock()
+	ch, ok := rctx.gates[nodeID]
+	rctx.gatesMu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("node %s is not a waiting gate", nodeID)
+	}
+
+	select {
+	case ch <- decision:
+		return nil
+	default:
+		return fmt.Errorf("gate %s already received a decision", nodeID)
 	}
 }
 

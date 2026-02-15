@@ -153,14 +153,33 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
           };
         }
 
-        // Regular task/agent node
-        return {
+        if (n.type === 'gate') {
+          return {
+            ...base,
+            type: 'gate',
+            gate: {
+              description: n.data?.description || '',
+              timeout: n.data?.timeout,
+              auto_reject: n.data?.autoReject ?? true,
+            },
+          };
+        }
+
+        // Regular task/agent node — include retry policy and timeout if configured
+        const node: PlanNode = {
           ...base,
           agent_id: n.data?.agent_id || n.data?.agentId,
           command: n.data?.command,
           image: n.data?.image,
           env: n.data?.env,
         };
+        if (n.data?.retry_policy) {
+          node.retry_policy = n.data.retry_policy;
+        }
+        if (n.data?.timeout) {
+          node.timeout = n.data.timeout;
+        }
+        return node;
       });
 
       const planEdges: PlanEdge[] = edges.map((e) => ({

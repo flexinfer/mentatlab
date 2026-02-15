@@ -20,25 +20,28 @@ const (
 type NodeStatus string
 
 const (
-	NodeStatusPending   NodeStatus = "pending"
-	NodeStatusRunning   NodeStatus = "running"
-	NodeStatusSucceeded NodeStatus = "succeeded"
-	NodeStatusFailed    NodeStatus = "failed"
-	NodeStatusSkipped   NodeStatus = "skipped"
+	NodeStatusPending          NodeStatus = "pending"
+	NodeStatusRunning          NodeStatus = "running"
+	NodeStatusSucceeded        NodeStatus = "succeeded"
+	NodeStatusFailed           NodeStatus = "failed"
+	NodeStatusSkipped          NodeStatus = "skipped"
+	NodeStatusWaitingApproval  NodeStatus = "waiting_approval"
 )
 
 // Run represents a single execution of a graph/flow.
 type Run struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name,omitempty"`
-	Status     RunStatus         `json:"status"`
-	Plan       *Plan             `json:"plan,omitempty"`
-	StartedAt  *time.Time        `json:"started_at,omitempty"`
-	FinishedAt *time.Time        `json:"finished_at,omitempty"`
-	Error      string            `json:"error,omitempty"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
-	CreatedAt  time.Time         `json:"created_at"`
-	UpdatedAt  time.Time         `json:"updated_at"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name,omitempty"`
+	Status      RunStatus         `json:"status"`
+	Plan        *Plan             `json:"plan,omitempty"`
+	FlowID      string            `json:"flow_id,omitempty"`      // Source flow ID for lineage
+	ParentRunID string            `json:"parent_run_id,omitempty"` // Cloned from this run
+	StartedAt   *time.Time        `json:"started_at,omitempty"`
+	FinishedAt  *time.Time        `json:"finished_at,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 // RunMeta is a lightweight representation of a run for listing.
@@ -56,8 +59,26 @@ type RunMeta struct {
 
 // Plan describes the execution plan for a run.
 type Plan struct {
-	Nodes []NodeSpec `json:"nodes"`
-	Edges []EdgeSpec `json:"edges,omitempty"`
+	Nodes   []NodeSpec    `json:"nodes"`
+	Edges   []EdgeSpec    `json:"edges,omitempty"`
+	Timeout time.Duration `json:"timeout,omitempty"` // Run-level timeout; 0 means no timeout
+}
+
+// BackoffType controls how retry delays are calculated.
+type BackoffType string
+
+const (
+	BackoffFixed       BackoffType = "fixed"
+	BackoffExponential BackoffType = "exponential"
+	BackoffLinear      BackoffType = "linear"
+)
+
+// RetryPolicy configures per-node retry behavior.
+type RetryPolicy struct {
+	MaxRetries  int           `json:"max_retries"`
+	BackoffType BackoffType   `json:"backoff_type,omitempty"` // fixed, exponential, linear (default: exponential)
+	BackoffBase time.Duration `json:"backoff_base,omitempty"` // Base delay between retries (default: 2s)
+	BackoffMax  time.Duration `json:"backoff_max,omitempty"`  // Maximum delay cap (default: 60s)
 }
 
 // NodeSpec describes a single node in the execution plan.
@@ -72,15 +93,19 @@ type NodeSpec struct {
 	Timeout  time.Duration     `json:"timeout,omitempty"`
 	Retries  int               `json:"retries,omitempty"`
 
+	// Per-node retry policy (overrides global defaults when set)
+	RetryPolicy *RetryPolicy `json:"retry_policy,omitempty"`
+
 	// Control flow configurations (only one should be set for control flow nodes)
 	Conditional *ConditionalConfig `json:"conditional,omitempty"`
 	ForEach     *ForEachConfig     `json:"for_each,omitempty"`
 	Subflow     *SubflowConfig     `json:"subflow,omitempty"`
+	Gate        *GateConfig        `json:"gate,omitempty"`
 }
 
 // IsControlFlow returns true if this node is a control flow node.
 func (n *NodeSpec) IsControlFlow() bool {
-	return n.Conditional != nil || n.ForEach != nil || n.Subflow != nil
+	return n.Conditional != nil || n.ForEach != nil || n.Subflow != nil || n.Gate != nil
 }
 
 // GetControlFlowType returns the control flow type or empty string if not a control flow node.
@@ -92,6 +117,8 @@ func (n *NodeSpec) GetControlFlowType() string {
 		return NodeTypeForEach
 	case n.Subflow != nil:
 		return NodeTypeSubflow
+	case n.Gate != nil:
+		return NodeTypeGate
 	default:
 		return ""
 	}

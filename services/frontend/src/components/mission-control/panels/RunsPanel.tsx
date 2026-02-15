@@ -166,6 +166,49 @@ export default function RunsPanel(): JSX.Element {
       }
   }
 
+  async function handleCloneRun() {
+      if (!runIdInput) return;
+      try {
+          const res = await fetch(`/api/v1/runs/${encodeURIComponent(runIdInput)}/clone`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ auto_start: false }),
+          });
+          if (!res.ok) throw new Error(`Clone failed: ${res.status}`);
+          const data = await res.json();
+          const newId = data.run_id || data.runId || data.id;
+          if (newId) {
+              setRunIdInput(newId);
+              await refreshRun(newId);
+              showToast(`Cloned run: ${newId}`, 'success');
+          }
+      } catch (err: any) {
+          showToast('Clone failed: ' + (err.message || 'unknown'), 'error');
+      }
+  }
+
+  async function handleRerun() {
+      if (!runIdInput) return;
+      try {
+          const res = await fetch(`/api/v1/runs/${encodeURIComponent(runIdInput)}/clone`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ auto_start: true }),
+          });
+          if (!res.ok) throw new Error(`Re-run failed: ${res.status}`);
+          const data = await res.json();
+          const newId = data.run_id || data.runId || data.id;
+          if (newId) {
+              setRunIdInput(newId);
+              await refreshRun(newId);
+              connectToRun(newId);
+              showToast(`Re-running as: ${newId}`, 'success');
+          }
+      } catch (err: any) {
+          showToast('Re-run failed: ' + (err.message || 'unknown'), 'error');
+      }
+  }
+
   return (
     <div className="h-full flex flex-col gap-4 p-4">
       {/* Top Controls */}
@@ -264,6 +307,12 @@ export default function RunsPanel(): JSX.Element {
                 <div className="p-2 border-t border-white/5 bg-zinc-950/30 flex gap-2">
                      <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handlePostCheckpoint} disabled={posting || !runIdInput}>
                         + Annotation
+                     </Button>
+                     <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handleCloneRun} disabled={!runIdInput}>
+                        Clone
+                     </Button>
+                     <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handleRerun} disabled={!runIdInput}>
+                        Re-run
                      </Button>
                      <Button size="sm" variant="destructive" className="h-7 text-[10px] ml-auto" onClick={handleCancelRun} disabled={!runIdInput}>
                         Cancel Run

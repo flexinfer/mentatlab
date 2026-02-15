@@ -37,6 +37,7 @@ type Handlers struct {
 	flowStore   flowstore.FlowStore
 	k8sClient   *k8s.Client
 	dataflowSvc *dataflow.Service
+	cronRunner  *scheduler.CronRunner
 	config      *config.Config
 	logger      *slog.Logger
 }
@@ -47,6 +48,7 @@ type HandlerOptions struct {
 	FlowStore   flowstore.FlowStore
 	K8sClient   *k8s.Client
 	DataflowSvc *dataflow.Service
+	CronRunner  *scheduler.CronRunner
 }
 
 // NewHandlers creates a new Handlers instance.
@@ -66,6 +68,7 @@ func NewHandlers(store runstore.RunStore, sched *scheduler.Scheduler, v *validat
 		h.flowStore = opts.FlowStore
 		h.k8sClient = opts.K8sClient
 		h.dataflowSvc = opts.DataflowSvc
+		h.cronRunner = opts.CronRunner
 	}
 	return h
 }

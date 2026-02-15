@@ -16,16 +16,17 @@ var (
 
 // Flow represents a saved workflow definition.
 type Flow struct {
-	ID          string          `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	Version     string          `json:"version,omitempty"`
-	Graph       json.RawMessage `json:"graph"` // nodes + edges
-	Layout      json.RawMessage `json:"layout,omitempty"`
-	Metadata    map[string]any  `json:"metadata,omitempty"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
-	CreatedBy   string          `json:"created_by,omitempty"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	Description  string          `json:"description,omitempty"`
+	Version      string          `json:"version,omitempty"`
+	Graph        json.RawMessage `json:"graph"` // nodes + edges
+	Layout       json.RawMessage `json:"layout,omitempty"`
+	Metadata     map[string]any  `json:"metadata,omitempty"`
+	WebhookToken string          `json:"webhook_token,omitempty"` // Token for webhook triggers
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+	CreatedBy    string          `json:"created_by,omitempty"`
 }
 
 // CreateFlowRequest is the input for creating a new flow.

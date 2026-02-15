@@ -7,6 +7,7 @@ resources:
   - namespace.yaml
   - orchestrator-rbac.yaml
   - redis.yaml
+  - minio.yaml
   - orchestrator.yaml
   - gateway.yaml
   - frontend.yaml
@@ -15,6 +16,7 @@ resources:
   - network-policies.yaml
   - hpa.yaml
   - servicemonitor.yaml
+  - grafana-dashboards.yaml
 
 # Common labels for all resources (use 'labels' not 'commonLabels' to avoid modifying immutable selectors)
 labels:

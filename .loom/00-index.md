@@ -86,10 +86,41 @@
 **M2** ~~Enable workflow features~~ DONE (conditionals, foreach sub-DAG, data flow, contract overlay, canvas→RunPlan wiring; lineage/policy deferred to M3)
 **M3** ~~Harden for production~~ DONE (observability, auth, testing, K8s manifests)
 **M4** ~~Polish developer experience~~ DONE (tracing UI deferred)
+**M5** Production readiness — IN PROGRESS (backend complete, infra validation pending)
+**M6** Workflow maturity — IN PROGRESS (backend + frontend complete, infra validation pending)
 
-## M4 Progress — In Progress
+## M5 Progress — In Progress
 
-### Completed
+### Completed (Backend)
+- **M5.3**: Run-level timeouts — `Plan.Timeout` field on plan, `ORCH_DEFAULT_RUN_TIMEOUT` env var, `context.WithTimeout` in scheduler. Plan-level overrides default. On timeout: cancels active tasks, closes gates, marks run failed with reason "timeout".
+- **M5.4**: Configurable per-node retry policies — `RetryPolicy` struct with `MaxRetries`, `BackoffType` (fixed/exponential/linear), `BackoffBase`, `BackoffMax`. Node-level policy overrides global defaults.
+- **M5.5**: Grafana dashboards — Two ConfigMaps in `k8s/grafana-dashboards.yaml`: orchestrator dashboard (11 panels: active runs, throughput, node success rate, P99 duration, SSE connections, event throughput, retries, queue depth, K8s jobs, runstore ops) and gateway dashboard (5 panels: request rate, error rate, latency percentiles, SSE duration, requests by path).
+- **K8s manifests**: MinIO deployment (`k8s/minio.yaml`), `ORCH_DEFAULT_RUN_TIMEOUT` env var in orchestrator deployment, kustomization updated.
+- **Tests**: `m5m6_test.go` — run timeout, retry policy (exponential/fixed/linear/fallback/cap), all passing.
+
+### Pending (Infrastructure)
+- [ ] M5.1: Build echo agent image, deploy to K3s, validate K8s job driver
+- [ ] M5.2: Deploy MinIO, verify artifact flow end-to-end
+- [ ] M5.6: Full-stack smoke test on K3s
+
+## M6 Progress — In Progress
+
+### Completed (Backend + Frontend)
+- **M6.1**: Gate nodes — `GateConfig` type, `NodeStatusWaitingApproval` status, `executeGate` in scheduler with approval channels, auto-timeout, `ApproveGate`/`RejectGate` methods, REST endpoints. Frontend `GateNode.tsx` component with approve/reject buttons.
+- **M6.2**: Webhook triggers — `WebhookToken` on Flow, `POST /webhooks` generates token, `POST /webhooks/trigger/{flowId}` validates token and creates+starts run.
+- **M6.3**: Run cloning — `POST /runs/{id}/clone` copies plan (with optional auto_start), `POST /flows/{id}/run` converts flow graph to plan. `FlowID`/`ParentRunID` lineage on Run type. Frontend clone/re-run buttons in RunsPanel.
+- **M6.4**: Cron scheduled runs — `CronRunner` goroutine, 5-field cron parser, schedule CRUD endpoints, `triggerRun` creates runs from flows.
+- **M6.5**: Frontend polish — GateNode component registered in GraphPanel, retry policy editor + timeout config in InspectorPanel, clone/re-run buttons in RunsPanel, gate node conversion in WorkspaceProvider.
+- **Types**: `GateConfig`, `RetryPolicy`, `BackoffType` added to frontend types. `RunPlan.timeout`, `Run.flow_id`/`parent_run_id`, `RunStatus.waiting_approval` added.
+- **API client**: `approveGate`, `rejectGate`, `cloneRun`, `runFlow` methods added to `orchestratorService.ts`.
+- **Tests**: `m5m6_test.go` — gate approve/reject/timeout, cron parsing, CronRunner CRUD, all passing.
+
+### Pending (Infrastructure)
+- [ ] Live validation of gates, webhooks, cron on K3s cluster
+
+## M4 Progress — Complete
+
+### Completed (M4)
 - **Archive aspirational specs**: Moved 13 milestone spec files to `docs/archive/milestone-specs/`
 - **Go agent template**: Created `cli/mentatctl/templates/go/` with full NDJSON contract implementation
 - **Example flows**: 3 new flows: `conditional_routing.json`, `foreach_batch.json`, `data_pipeline.json`

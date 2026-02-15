@@ -48,6 +48,7 @@ type Config struct {
 	MaxParallelism     int
 	DefaultMaxRetries  int
 	DefaultBackoffSecs int
+	DefaultRunTimeout  time.Duration
 
 	// Tracing
 	TracingEnabled bool
@@ -99,6 +100,7 @@ func Load() *Config {
 		MaxParallelism:     getInt("ORCH_MAX_PARALLELISM", 0), // 0 = unlimited
 		DefaultMaxRetries:  getInt("ORCH_MAX_RETRIES_DEFAULT", 0),
 		DefaultBackoffSecs: getInt("ORCH_BACKOFF_SECONDS_DEFAULT", 2),
+		DefaultRunTimeout:  getDuration("ORCH_DEFAULT_RUN_TIMEOUT", 0), // 0 = no timeout
 
 		// Tracing
 		TracingEnabled: getBool("TRACING_ENABLED", false),

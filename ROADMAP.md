@@ -63,6 +63,27 @@ MentatLab is an AI agent orchestration platform with a Mission Control interface
 - mentatctl `dev run`: fixed endpoints, added `--local` subprocess mode with NDJSON parsing, `--watch` for file-change re-runs
 - Tracing UI deferred ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7)) — requires OTLP query backend
 
+### M5: Production Readiness — In Progress
+
+Backend implementation complete. Infrastructure validation pending.
+
+- **M5.1**: K8s job driver validation on real cluster (pending live test)
+- **M5.2**: MinIO data flow end-to-end verification (pending live test)
+- **M5.3**: Run-level timeouts — `Plan.Timeout` field, `ORCH_DEFAULT_RUN_TIMEOUT` env var, context-based cancellation
+- **M5.4**: Configurable per-node retry policies — `RetryPolicy` struct with fixed/exponential/linear backoff
+- **M5.5**: Grafana dashboards — orchestrator + gateway dashboards as ConfigMaps
+- **M5.6**: Full-stack smoke test on K3s (pending cluster deployment)
+
+### M6: Workflow Maturity — In Progress
+
+Backend implementation complete. Frontend controls implemented. Infrastructure validation pending.
+
+- **M6.1**: Manual approval gates — `gate` node type, `waiting_approval` status, approve/reject endpoints
+- **M6.2**: Webhook triggers — per-flow webhook tokens, `POST /webhooks/trigger/{flowId}` creates and starts runs
+- **M6.3**: Run templates and cloning — `POST /runs/{id}/clone`, `POST /flows/{id}/run` shortcuts
+- **M6.4**: Cron scheduled runs — `CronRunner` with 5-field cron expressions, schedule CRUD endpoints
+- **M6.5**: Frontend polish — GateNode component, retry policy editor, timeout config, clone/re-run buttons
+
 ### Deferred (Future)
 
 These features have zero implementation and are parked for future consideration:
@@ -80,6 +101,6 @@ These features have zero implementation and are parked for future consideration:
 |----------|---------|
 | [README.md](README.md) | Project overview |
 | [AGENTS.md](AGENTS.md) | Agent guidance |
-| [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md) | Detailed M0-M4 plan |
+| [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md) | Detailed M0-M6 plan |
 | [.loom/00-index.md](.loom/00-index.md) | Progress tracking |
 | [docs/archive/milestone-specs/](docs/archive/milestone-specs/) | Archived aspirational specs (WASM, PKI, etc.) |

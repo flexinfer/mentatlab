@@ -212,6 +212,98 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 ---
 
+### M5: Production Readiness
+
+**Goal:** Platform runs on K3s with validated K8s job driver, working artifact storage, Grafana dashboards, and production-grade scheduler features (timeouts, retries).
+
+#### M5.1 Validate K8s job driver on real cluster
+- Build and push echo agent image to Harbor
+- Deploy orchestrator with `K8S_IN_CLUSTER=true`
+- Execute a run using K8s job driver, verify Job creation, log streaming, success reporting
+- Test failure cases: image pull failure, timeout, cancellation
+- **Status:** Pending (requires cluster access)
+
+#### M5.2 Verify MinIO data flow end-to-end
+- Deploy MinIO, create bucket and credentials secret
+- Exercise artifact endpoints: upload, list, download, delete
+- Test agent-to-artifact flow through scheduler
+- **Status:** Pending (requires cluster access)
+
+#### M5.3 Run-level timeouts
+- Added `Timeout` to `types.Plan` (`pkg/types/run.go`)
+- Added `ORCH_DEFAULT_RUN_TIMEOUT` config (`internal/config/config.go`)
+- `StartRun` creates `context.WithTimeout`, plan-level overrides default
+- On timeout: cancel active tasks, close gates, mark run failed
+- Tests: `TestRunTimeout_ContextExpires`, `TestRunTimeout_PlanOverridesDefault`
+- **Status:** Complete
+
+#### M5.4 Configurable per-node retry policies
+- Added `RetryPolicy` struct with `MaxRetries`, `BackoffType`, `BackoffBase`, `BackoffMax`
+- `resolveRetryPolicy` supports fixed, exponential, and linear backoff
+- Per-node policy overrides legacy `Retries` field
+- Tests: `TestResolveRetryPolicy_*` (5 test cases)
+- **Status:** Complete
+
+#### M5.5 Grafana dashboards
+- Orchestrator dashboard: 11 panels (active runs, throughput, node success rate, P99 duration, SSE, events, retries, queue, K8s jobs, runstore ops)
+- Gateway dashboard: 5 panels (request rate, error rate, latency percentiles, SSE duration, requests by path)
+- Deployed as ConfigMaps with `grafana_dashboard: "1"` label
+- **Status:** Complete
+
+#### M5.6 Full-stack smoke test on K3s
+- Deploy all manifests, verify ingress, execute demo flow, check Redis persistence
+- **Status:** Pending (requires cluster access)
+
+**Acceptance:** Run executes on K3s with K8s job driver. Artifacts via MinIO. Timeouts and per-node retries work. Grafana dashboards show live metrics.
+
+---
+
+### M6: Workflow Maturity
+
+**Goal:** The scheduler supports real-world workflow patterns: manual approval gates, webhook triggers, run templates/cloning, and cron schedules.
+
+#### M6.1 Manual approval / pause gates
+- Added `GateConfig` type with `Description`, `Timeout`, `AutoReject`
+- Gate nodes enter `waiting_approval` status and block until signal
+- `ApproveGate`/`RejectGate` methods + REST endpoints
+- Auto-timeout with configurable auto-reject behavior
+- Frontend `GateNode.tsx` with approve/reject buttons
+- Tests: `TestGateApprove`, `TestGateReject`, `TestGateTimeout_AutoReject`
+- **Status:** Complete
+
+#### M6.2 Webhook triggers for runs
+- `POST /webhooks` generates per-flow token, stores on Flow
+- `POST /webhooks/trigger/{flowId}` validates token, creates run from flow graph
+- Auth via `X-Webhook-Token` header or `Bearer` token
+- **Status:** Complete
+
+#### M6.3 Run templates and cloning
+- `POST /runs/{id}/clone` — new run with same plan (optional auto_start)
+- `POST /flows/{id}/run` — shorthand: flow → plan → run
+- `FlowID`/`ParentRunID` on Run type for lineage
+- Frontend clone/re-run buttons in RunsPanel
+- **Status:** Complete
+
+#### M6.4 Scheduled / cron runs
+- `CronRunner` goroutine evaluates schedules every minute
+- Full 5-field cron parser (*, N, N-M, */N, N-M/S, comma-separated)
+- Schedule CRUD endpoints
+- Tests: `TestCronMatches`, `TestParseCron_*`, `TestCronRunner_*`
+- **Status:** Complete
+
+#### M6.5 Frontend polish
+- GateNode registered in GraphPanel node types
+- InspectorPanel: timeout config, retry policy editor (backoff type, base, max)
+- RunsPanel: clone and re-run buttons
+- WorkspaceProvider: gate node conversion in canvas → RunPlan
+- Orchestrator types updated: `GateConfig`, `RetryPolicy`, `BackoffType`, `RunPlan.timeout`, `Run.flow_id`/`parent_run_id`
+- OrchestratorService: `approveGate`, `rejectGate`, `cloneRun`, `runFlow` methods
+- **Status:** Complete
+
+**Acceptance:** Gate nodes pause and resume. Webhooks trigger runs. Cloning works. Cron schedules fire automatically. All features have UI controls.
+
+---
+
 ## Test Plan
 
 | Milestone | Test Type | What | Tool |
@@ -241,6 +333,8 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 3. **M2 Done:** Conditional and foreach flows execute correctly
 4. **M3 Done:** Observability, auth, and test coverage targets met
 5. **M4 Done:** 5-minute onboarding for new developers
+6. **M5 Done:** Platform runs on K3s with timeouts, retries, and Grafana dashboards
+7. **M6 Done:** Gates, webhooks, cloning, cron schedules, and frontend controls functional
 
 ## Risks / Dependencies
 

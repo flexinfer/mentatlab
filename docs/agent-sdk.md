@@ -546,6 +546,137 @@ if __name__ == "__main__":
 
 ---
 
+## Workflow Patterns
+
+### Gate Nodes (Manual Approval)
+
+Gate nodes pause execution until an external signal (approve/reject). Use them for human-in-the-loop workflows.
+
+```json
+{
+  "nodes": [
+    {"id": "process", "agent_id": "myorg.processor"},
+    {"id": "review", "type": "gate", "gate": {
+      "description": "Review output before publishing",
+      "timeout": 3600,
+      "auto_reject": true
+    }},
+    {"id": "publish", "agent_id": "myorg.publisher"}
+  ],
+  "edges": [
+    {"from": "process", "to": "review"},
+    {"from": "review", "to": "publish"}
+  ]
+}
+```
+
+When the gate node is reached, its status becomes `waiting_approval`. Approve or reject via the API:
+
+```bash
+# Approve
+curl -X POST http://orchestrator:7070/api/v1/runs/{runId}/nodes/review/approve
+
+# Reject
+curl -X POST http://orchestrator:7070/api/v1/runs/{runId}/nodes/review/reject
+```
+
+### Webhook Triggers
+
+Create a webhook to allow external systems to trigger runs:
+
+```bash
+# Create webhook for a flow
+curl -X POST http://orchestrator:7070/api/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"flow_id": "my-flow-id"}'
+
+# Response includes a token
+# {"flow_id": "my-flow-id", "webhook_token": "abc123...", "webhook_url": "/api/v1/webhooks/trigger/my-flow-id"}
+
+# Trigger a run via webhook
+curl -X POST http://orchestrator:7070/api/v1/webhooks/trigger/my-flow-id \
+  -H "X-Webhook-Token: abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"input_params": {"key": "value"}}'
+```
+
+### Cron Scheduled Runs
+
+Create cron-style schedules for recurring workflow execution:
+
+```bash
+# Create a schedule (runs every hour)
+curl -X POST http://orchestrator:7070/api/v1/schedules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flow_id": "my-flow-id",
+    "cron": "0 * * * *",
+    "input_params": {"source": "scheduled"},
+    "enabled": true
+  }'
+
+# List schedules
+curl http://orchestrator:7070/api/v1/schedules
+
+# Delete a schedule
+curl -X DELETE http://orchestrator:7070/api/v1/schedules/{id}
+```
+
+Cron expressions use standard 5-field format: `minute hour day-of-month month day-of-week`.
+
+### Run Cloning
+
+Clone a previous run or create runs directly from flows:
+
+```bash
+# Clone a run (reuses same plan)
+curl -X POST http://orchestrator:7070/api/v1/runs/{runId}/clone \
+  -H "Content-Type: application/json" \
+  -d '{"auto_start": true}'
+
+# Create a run from a flow
+curl -X POST http://orchestrator:7070/api/v1/flows/{flowId}/run \
+  -H "Content-Type: application/json" \
+  -d '{"timeout": "30m"}'
+```
+
+### Per-Node Retry Policies
+
+Configure retry behavior per node with different backoff strategies:
+
+```json
+{
+  "id": "flaky-api-call",
+  "agent_id": "myorg.api-caller",
+  "retry_policy": {
+    "max_retries": 5,
+    "backoff_type": "exponential",
+    "backoff_base": 2000000000,
+    "backoff_max": 60000000000
+  }
+}
+```
+
+Supported `backoff_type` values: `fixed`, `exponential`, `linear`. Durations are in nanoseconds (Go `time.Duration`).
+
+### Run-Level Timeouts
+
+Set a timeout on the entire run plan:
+
+```json
+{
+  "plan": {
+    "nodes": [...],
+    "edges": [...],
+    "timeout": "30m"
+  }
+}
+```
+
+The server default is configured via `ORCH_DEFAULT_RUN_TIMEOUT` (e.g., `30m`). Plan-level timeout overrides the default.
+
+---
+
 ## See Also
 
 - [Orchestrator API Reference](./orchestrator-api.md)
