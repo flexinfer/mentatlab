@@ -7,21 +7,29 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/auth"
+
 	// Import metrics to register them
 	_ "github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 )
 
 // Server holds the HTTP handlers and dependencies.
 type Server struct {
-	router   *mux.Router
-	handlers *Handlers
+	router         *mux.Router
+	handlers       *Handlers
+	authMiddleware *auth.Middleware
+	rateLimitRPS   float64
+	rateLimitBurst int
 }
 
 // NewServer creates a new API server with the given handlers.
-func NewServer(h *Handlers) *Server {
+func NewServer(h *Handlers, authMw *auth.Middleware, rateLimitRPS float64, rateLimitBurst int) *Server {
 	s := &Server{
-		router:   mux.NewRouter(),
-		handlers: h,
+		router:         mux.NewRouter(),
+		handlers:       h,
+		authMiddleware: authMw,
+		rateLimitRPS:   rateLimitRPS,
+		rateLimitBurst: rateLimitBurst,
 	}
 	s.setupRoutes()
 	return s
@@ -43,6 +51,17 @@ func (s *Server) setupRoutes() {
 
 	// API routes
 	api := s.router.PathPrefix("/api/v1").Subrouter()
+
+	// Apply auth middleware to API subrouter if configured
+	if s.authMiddleware != nil {
+		api.Use(s.authMiddleware.Handler)
+	}
+
+	// Apply per-IP rate limiting to API subrouter
+	if s.rateLimitRPS > 0 {
+		rateLimiter := auth.NewPerIPRateLimiter(s.rateLimitRPS, s.rateLimitBurst)
+		api.Use(rateLimiter.Handler)
+	}
 
 	// Run management
 	api.HandleFunc("/runs", s.handlers.CreateRun).Methods("POST")

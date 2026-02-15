@@ -19,33 +19,28 @@ MentatLab is an AI agent orchestration platform with a Mission Control interface
 - Legacy Python services archived to `archive/`
 - Engine stub removed; single entry point via `cmd/orchestrator/`
 
-### M1: Core Loop — Complete (core path)
+### M1: Core Loop — Complete
 
 - Agent command resolution: default agents have Command fields, fallback resolver maps dotted IDs to `agents/` paths
 - Frontend API wiring: `/api/v1` prefix, SSE URL, field name mismatches fixed
 - Canvas-to-run wiring: "Run" button reads canvas state, converts to RunPlan, calls `createRun(auto_start=true)`
 - Graph panel SSE subscription works end-to-end
-- E2E Harbor auth fixed (DinD + insecure registry + CI/CD variables)
+- TimelinePanel wired to orchestrator SSE (replaced flightRecorder mock)
+- Flow persistence: `useFlowLoader` loads flows from backend on boot
+- Agent browser UI: AgentBrowser panel with list + detail views
+- E2E Harbor auth fixed (DinD + insecure registry + instance-level CI vars with `raw=true`)
 
-### M1 Remainders (in progress)
+### M2: Workflow Power — Complete
 
-- [ ] TimelinePanel: Wire to orchestrator SSE (replace flightRecorder mock)
-- [ ] Flow persistence: Load flows from backend on boot (auto-save already works)
-- [ ] Agent browser UI: React components consuming agentService.ts
-- [ ] E2E subprocess verification with real echo agent
+- Conditionals: if/else, switch/case, branch skipping with full test coverage
+- ForEach sub-DAG execution: body nodes schedule via dependency graph, independent nodes run in parallel
+- Agent output capture: scans NDJSON events for `type: "output"`, stores via `runstore.SetNodeOutputs()`
+- Node-to-node data flow: downstream nodes access predecessor outputs via expression environment (`inputs.nodeId.field`)
+- Contract overlay: wired to agent registry schemas via `useAgentSchemas` hook
+- Canvas → RunPlan conversion: properly nests control flow config (camelCase → snake_case mapping)
+- Lineage and Policy overlays deferred to M3 (require artifact tracking + policy engine backends)
 
 ## Roadmap
-
-### M2: Workflow Power (Current)
-
-Core workflow orchestration with conditionals, loops, data flow, and observability.
-
-- [ ] **ForEach sub-DAG execution**: Replace sequential body execution with proper DAG scheduling ([related: Issue #2](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/2))
-- [ ] **Agent output capture**: Parse NDJSON output, store via runstore, pass to downstream nodes
-- [ ] **Node-to-node data flow**: Wire expression environment with predecessor outputs
-- [ ] **Contract overlay**: Populate from agent manifest schemas instead of hardcoded values ([Issue #4](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/4))
-
-Conditionals are 100% done (if/else, switch/case, branch skipping with tests).
 
 ### M3: Production Hardening
 

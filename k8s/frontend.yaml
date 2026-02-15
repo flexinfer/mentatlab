@@ -41,7 +41,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: frontend
-          image: registry.harbor.lan/library/mentatlab-frontend:latest
+          image: registry.harbor.lan/library/mentatlab-frontend:v0.0.0-placeholder
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5173

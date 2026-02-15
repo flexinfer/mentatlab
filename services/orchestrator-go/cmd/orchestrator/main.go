@@ -12,13 +12,16 @@ import (
 	"time"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/api"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/auth"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/dataflow"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/tracing"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
@@ -51,6 +54,19 @@ func main() {
 		slog.String("port", cfg.Port),
 		slog.String("log_level", cfg.LogLevel),
 	)
+
+	// Initialize tracing
+	tracingProvider, err := tracing.Init(context.Background(), &tracing.Config{
+		ServiceName:    "mentatlab-orchestrator",
+		ServiceVersion: "1.0.0",
+		OTLPEndpoint:   cfg.OTLPEndpoint,
+		Enabled:        cfg.TracingEnabled,
+		SampleRate:     1.0,
+	}, logger)
+	if err != nil {
+		logger.Error("failed to initialize tracing", slog.String("error", err.Error()))
+		// Continue without tracing
+	}
 
 	// Initialize RunStore based on configuration
 	var store runstore.RunStore
@@ -189,14 +205,57 @@ func main() {
 		}
 	}
 
+	// Initialize dataflow service (optional)
+	var dataflowSvc *dataflow.Service
+	dataflowType := os.Getenv("DATAFLOW_TYPE")
+	if dataflowType != "" {
+		dfCfg := &dataflow.Config{
+			Type:           dataflowType,
+			Endpoint:       os.Getenv("MINIO_ENDPOINT"),
+			Bucket:         os.Getenv("MINIO_BUCKET"),
+			Region:         os.Getenv("MINIO_REGION"),
+			AccessKeyID:    os.Getenv("MINIO_ACCESS_KEY"),
+			SecretAccessKey: os.Getenv("MINIO_SECRET_KEY"),
+			UseSSL:         os.Getenv("MINIO_USE_SSL") == "true",
+			PathPrefix:     "artifacts",
+		}
+		svc, err := dataflow.New(dfCfg)
+		if err != nil {
+			logger.Warn("failed to create dataflow service, artifacts disabled", "error", err)
+		} else {
+			dataflowSvc = svc
+			logger.Info("dataflow service initialized", slog.String("type", dataflowType))
+		}
+	}
+
+	// Initialize OIDC auth middleware (optional, disabled by default)
+	var authMiddleware *auth.Middleware
+	if cfg.OIDCEnabled {
+		authProvider, err := auth.NewProvider(context.Background(), &auth.Config{
+			Issuer:       cfg.OIDCIssuer,
+			ClientID:     cfg.OIDCClientID,
+			ClientSecret: cfg.OIDCClientSecret,
+		})
+		if err != nil {
+			logger.Error("failed to initialize OIDC provider", "error", err)
+		} else {
+			authMiddleware = auth.NewMiddleware(authProvider, &auth.MiddlewareConfig{
+				Enabled:     true,
+				PublicPaths: []string{"/health", "/healthz", "/ready", "/metrics"},
+			})
+			logger.Info("OIDC auth middleware initialized", slog.String("issuer", cfg.OIDCIssuer))
+		}
+	}
+
 	// Initialize API handlers
 	handlerOpts := &api.HandlerOptions{
-		Registry:  agentRegistry,
-		FlowStore: flows,
-		K8sClient: k8sClient,
+		Registry:    agentRegistry,
+		FlowStore:   flows,
+		K8sClient:   k8sClient,
+		DataflowSvc: dataflowSvc,
 	}
 	handlers := api.NewHandlers(store, sched, v, cfg, logger, handlerOpts)
-	server := api.NewServer(handlers)
+	server := api.NewServer(handlers, authMiddleware, cfg.RateLimitRPS, cfg.RateLimitBurst)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -226,6 +285,13 @@ func main() {
 	// Graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownGrace)
 	defer cancel()
+
+	// Shutdown tracer
+	if tracingProvider != nil {
+		if err := tracingProvider.Shutdown(ctx); err != nil {
+			logger.Error("tracer shutdown error", slog.String("error", err.Error()))
+		}
+	}
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("server shutdown error", "error", err)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 )
@@ -89,7 +90,8 @@ func (h *Handlers) LoggingMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		h.logger.Info("request",
+		// Extract trace ID if available
+		attrs := []any{
 			slog.String("request_id", requestID),
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
@@ -97,7 +99,13 @@ func (h *Handlers) LoggingMiddleware(next http.Handler) http.Handler {
 			slog.Duration("duration", duration),
 			slog.String("remote_addr", r.RemoteAddr),
 			slog.String("user_agent", r.UserAgent()),
-		)
+		}
+		spanCtx := trace.SpanContextFromContext(r.Context())
+		if spanCtx.HasTraceID() {
+			attrs = append(attrs, slog.String("trace_id", spanCtx.TraceID().String()))
+		}
+
+		h.logger.Info("request", attrs...)
 	})
 }
 

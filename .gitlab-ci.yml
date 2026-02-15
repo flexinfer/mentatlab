@@ -130,8 +130,9 @@ test-go:
     - *apk_add_git
     - *clone_repo
   script:
-    - (cd services/gateway-go && go mod download && go test -v ./...)
-    - (cd services/orchestrator-go && go mod download && go test -v ./...)
+    - (cd services/gateway-go && go mod download && go test -v -coverprofile=cover.out ./... && go tool cover -func=cover.out)
+    - (cd services/orchestrator-go && go mod download && go test -v -coverprofile=cover.out ./... && go tool cover -func=cover.out)
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -146,7 +147,8 @@ test-frontend:
   script:
     - cd services/frontend
     - npm ci --prefer-offline
-    - npm test
+    - npm test -- --coverage
+  coverage: '/All files\s*\|\s*(\d+\.\d+)/'
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'

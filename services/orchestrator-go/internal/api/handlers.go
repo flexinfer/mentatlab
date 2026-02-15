@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/dataflow"
@@ -22,6 +25,8 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
+
+var apiTracer = otel.Tracer("mentatlab/api")
 
 // Handlers contains all HTTP handlers and their dependencies.
 type Handlers struct {
@@ -111,7 +116,8 @@ type CreateRunResponse struct {
 
 // CreateRun handles POST /api/v1/runs
 func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.CreateRun")
+	defer span.End()
 
 	var req CreateRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -147,9 +153,13 @@ func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 
 // StartRun handles POST /api/v1/runs/{id}/start
 func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	runID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.StartRun",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
 
 	if h.scheduler == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "scheduler not available", errors.New("scheduler not configured"))

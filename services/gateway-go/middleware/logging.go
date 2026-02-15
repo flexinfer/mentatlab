@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/flexinfer/mentatlab/services/gateway-go/metrics"
 )
@@ -86,7 +87,7 @@ func (l *LoggingMiddleware) Middleware(next http.Handler) http.Handler {
 
 		// Log request (skip health checks to reduce noise)
 		if !shouldSkip {
-			l.logger.Info("request",
+			attrs := []any{
 				slog.String("request_id", requestID),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
@@ -94,7 +95,13 @@ func (l *LoggingMiddleware) Middleware(next http.Handler) http.Handler {
 				slog.Duration("duration", duration),
 				slog.String("remote_addr", r.RemoteAddr),
 				slog.String("user_agent", r.UserAgent()),
-			)
+			}
+			spanCtx := trace.SpanContextFromContext(r.Context())
+			if spanCtx.HasTraceID() {
+				attrs = append(attrs, slog.String("trace_id", spanCtx.TraceID().String()))
+			}
+
+			l.logger.Info("request", attrs...)
 		}
 	})
 }

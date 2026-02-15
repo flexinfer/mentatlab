@@ -1,0 +1,395 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gorilla/mux"
+
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
+)
+
+// newTestHandlers creates Handlers with in-memory backends for testing.
+func newTestHandlers(t *testing.T) *Handlers {
+	t.Helper()
+	store := runstore.NewMemoryStore(&runstore.Config{
+		EventMaxLen: 1000,
+		TTLSeconds:  3600,
+	})
+	reg := registry.NewMemoryRegistryWithDefaults()
+	flows := flowstore.NewMemoryStore()
+	cfg := config.Load()
+
+	opts := &HandlerOptions{
+		Registry:  reg,
+		FlowStore: flows,
+	}
+	return NewHandlers(store, nil, nil, cfg, nil, opts)
+}
+
+// newTestServer creates a Server wired with in-memory backends.
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	h := newTestHandlers(t)
+	return NewServer(h, nil, 0, 0)
+}
+
+// --- Health endpoints ---
+
+func TestHealth(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var body map[string]string
+	json.NewDecoder(w.Body).Decode(&body)
+	if body["status"] != "ok" {
+		t.Fatalf("expected status ok, got %s", body["status"])
+	}
+}
+
+func TestReady(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest("GET", "/ready", nil)
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var body map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&body)
+	if body["status"] != "ready" {
+		t.Fatalf("expected status ready, got %v", body["status"])
+	}
+}
+
+// --- Run management ---
+
+func TestCreateRun(t *testing.T) {
+	srv := newTestServer(t)
+
+	payload := CreateRunRequest{
+		Name: "test-run",
+		Plan: &types.Plan{
+			Nodes: []types.NodeSpec{
+				{ID: "node1", Type: "agent", AgentID: "mentatlab.echo"},
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/runs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp CreateRunResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.RunID == "" {
+		t.Fatal("expected non-empty runId")
+	}
+	if resp.Status != "created" {
+		t.Fatalf("expected status created, got %s", resp.Status)
+	}
+}
+
+func TestListRuns(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create a run first
+	payload := CreateRunRequest{Name: "list-test"}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/runs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	// List runs
+	req = httptest.NewRequest("GET", "/api/v1/runs", nil)
+	w = httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	total, ok := resp["total"].(float64)
+	if !ok || total < 1 {
+		t.Fatalf("expected at least 1 run, got %v", resp["total"])
+	}
+}
+
+func TestGetRunNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/v1/runs/nonexistent-id", nil)
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestGetRun(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create a run
+	payload := CreateRunRequest{Name: "get-test"}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/runs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	var createResp CreateRunResponse
+	json.NewDecoder(w.Body).Decode(&createResp)
+
+	// Get the run
+	req = httptest.NewRequest("GET", "/api/v1/runs/"+createResp.RunID, nil)
+	w = httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// --- Agent CRUD ---
+
+func TestCreateAgent(t *testing.T) {
+	srv := newTestServer(t)
+
+	payload := registry.CreateAgentRequest{
+		ID:      "test.agent",
+		Name:    "Test Agent",
+		Version: "1.0.0",
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/agents", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListAgents(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/v1/agents", nil)
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if _, ok := resp["agents"]; !ok {
+		t.Fatal("expected agents field in response")
+	}
+}
+
+func TestGetAgentNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/v1/agents/nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+// --- Flow CRUD ---
+
+func TestCreateFlow(t *testing.T) {
+	srv := newTestServer(t)
+
+	payload := flowstore.CreateFlowRequest{
+		Name:  "Test Flow",
+		Graph: json.RawMessage(`{"nodes":[],"edges":[]}`),
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/flows", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListFlows(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/v1/flows", nil)
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if _, ok := resp["flows"]; !ok {
+		t.Fatal("expected flows field in response")
+	}
+}
+
+func TestGetFlowNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/v1/flows/nonexistent", nil)
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+// --- SSE StreamEvents ---
+
+func TestStreamEventsContentType(t *testing.T) {
+	h := newTestHandlers(t)
+
+	// Create a run to stream
+	store := h.store
+	ctx := t.Context()
+	runID, err := store.CreateRun(ctx, "sse-test", &types.Plan{
+		Nodes: []types.NodeSpec{
+			{ID: "n1", Type: "agent", AgentID: "mentatlab.echo"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create run: %v", err)
+	}
+
+	// Use mux router to set path vars
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/runs/{id}/events", h.StreamEvents).Methods("GET")
+
+	// Use a pre-cancelled context so the SSE loop exits immediately
+	cancelCtx, cancel := context.WithCancel(ctx)
+	cancel() // Cancel immediately
+
+	req := httptest.NewRequest("GET", "/api/v1/runs/"+runID+"/events", nil)
+	req = req.WithContext(cancelCtx)
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	ct := w.Header().Get("Content-Type")
+	if ct != "text/event-stream" {
+		t.Fatalf("expected Content-Type text/event-stream, got %s", ct)
+	}
+}
+
+func TestStreamEventsNotFound(t *testing.T) {
+	h := newTestHandlers(t)
+
+	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/runs/{id}/events", h.StreamEvents).Methods("GET")
+
+	req := httptest.NewRequest("GET", "/api/v1/runs/nonexistent/events", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+// --- Artifact endpoints (no dataflow service) ---
+
+func TestArtifacts503WhenNoDataflow(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create a run first for artifact endpoints that need a run ID
+	payload := CreateRunRequest{Name: "artifact-test"}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/runs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	var createResp CreateRunResponse
+	json.NewDecoder(w.Body).Decode(&createResp)
+
+	// Test ListRunArtifacts returns 503
+	req = httptest.NewRequest("GET", "/api/v1/runs/"+createResp.RunID+"/artifacts", nil)
+	w = httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for artifacts without dataflow, got %d", w.Code)
+	}
+
+	// Test GetArtifact returns 503
+	req = httptest.NewRequest("GET", "/api/v1/artifacts?uri=test", nil)
+	w = httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for get artifact without dataflow, got %d", w.Code)
+	}
+}
+
+// --- StartRun without scheduler ---
+
+func TestStartRunNoScheduler(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create a run
+	payload := CreateRunRequest{Name: "start-test"}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/runs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	var createResp CreateRunResponse
+	json.NewDecoder(w.Body).Decode(&createResp)
+
+	// Try to start - should fail because no scheduler
+	req = httptest.NewRequest("POST", "/api/v1/runs/"+createResp.RunID+"/start", nil)
+	w = httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 for start without scheduler, got %d", w.Code)
+	}
+}

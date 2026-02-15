@@ -49,6 +49,10 @@ type Config struct {
 	DefaultMaxRetries  int
 	DefaultBackoffSecs int
 
+	// Tracing
+	TracingEnabled bool
+	OTLPEndpoint   string
+
 	// Logging
 	LogLevel  string
 	LogFormat string
@@ -95,6 +99,10 @@ func Load() *Config {
 		MaxParallelism:     getInt("ORCH_MAX_PARALLELISM", 0), // 0 = unlimited
 		DefaultMaxRetries:  getInt("ORCH_MAX_RETRIES_DEFAULT", 0),
 		DefaultBackoffSecs: getInt("ORCH_BACKOFF_SECONDS_DEFAULT", 2),
+
+		// Tracing
+		TracingEnabled: getBool("TRACING_ENABLED", false),
+		OTLPEndpoint:   getEnv("OTLP_ENDPOINT", "localhost:4317"),
 
 		// Logging
 		LogLevel:  getEnv("LOG_LEVEL", "info"),

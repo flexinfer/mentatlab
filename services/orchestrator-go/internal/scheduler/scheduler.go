@@ -10,10 +10,17 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
+
+var tracer = otel.Tracer("mentatlab/scheduler")
 
 // CommandResolver resolves a NodeSpec to a command line to execute.
 type CommandResolver func(node *types.NodeSpec) []string
@@ -167,6 +174,11 @@ func (s *Scheduler) EnqueueRun(ctx context.Context, runID, name string, plan *ty
 
 // StartRun transitions the run to running and begins execution.
 func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
+	ctx, span := tracer.Start(ctx, "scheduler.StartRun",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
+
 	s.runsMu.Lock()
 	rctx, exists := s.runs[runID]
 	s.runsMu.Unlock()
@@ -174,6 +186,8 @@ func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
 	if !exists {
 		return fmt.Errorf("run %s not enqueued", runID)
 	}
+
+	metrics.RunsActive.Inc()
 
 	// Mark run as running
 	startedAt := utcISO()
@@ -221,6 +235,9 @@ func (s *Scheduler) CancelRun(ctx context.Context, runID string) error {
 		s.logger.Error("failed to update run status", slog.String("run_id", runID), slog.Any("error", err))
 	}
 	s.emitRunStatus(ctx, runID, "failed")
+
+	metrics.RunsActive.Dec()
+	metrics.RunsTotal.WithLabelValues("cancelled").Inc()
 
 	return nil
 }
@@ -321,6 +338,15 @@ func (s *Scheduler) maybeScheduleReady(ctx context.Context, rctx *runContext) bo
 
 // scheduleNode starts execution of a single node.
 func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID string, spec *types.NodeSpec, attempts int, startTime time.Time) {
+	_, span := tracer.Start(ctx, "scheduler.scheduleNode",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+			attribute.String("node_id", nodeID),
+			attribute.Int("attempt", attempts+1),
+		),
+	)
+	defer span.End()
+
 	// Create cancellable context for this node
 	nodeCtx, cancel := context.WithCancel(ctx)
 
@@ -443,8 +469,12 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 		}
 		if state != nil && state.StartedAt != nil {
 			newState.StartedAt = state.StartedAt
+			duration := finishedAt.Sub(*state.StartedAt).Seconds()
+			metrics.NodeDuration.WithLabelValues("succeeded").Observe(duration)
 		}
 		s.store.UpdateNodeState(ctx, rctx.runID, nodeID, newState)
+		metrics.NodesTotal.WithLabelValues("succeeded").Inc()
+		metrics.NodeRetries.WithLabelValues("succeeded").Observe(float64(attempts))
 
 		// Unlock downstream nodes
 		for downstream := range rctx.dependents[nodeID] {
@@ -500,8 +530,12 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 			}
 			if state != nil && state.StartedAt != nil {
 				newState.StartedAt = state.StartedAt
+				duration := finishedAt.Sub(*state.StartedAt).Seconds()
+				metrics.NodeDuration.WithLabelValues("failed").Observe(duration)
 			}
 			s.store.UpdateNodeState(ctx, rctx.runID, nodeID, newState)
+			metrics.NodesTotal.WithLabelValues("failed").Inc()
+			metrics.NodeRetries.WithLabelValues("failed").Observe(float64(attempts))
 		}
 	}
 }
@@ -521,6 +555,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
+		// Note: metrics for cancelled runs are recorded in CancelRun
 		return true
 	}
 
@@ -551,6 +586,8 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusSucceeded, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "succeeded")
+		metrics.RunsActive.Dec()
+		metrics.RunsTotal.WithLabelValues("succeeded").Inc()
 		return true
 	}
 
@@ -559,6 +596,8 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
+		metrics.RunsActive.Dec()
+		metrics.RunsTotal.WithLabelValues("failed").Inc()
 		return true
 	}
 
@@ -579,6 +618,7 @@ func (s *Scheduler) emitEvent(ctx context.Context, runID, eventType string, data
 	if _, err := s.store.AppendEvent(ctx, runID, input); err != nil {
 		s.logger.Error("failed to emit event", slog.String("run_id", runID), slog.String("event_type", eventType), slog.Any("error", err))
 	}
+	metrics.EventsTotal.WithLabelValues(eventType).Inc()
 }
 
 func (s *Scheduler) emitRunStatus(ctx context.Context, runID, status string) {

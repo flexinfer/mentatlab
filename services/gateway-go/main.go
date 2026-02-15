@@ -193,6 +193,10 @@ func main() {
 		// Check if Redis is healthy
 		if !wsHub.RedisHealthy(ctx) {
 			status["status"] = "degraded"
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(status)
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")

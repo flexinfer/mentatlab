@@ -117,18 +117,51 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
       const { nodes, edges } = useCanvasStore.getState();
 
       // Convert canvas state to RunPlan
-      const planNodes: PlanNode[] = nodes.map((n) => ({
-        id: n.id,
-        type: n.type || 'agent',
-        label: n.data?.label,
-        agent_id: n.data?.agent_id || n.data?.agentId,
-        command: n.data?.command,
-        image: n.data?.image,
-        env: n.data?.env,
-        inputs: edges.filter((e) => e.target === n.id).map((e) => e.source),
-        conditional: n.data?.conditional,
-        for_each: n.data?.for_each,
-      }));
+      const planNodes: PlanNode[] = nodes.map((n) => {
+        const base: PlanNode = {
+          id: n.id,
+          type: n.type || 'agent',
+          label: n.data?.label,
+          inputs: edges.filter((e) => e.target === n.id).map((e) => e.source),
+        };
+
+        // Control flow nodes store config flat in node.data — nest into PlanNode fields
+        if (n.type === 'conditional') {
+          return {
+            ...base,
+            type: 'conditional',
+            conditional: {
+              type: n.data?.type || 'if',
+              expression: n.data?.expression || '',
+              branches: n.data?.branches || {},
+              default: n.data?.default,
+            },
+          };
+        }
+
+        if (n.type === 'forEach') {
+          return {
+            ...base,
+            type: 'for_each',
+            for_each: {
+              collection: n.data?.collection || '',
+              item_var: n.data?.itemVar || 'item',
+              index_var: n.data?.indexVar,
+              max_parallel: n.data?.maxParallel,
+              body: n.data?.body || [],
+            },
+          };
+        }
+
+        // Regular task/agent node
+        return {
+          ...base,
+          agent_id: n.data?.agent_id || n.data?.agentId,
+          command: n.data?.command,
+          image: n.data?.image,
+          env: n.data?.env,
+        };
+      });
 
       const planEdges: PlanEdge[] = edges.map((e) => ({
         from: e.sourceHandle ? `${e.source}.${e.sourceHandle}` : e.source,
