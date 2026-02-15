@@ -16,6 +16,7 @@ import { useLayoutStore } from '@/stores';
 import { useCanvasStore } from '@/stores/canvas';
 import { flightRecorder } from '@/services/mission-control/services';
 import { orchestratorService } from '@/services/api/orchestratorService';
+import { useFlowLoader } from '@/hooks/useFlowLoader';
 import type { PlanNode, PlanEdge, RunPlan } from '@/types/orchestrator';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +90,12 @@ export interface WorkspaceProviderProps {
 }
 
 export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Flow persistence — load flows from backend on mount
+  // ─────────────────────────────────────────────────────────────────────────
+
+  useFlowLoader();
+
   // ─────────────────────────────────────────────────────────────────────────
   // Run management
   // ─────────────────────────────────────────────────────────────────────────

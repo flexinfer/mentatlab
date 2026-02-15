@@ -6,6 +6,7 @@ import {
   type PinType,
 } from '../../../types/graph';
 import { useToast } from '../../../contexts/ToastContext';
+import { useAgentSchemas } from '@/hooks/useAgentSchemas';
 
 /**
  * ContractOverlay
@@ -59,6 +60,9 @@ function compatible(a?: PinType, b?: PinType): boolean {
 }
 
 export default function ContractOverlay() {
+  // Enrich canvas nodes with agent schema data (inputs/outputs pin types)
+  useAgentSchemas();
+
   const nodes = useStore((s) => s.nodes);
   const edges = useStore((s) => s.edges);
   const setEdges = useStore((s) => s.setEdges);

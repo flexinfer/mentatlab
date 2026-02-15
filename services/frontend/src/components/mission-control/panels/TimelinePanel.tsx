@@ -1,82 +1,103 @@
 import React from 'react';
-import { flightRecorder, reports } from '../../../services/mission-control/services';
+import { orchestratorService } from '@/services/api/orchestratorService';
+import { parseRunEvent } from '@/services/streaming/parse';
+import type OrchestratorSSE from '@/services/api/streaming/orchestratorSSE';
+
+type TimelineEntry = {
+  id: string;
+  at: string;
+  label: string;
+  data?: Record<string, unknown>;
+  nodeId?: string;
+};
 
 type Props = {
   runId: string | null;
 };
 
 export function TimelinePanel({ runId }: Props) {
-  const [checkpoints, setCheckpoints] = React.useState(() => (runId ? flightRecorder.listCheckpoints(runId) : []));
-  const [summary, setSummary] = React.useState(() => (runId ? flightRecorder.getRun(runId) : undefined));
-  const [reportMd, setReportMd] = React.useState<string | null>(null);
+  const [entries, setEntries] = React.useState<TimelineEntry[]>([]);
+  const [runStatus, setRunStatus] = React.useState<string>('unknown');
+  const [selectedEntryId, setSelectedEntryId] = React.useState<string | null>(null);
+  const sseRef = React.useRef<OrchestratorSSE | null>(null);
+  const seqRef = React.useRef(0);
 
-  // Selection state for UI highlighting when a timeline item is chosen
-  const [selectedCheckpointId, setSelectedCheckpointId] = React.useState<string | null>(null);
-
-  // Subscribe to checkpoint stream for this run and selection events
   React.useEffect(() => {
     if (!runId) {
-      setCheckpoints([]);
-      setSummary(undefined);
-      setReportMd(null);
-      setSelectedCheckpointId(null);
+      setEntries([]);
+      setRunStatus('unknown');
+      setSelectedEntryId(null);
       return;
     }
 
-    // Initial snapshot
-    try {
-      setCheckpoints(flightRecorder.listCheckpoints(runId));
-      setSummary(flightRecorder.getRun(runId));
-    } catch {
-      setCheckpoints([]);
-      setSummary(undefined);
-    }
+    seqRef.current = 0;
+    setEntries([]);
+    setRunStatus('running');
 
-    const unsub = flightRecorder.subscribe(runId, () => {
-      try {
-        setCheckpoints(flightRecorder.listCheckpoints(runId));
-        setSummary(flightRecorder.getRun(runId));
-      } catch {
-        // ignore
-      }
+    const sse = orchestratorService.streamRunEvents(runId, {
+      onOpen: () => {
+        setRunStatus('connected');
+      },
+      onRaw: (evt: any) => {
+        try {
+          const parsed = parseRunEvent(evt);
+          if (!parsed) return;
+
+          const seq = seqRef.current++;
+          const entry: TimelineEntry = {
+            id: `tl-${seq}`,
+            at: parsed.ts || new Date().toISOString(),
+            label: formatLabel(parsed.type, parsed.data),
+            data: parsed.data,
+            nodeId: parsed.nodeId,
+          };
+
+          // Update run status from status events
+          if (parsed.type === 'status' && parsed.data?.status) {
+            setRunStatus(String(parsed.data.status));
+          }
+
+          setEntries((prev) => [...prev, entry]);
+        } catch {
+          // ignore parse errors
+        }
+      },
+      onError: () => {
+        // SSE client handles reconnection internally
+      },
     });
 
-    // Subscribe to selection channel so Timeline highlights when selection changes elsewhere
-    const unsubSelect = flightRecorder.onSelect((payload) => {
-      try {
-        if (payload?.runId === runId) setSelectedCheckpointId(payload.checkpointId);
-      } catch {
-        // ignore
-      }
-    });
+    sseRef.current = sse;
 
-    // Listen for console event selection to correlate with timeline
+    return () => {
+      sse.close();
+      sseRef.current = null;
+    };
+  }, [runId]);
+
+  // Console event selection correlation
+  React.useEffect(() => {
     const handleConsoleEventSelected = (e: Event) => {
       try {
-        const detail = (e as CustomEvent).detail as { item?: { ts?: string; type?: string }; runId?: string };
+        const detail = (e as CustomEvent).detail as { item?: { ts?: string }; runId?: string };
         if (detail?.runId !== runId || !detail?.item?.ts) return;
 
-        // Find the checkpoint closest to this timestamp
         const eventTime = new Date(detail.item.ts).getTime();
         let closest: { id: string; delta: number } | null = null;
 
-        for (const cp of checkpoints) {
-          const cpTime = new Date(cp.at).getTime();
-          const delta = Math.abs(cpTime - eventTime);
+        for (const entry of entries) {
+          const entryTime = new Date(entry.at).getTime();
+          const delta = Math.abs(entryTime - eventTime);
           if (!closest || delta < closest.delta) {
-            closest = { id: cp.id, delta };
+            closest = { id: entry.id, delta };
           }
         }
 
-        // If within 5 seconds, select and scroll to it
         if (closest && closest.delta < 5000) {
-          setSelectedCheckpointId(closest.id);
-          // Scroll the checkpoint into view
+          setSelectedEntryId(closest.id);
           setTimeout(() => {
-            const el = document.querySelector(`[data-checkpoint-id="${closest!.id}"]`);
-            if (el && typeof (el as HTMLElement).scrollIntoView === 'function') {
-              (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
+            const el = document.querySelector(`[data-timeline-id="${closest!.id}"]`);
+            if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           }, 50);
         }
       } catch {
@@ -85,14 +106,8 @@ export function TimelinePanel({ runId }: Props) {
     };
 
     window.addEventListener('consoleEventSelected', handleConsoleEventSelected);
-
-    return () => {
-      unsub?.();
-      unsubSelect?.();
-      window.removeEventListener('consoleEventSelected', handleConsoleEventSelected);
-      setSelectedCheckpointId(null);
-    };
-  }, [runId, checkpoints]);
+    return () => window.removeEventListener('consoleEventSelected', handleConsoleEventSelected);
+  }, [runId, entries]);
 
   if (!runId) {
     return (
@@ -102,81 +117,55 @@ export function TimelinePanel({ runId }: Props) {
     );
   }
 
-  const onGenerateReport = () => {
-    const md = reports.generate(runId, { mode: 'engineer', includeArtifacts: false }, flightRecorder).markdown;
-    setReportMd(md);
-  };
-
   return (
     <div className="h-full w-full flex flex-col">
       <div className="px-2 py-1 border-b bg-card/60 backdrop-blur flex items-center justify-between">
         <div className="text-[11px] text-gray-600 dark:text-gray-300">
           <span className="font-medium">Run:</span> {runId}{' '}
           <span className="mx-1 text-gray-300">|</span>
-          <span className="font-medium">Status:</span> {summary?.status ?? 'unknown'}{' '}
-          {summary?.metrics?.durationMs !== undefined && (
-            <>
-              <span className="mx-1 text-gray-300">|</span>
-              <span className="font-medium">Duration:</span> {Math.round(summary.metrics.durationMs)}ms
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
-            onClick={onGenerateReport}
-          >
-            Generate Report
-          </button>
+          <span className="font-medium">Status:</span> {runStatus}{' '}
+          <span className="mx-1 text-gray-300">|</span>
+          <span className="font-medium">Events:</span> {entries.length}
         </div>
       </div>
 
       <div className="flex-1 overflow-auto">
-        {checkpoints.length === 0 ? (
-          <div className="p-3 text-[11px] text-gray-500">No checkpoints yet. Actions you take will appear here.</div>
+        {entries.length === 0 ? (
+          <div className="p-3 text-[11px] text-gray-500">Waiting for events...</div>
         ) : (
           <ul className="divide-y">
-            {checkpoints.map((c) => {
-              const isSelected = selectedCheckpointId === c.id;
+            {entries.map((entry) => {
+              const isSelected = selectedEntryId === entry.id;
               return (
                 <li
-                  key={c.id}
-                  data-checkpoint-id={c.id}
-                  className={['px-3 py-2 text-[11px] cursor-pointer transition-colors', isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-muted/40'].join(' ')}
+                  key={entry.id}
+                  data-timeline-id={entry.id}
+                  className={[
+                    'px-3 py-2 text-[11px] cursor-pointer transition-colors',
+                    isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-muted/40',
+                  ].join(' ')}
                   onClick={() => {
-                    try {
-                      flightRecorder.selectCheckpoint(runId!, c.id);
-                    } catch {
-                      // ignore selection errors
-                    }
-                    // Emit event for console correlation
-                    window.dispatchEvent(new CustomEvent('timelineCheckpointSelected', {
-                      detail: { checkpointId: c.id, timestamp: c.at, runId }
-                    }));
-                    try {
-                      // Attempt to scroll console anchor into view
-                      const el = document.getElementById(`console-${c.id}`);
-                      if (el && typeof el.scrollIntoView === 'function') {
-                        el.scrollIntoView({ block: 'nearest' });
-                      }
-                    } catch {
-                      // ignore DOM errors
-                    }
+                    setSelectedEntryId(entry.id);
+                    window.dispatchEvent(
+                      new CustomEvent('timelineCheckpointSelected', {
+                        detail: { checkpointId: entry.id, timestamp: entry.at, runId },
+                      })
+                    );
                   }}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="inline-flex h-1.5 w-1.5 rounded-full bg-indigo-500" />
-                      <span className="text-gray-400">{new Date(c.at).toLocaleTimeString()}</span>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">{c.label}</span>
+                      <span className={`inline-flex h-1.5 w-1.5 rounded-full ${statusColor(entry.label)}`} />
+                      <span className="text-gray-400">{new Date(entry.at).toLocaleTimeString()}</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{entry.label}</span>
                     </div>
-                    {c.media?.length ? (
-                      <span className="text-gray-400">{c.media.length} media</span>
-                    ) : null}
+                    {entry.nodeId && (
+                      <span className="text-gray-400 font-mono text-[10px]">{entry.nodeId}</span>
+                    )}
                   </div>
-                  {c.data && (
+                  {entry.data && (
                     <pre className="mt-1 text-[10px] bg-muted/50 dark:bg-muted/20 border rounded p-2 overflow-auto max-h-24">
-                      {JSON.stringify(c.data, null, 2)}
+                      {JSON.stringify(entry.data, null, 2)}
                     </pre>
                   )}
                 </li>
@@ -185,23 +174,43 @@ export function TimelinePanel({ runId }: Props) {
           </ul>
         )}
       </div>
-
-      {reportMd && (
-        <div className="border-t">
-          <div className="px-2 py-1 bg-muted/50 dark:bg-muted/20 text-[11px] text-gray-600 dark:text-gray-300 flex items-center justify-between">
-            <span>Report (Engineer View)</span>
-            <button
-              className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
-              onClick={() => setReportMd(null)}
-            >
-              Close
-            </button>
-          </div>
-          <pre className="p-2 text-[11px] overflow-auto max-h-40 whitespace-pre-wrap">{reportMd}</pre>
-        </div>
-      )}
     </div>
   );
+}
+
+function formatLabel(type: string, data?: Record<string, unknown>): string {
+  switch (type) {
+    case 'node_status':
+      return `node:${data?.status ?? 'update'}`;
+    case 'status':
+      return `run:${data?.status ?? 'update'}`;
+    case 'hello':
+      return 'run:connected';
+    case 'checkpoint':
+      return `checkpoint:${data?.type ?? 'event'}`;
+    case 'condition_evaluated':
+      return `condition:evaluated`;
+    case 'branch_selected':
+      return `branch:${data?.branch ?? 'selected'}`;
+    case 'branch_skipped':
+      return `branch:skipped`;
+    case 'loop_started':
+      return `loop:started (${data?.item_count ?? '?'} items)`;
+    case 'loop_iteration':
+      return `loop:iter ${data?.index ?? '?'}/${data?.total ?? '?'}`;
+    case 'loop_complete':
+      return `loop:complete`;
+    default:
+      return type;
+  }
+}
+
+function statusColor(label: string): string {
+  if (label.includes('succeeded') || label.includes('complete')) return 'bg-green-500';
+  if (label.includes('failed') || label.includes('error')) return 'bg-red-500';
+  if (label.includes('running') || label.includes('started')) return 'bg-blue-500';
+  if (label.includes('skipped')) return 'bg-yellow-500';
+  return 'bg-indigo-500';
 }
 
 export default TimelinePanel;

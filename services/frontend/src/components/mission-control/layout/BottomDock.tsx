@@ -16,7 +16,6 @@ import { PanelErrorBoundary } from '@/components/ui/PanelErrorBoundary';
 import { useLayoutStore, useStreamingStore } from '@/stores';
 import { useWorkspace } from './WorkspaceProvider';
 import { StreamConnectionState } from '@/types/streaming';
-import { flightRecorder } from '@/services/mission-control/services';
 
 // Panels (lazy imports to avoid circular deps)
 import ConsolePanel from '../panels/ConsolePanel';
@@ -25,6 +24,7 @@ import IssuesPanel from '../panels/IssuesPanel';
 import RunsPanelImport from '../panels/RunsPanel';
 import NetworkPanel from '../panels/NetworkPanel';
 import GraphPanel from '../panels/GraphPanel';
+import AgentBrowser from '../panels/AgentBrowser';
 
 // Type assertion needed due to React 19 JSX type changes
 const RunsPanel = RunsPanelImport as unknown as React.FC;
@@ -33,7 +33,7 @@ const RunsPanel = RunsPanelImport as unknown as React.FC;
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type TabId = 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph';
+type TabId = 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph' | 'Agents';
 
 interface TabConfig {
   id: TabId;
@@ -147,21 +147,9 @@ export function BottomDock({ className = '' }: BottomDockProps) {
     };
   }, []);
 
-  // Timeline count subscription
+  // Reset timeline count when run changes (TimelinePanel owns the actual event count)
   useEffect(() => {
-    if (!activeRunId) {
-      setTimelineCount(0);
-      return;
-    }
-    try {
-      setTimelineCount(flightRecorder.listCheckpoints(activeRunId).length);
-      const unsub = flightRecorder.subscribe(activeRunId, () => {
-        setTimelineCount(flightRecorder.listCheckpoints(activeRunId).length);
-      });
-      return () => unsub?.();
-    } catch {
-      // ignore
-    }
+    setTimelineCount(0);
   }, [activeRunId]);
 
   // Tab configuration
@@ -173,6 +161,7 @@ export function BottomDock({ className = '' }: BottomDockProps) {
     { id: 'Runs', label: 'Runs', featureFlag: 'ORCHESTRATOR_PANEL' },
     { id: 'Issues', label: 'Issues', badge: issuesCount },
     { id: 'Graph', label: 'Graph', featureFlag: 'MISSION_GRAPH' },
+    { id: 'Agents', label: 'Agents', featureFlag: 'ORCHESTRATOR_PANEL' },
   ];
 
   const visibleTabs = tabs.filter(
@@ -302,6 +291,11 @@ export function BottomDock({ className = '' }: BottomDockProps) {
           {activeTab === 'Graph' && isEnabled('MISSION_GRAPH') && (
             <PanelErrorBoundary panelName="Graph" compact>
               <GraphPanel runId={activeRunId} />
+            </PanelErrorBoundary>
+          )}
+          {activeTab === 'Agents' && isEnabled('ORCHESTRATOR_PANEL') && (
+            <PanelErrorBoundary panelName="Agents" compact>
+              <AgentBrowser />
             </PanelErrorBoundary>
           )}
         </div>

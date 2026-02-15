@@ -144,7 +144,51 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
 - What happened: Pipeline 1105 e2e-test failed in 15s with `artifact library/mentatlab-orchestrator-go:089d14e2 not found`
 - Root cause: `docker login` at `.gitlab-ci.yml:252-259` checked for `/root/.docker/config.json` which only exists in BuildKit pods (K8s secret mount). The `docker:24-cli` e2e job container has no Harbor credentials.
 - What changed: `.gitlab-ci.yml:252-259`: Replaced config file check with `HARBOR_USER`/`HARBOR_PASSWORD` CI/CD variable login.
-- **Action required**: Set `HARBOR_USER` and `HARBOR_PASSWORD` as protected CI/CD variables in GitLab Settings > CI/CD > Variables.
+- **Action required**: ~~Set `HARBOR_USER` and `HARBOR_PASSWORD` as protected CI/CD variables~~ DONE — moved to instance-level (see below).
 - Sources:
   - [S1] Pipeline 1105 e2e-test trace: `Error response from daemon: unknown: artifact library/mentatlab-orchestrator-go:089d14e2 not found`
   - [S2] `.gitlab-ci.yml:252-259` - docker login now uses CI/CD variables
+
+### CI Fix: Move Harbor Credentials to Instance Level - DONE
+
+- What changed: Moved `HARBOR_USER` and `HARBOR_PASSWORD` from project-level CI/CD variables to instance-level via `glab api /admin/ci/variables`. Deleted project-level duplicates.
+- Why: Instance-level variables are inherited by all projects. Project-level was causing issues with cross-project CI (e2e-test in pipelines 1109-1111).
+- Sources:
+  - [S1] `glab api /admin/ci/variables` - both variables now at instance level
+  - [S2] Project-level variables deleted via `glab variable delete`
+
+### ROADMAP.md Reconciliation - DONE
+
+- What changed:
+  - `ROADMAP.md`: Rewritten to reflect actual M0-M4 milestones from `.loom/30-implementation-plan.md`. Removed stale "v1.0 complete" claims. Added Deferred section for WASM/Marketplace/PKI. References detailed plan.
+  - `docs/v1.0_milestone_spec.md`: Added archive header marking it as aspirational, not current scope.
+- Why: ROADMAP.md was from Jan 2026, claimed "v1.0 complete" with zero-implementation features.
+
+### M1 Remainders: TimelinePanel SSE + Flow Load + Agent Browser - DONE
+
+- What changed:
+  - `services/frontend/src/components/mission-control/panels/TimelinePanel.tsx`: Replaced `flightRecorder` mock with real orchestrator SSE subscription. Uses `orchestratorService.streamRunEvents()` + `parseRunEvent()`. Displays live timeline entries with event type formatting, status colors, and selection correlation.
+  - `services/frontend/src/hooks/useFlowLoader.ts`: New hook that calls `flowService.listFlows()` on mount, populates flow store if empty. Integrated into WorkspaceProvider.
+  - `services/frontend/src/hooks/useAgentList.ts`: New hook for fetching and tracking registered agents from orchestrator API.
+  - `services/frontend/src/components/mission-control/panels/AgentBrowser.tsx`: New panel with list view (status badges, capabilities preview) and detail view (full agent config/metadata). Added as "Agents" tab in BottomDock.
+  - `services/frontend/src/components/mission-control/layout/BottomDock.tsx`: Removed `flightRecorder` import, added `AgentBrowser` import, added "Agents" tab definition.
+  - `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx`: Added `useFlowLoader()` call.
+- What verified: `tsc --noEmit` clean, `npm test` 65/65 pass.
+
+### M2: ForEach Sub-DAG + Output Capture + Contract Overlay - DONE
+
+- What changed:
+  - `services/orchestrator-go/internal/scheduler/foreach.go`:
+    - `executeLoopBody()` rewritten to build sub-DAG dependency graph from main plan edges (filtered to body nodes). Independent body nodes run in parallel. Dependency resolution happens within each iteration.
+  - `services/orchestrator-go/internal/scheduler/scheduler.go`:
+    - Added `captureNodeOutputs()` method: after successful node execution, scans event stream for `type: "output"` events, unmarshals JSON, stores via `runstore.SetNodeOutputs()`. Called after `driver.RunNode()` returns exitCode 0.
+    - Data flow chain: agent emits `{"type":"output","key":"foo","value":"bar"}` → driver emits event → scheduler captures → downstream node reads via `buildExprEnvironment()` → `inputs.nodeId.foo` in expressions.
+  - `services/frontend/src/hooks/useAgentSchemas.ts`: New hook that fetches agent definitions, parses their schema metadata, and enriches canvas nodes' `data.inputs/data.outputs` with pin type information.
+  - `services/frontend/src/components/mission-control/overlays/ContractOverlay.tsx`: Added `useAgentSchemas()` call so schemas are loaded when overlay activates.
+- What verified:
+  - `go vet ./...` clean, `go test ./...` all pass (scheduler: 30+ tests including foreach)
+  - `tsc --noEmit` clean, `npm test` 65/65 pass
+- Sources:
+  - [S1] `services/orchestrator-go/internal/scheduler/scheduler.go:600-650` - captureNodeOutputs
+  - [S2] `services/orchestrator-go/internal/scheduler/foreach.go:122-210` - sub-DAG scheduling
+  - [S3] `services/orchestrator-go/internal/scheduler/conditional.go:140-173` - buildExprEnvironment (existing)

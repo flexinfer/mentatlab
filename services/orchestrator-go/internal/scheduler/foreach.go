@@ -119,57 +119,143 @@ func (s *Scheduler) executeForEach(ctx context.Context, rctx *runContext, node *
 	return iterErr
 }
 
-// executeLoopBody executes the body nodes for a single loop iteration.
-// This is a simplified execution that runs body nodes in dependency order.
+// executeLoopBody executes the body nodes for a single loop iteration using
+// sub-DAG scheduling. Body nodes with dependencies between them are executed
+// in the correct order; independent body nodes run in parallel.
 func (s *Scheduler) executeLoopBody(ctx context.Context, rctx *runContext, loopNodeID string, bodyNodeIDs []string, iterEnv map[string]interface{}, iterIndex int) error {
 	if len(bodyNodeIDs) == 0 {
 		return nil
 	}
 
-	// For now, execute body nodes sequentially in order
-	// A more sophisticated implementation would build a sub-DAG and execute it
-	for _, nodeID := range bodyNodeIDs {
-		spec, ok := rctx.nodeSpecs[nodeID]
-		if !ok {
-			s.logger.Warn("loop body node not found",
-				"loop_node", loopNodeID,
-				"body_node", nodeID,
-				"iteration", iterIndex)
-			continue
-		}
+	// Build a set of body node IDs for quick lookup
+	bodySet := make(map[string]bool, len(bodyNodeIDs))
+	for _, id := range bodyNodeIDs {
+		bodySet[id] = true
+	}
 
-		// Check for cancellation
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
+	// Build sub-DAG dependency graph from the main plan's edges,
+	// filtered to only body nodes within this iteration.
+	subDeps := make(map[string]map[string]bool)    // node -> set of downstream body nodes
+	subRemaining := make(map[string]int)            // node -> count of unresolved body predecessors
 
-		// Store iteration context for this node
-		iterOutputs := map[string]interface{}{
-			"_iteration": map[string]interface{}{
-				"index":   iterIndex,
-				"loop_id": loopNodeID,
-			},
-		}
-		for k, v := range iterEnv {
-			if k != "inputs" && k != "context" {
-				iterOutputs[k] = v
+	for id := range bodySet {
+		subDeps[id] = make(map[string]bool)
+		subRemaining[id] = 0
+	}
+
+	for predID := range bodySet {
+		for depID := range rctx.dependents[predID] {
+			if bodySet[depID] {
+				subDeps[predID][depID] = true
+				subRemaining[depID]++
 			}
-		}
-		if err := s.store.SetNodeOutputs(ctx, rctx.runID, fmt.Sprintf("%s_iter_%d", loopNodeID, iterIndex), iterOutputs); err != nil {
-			s.logger.Warn("failed to store iteration context", "error", err)
-		}
-
-		// Execute the body node synchronously
-		// This is a simplified approach - in a full implementation,
-		// body nodes would be scheduled through the normal scheduler
-		if err := s.executeBodyNode(ctx, rctx, spec, iterEnv, iterIndex); err != nil {
-			return fmt.Errorf("body node %s: %w", nodeID, err)
 		}
 	}
 
-	return nil
+	// Store iteration context accessible to all body nodes
+	iterOutputs := map[string]interface{}{
+		"_iteration": map[string]interface{}{
+			"index":   iterIndex,
+			"loop_id": loopNodeID,
+		},
+	}
+	for k, v := range iterEnv {
+		if k != "inputs" && k != "context" {
+			iterOutputs[k] = v
+		}
+	}
+	iterContextKey := fmt.Sprintf("%s_iter_%d", loopNodeID, iterIndex)
+	if err := s.store.SetNodeOutputs(ctx, rctx.runID, iterContextKey, iterOutputs); err != nil {
+		s.logger.Warn("failed to store iteration context", "error", err)
+	}
+
+	// Execute body nodes in dependency order with parallel scheduling
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var firstErr error
+	completed := make(map[string]bool)
+
+	// scheduleReady launches all body nodes whose predecessors are satisfied
+	var scheduleReady func()
+	scheduleReady = func() {
+		mu.Lock()
+		defer mu.Unlock()
+
+		for _, nodeID := range bodyNodeIDs {
+			if completed[nodeID] {
+				continue
+			}
+			if subRemaining[nodeID] > 0 {
+				continue
+			}
+			// Mark as in-flight so we don't schedule again
+			subRemaining[nodeID] = -1
+
+			spec, ok := rctx.nodeSpecs[nodeID]
+			if !ok {
+				s.logger.Warn("loop body node not found",
+					"loop_node", loopNodeID,
+					"body_node", nodeID,
+					"iteration", iterIndex)
+				completed[nodeID] = true
+				continue
+			}
+
+			wg.Add(1)
+			go func(nid string, nspec *types.NodeSpec) {
+				defer wg.Done()
+
+				// Check for cancellation or previous error
+				mu.Lock()
+				hasErr := firstErr != nil
+				mu.Unlock()
+				if hasErr {
+					return
+				}
+
+				select {
+				case <-ctx.Done():
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = ctx.Err()
+					}
+					mu.Unlock()
+					return
+				default:
+				}
+
+				// Execute the body node
+				err := s.executeBodyNode(ctx, rctx, nspec, iterEnv, iterIndex)
+
+				mu.Lock()
+				completed[nid] = true
+				if err != nil {
+					if firstErr == nil {
+						firstErr = fmt.Errorf("body node %s: %w", nid, err)
+					}
+					mu.Unlock()
+					return
+				}
+
+				// Unlock downstream body nodes
+				for depID := range subDeps[nid] {
+					subRemaining[depID]--
+				}
+				mu.Unlock()
+
+				// Attempt to schedule newly ready nodes
+				scheduleReady()
+			}(nodeID, spec)
+		}
+	}
+
+	// Kick off initial scheduling
+	scheduleReady()
+
+	// Wait for all body nodes to complete
+	wg.Wait()
+
+	return firstErr
 }
 
 // executeBodyNode executes a single body node within a loop iteration.
@@ -247,6 +333,11 @@ func (s *Scheduler) executeBodyNode(ctx context.Context, rctx *runContext, spec 
 			"iteration", iterIndex,
 			"error", err)
 		exitCode = 1
+	}
+
+	// Capture agent outputs for downstream data flow
+	if exitCode == 0 {
+		s.captureNodeOutputs(ctx, rctx.runID, nodeID)
 	}
 
 	// Update final state

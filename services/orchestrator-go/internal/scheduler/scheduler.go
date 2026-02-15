@@ -3,6 +3,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -410,6 +411,11 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 			exitCode = 1
 		}
 
+		// Capture agent outputs for downstream data flow
+		if exitCode == 0 {
+			s.captureNodeOutputs(ctx, rctx.runID, nodeID)
+		}
+
 		s.onNodeFinished(ctx, rctx, nodeID, exitCode)
 	}()
 }
@@ -592,6 +598,69 @@ func (s *Scheduler) emitNodeStatus(ctx context.Context, runID, nodeID, status st
 		data[k] = v
 	}
 	s.emitEvent(ctx, runID, "node_status", data, nodeID, "")
+}
+
+// captureNodeOutputs scans the run's event stream for output events from the
+// given node and stores them via runstore.SetNodeOutputs. This enables
+// downstream nodes to access predecessor outputs through the expression
+// environment (e.g., inputs.node_id.field).
+func (s *Scheduler) captureNodeOutputs(ctx context.Context, runID, nodeID string) {
+	events, err := s.store.GetEventsSince(ctx, runID, "")
+	if err != nil {
+		s.logger.Warn("failed to read events for output capture",
+			slog.String("run_id", runID),
+			slog.String("node_id", nodeID),
+			slog.Any("error", err))
+		return
+	}
+
+	// Collect outputs from "output" events emitted by this node's agent.
+	// Agents produce NDJSON lines with {"type": "output", "key": "...", "value": ...}
+	// We merge all output events into a single outputs map.
+	outputs := make(map[string]interface{})
+	for _, ev := range events {
+		if ev.NodeID != nodeID {
+			continue
+		}
+		if string(ev.Type) != "output" {
+			continue
+		}
+		if len(ev.Data) == 0 {
+			continue
+		}
+		// Unmarshal the raw JSON data
+		var data map[string]interface{}
+		if err := json.Unmarshal(ev.Data, &data); err != nil {
+			s.logger.Warn("failed to unmarshal output event data",
+				slog.String("run_id", runID),
+				slog.String("node_id", nodeID),
+				slog.Any("error", err))
+			continue
+		}
+		// Extract key/value pairs from the event data
+		if key, ok := data["key"].(string); ok {
+			outputs[key] = data["value"]
+		} else {
+			// If no explicit key, merge all data fields (except metadata)
+			for k, v := range data {
+				if k == "type" || k == "runId" || k == "nodeId" || k == "level" {
+					continue
+				}
+				outputs[k] = v
+			}
+		}
+	}
+
+	if len(outputs) == 0 {
+		return
+	}
+
+	if err := s.store.SetNodeOutputs(ctx, runID, nodeID, outputs); err != nil {
+		s.logger.Warn("failed to store node outputs",
+			slog.String("run_id", runID),
+			slog.String("node_id", nodeID),
+			slog.Any("error", err))
+	}
 }
 
 func utcISO() string {
