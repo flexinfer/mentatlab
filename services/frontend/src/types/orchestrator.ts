@@ -136,6 +136,7 @@ export interface NodeStatus {
 export interface CreateRunRequest {
   name?: string;
   plan: RunPlan;
+  auto_start?: boolean;
   mode?: RunMode;
   options?: {
     dryRun?: boolean;

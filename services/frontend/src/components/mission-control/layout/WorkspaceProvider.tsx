@@ -13,8 +13,10 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { FeatureFlags } from '@/config/features';
 import { useLayoutStore } from '@/stores';
+import { useCanvasStore } from '@/stores/canvas';
 import { flightRecorder } from '@/services/mission-control/services';
 import { orchestratorService } from '@/services/api/orchestratorService';
+import type { PlanNode, PlanEdge, RunPlan } from '@/types/orchestrator';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -105,8 +107,35 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
 
   const startOrchestratorRun = useCallback(async () => {
     try {
-      const { runId } = await orchestratorService.startDemoRunAndStream(undefined);
-      setActiveRunId(runId);
+      const { nodes, edges } = useCanvasStore.getState();
+
+      // Convert canvas state to RunPlan
+      const planNodes: PlanNode[] = nodes.map((n) => ({
+        id: n.id,
+        type: n.type || 'agent',
+        label: n.data?.label,
+        agent_id: n.data?.agent_id || n.data?.agentId,
+        command: n.data?.command,
+        image: n.data?.image,
+        env: n.data?.env,
+        inputs: edges.filter((e) => e.target === n.id).map((e) => e.source),
+        conditional: n.data?.conditional,
+        for_each: n.data?.for_each,
+      }));
+
+      const planEdges: PlanEdge[] = edges.map((e) => ({
+        from: e.sourceHandle ? `${e.source}.${e.sourceHandle}` : e.source,
+        to: e.targetHandle ? `${e.target}.${e.targetHandle}` : e.target,
+      }));
+
+      const plan: RunPlan = { nodes: planNodes, edges: planEdges };
+
+      // Create and auto-start the run
+      const response = await orchestratorService.createRun({ plan, auto_start: true });
+      const runId = response.runId || response.run_id || response.id;
+      if (runId) {
+        setActiveRunId(runId);
+      }
     } catch (e) {
       console.error('[Workspace] Start Orchestrator Run failed', e);
     }
