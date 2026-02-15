@@ -30,6 +30,8 @@ export const FeatureFlags = {
   MISSION_GRAPH: (env.VITE_FF_MISSION_GRAPH ?? 'true') === 'true',
   // NEW: Mission Control Console – default on in dev
   MISSION_CONSOLE: (env.VITE_FF_MISSION_CONSOLE ?? 'true') === 'true',
+  // Demo mode: load example flows when backend returns empty
+  DEMO_MODE: (env.VITE_FF_DEMO_MODE ?? 'true') === 'true',
 } as const;
 
 /**

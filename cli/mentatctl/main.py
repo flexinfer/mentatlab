@@ -40,25 +40,30 @@ def dev_run(
     input: List[str] = typer.Option([], "--input", "-i", help="Input key=value pairs"),
     follow: bool = typer.Option(False, "--follow", help="Follow execution logs"),
     local: bool = typer.Option(
-        False, "--local", help="Run locally instead of K8s cluster"
+        False, "--local", help="Run agent as local subprocess (no orchestrator needed)"
     ),
     orchestrator_url: str = typer.Option(
-        "http://localhost:8001", "--orchestrator-url", help="Orchestrator service URL"
+        "http://localhost:7070", "--orchestrator-url", help="Orchestrator service URL"
+    ),
+    watch: bool = typer.Option(
+        False, "--watch", help="Re-run agent when source files change (local mode only)"
     ),
 ):
-    """Execute an agent locally or against K8s cluster for development testing"""
+    """Execute an agent locally or via orchestrator for development testing"""
+    import json as json_mod
+    import subprocess
+    import time
+
     try:
         if not manifest_file.exists():
-            typer.echo(
-                f"❌ Error: Manifest file not found at {manifest_file}", err=True
-            )
+            typer.echo(f"Error: Manifest file not found at {manifest_file}", err=True)
             raise typer.Exit(code=1)
 
         with open(manifest_file, "r") as f:
             try:
                 manifest_data = yaml.safe_load(f)
             except yaml.YAMLError as e:
-                typer.echo(f"❌ Error: Invalid YAML in manifest file: {e}", err=True)
+                typer.echo(f"Error: Invalid YAML in manifest file: {e}", err=True)
                 raise typer.Exit(code=1)
 
         # Parse input parameters
@@ -69,80 +74,195 @@ def dev_run(
                 inputs[key] = value
             else:
                 typer.echo(
-                    f"⚠️  Warning: Ignoring invalid input format '{inp}' (expected key=value)",
+                    f"Warning: Ignoring invalid input format '{inp}' (expected key=value)",
                     err=True,
                 )
 
-        # Prepare execution request
-        execution_data = {
-            "agent_manifest": manifest_data,
-            "inputs": inputs,
-            "execution_id": f"dev-{manifest_data.get('id', 'unknown')}",
-        }
+        agent_id = manifest_data.get("id", "unknown")
+        agent_ver = manifest_data.get("version", "?")
+        typer.echo(f"Agent: {agent_id} v{agent_ver}")
 
-        typer.echo(f"🚀 Starting agent execution ({'local' if local else 'K8s'})...")
+        if local:
+            _dev_run_local(manifest_file, manifest_data, inputs, watch)
+        else:
+            _dev_run_remote(manifest_data, inputs, orchestrator_url, follow)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.echo(f"Error executing agent: {e}", err=True)
+        raise typer.Exit(code=1)
+
+
+def _dev_run_local(
+    manifest_file: Path,
+    manifest_data: dict,
+    inputs: dict,
+    watch: bool,
+):
+    """Run agent as a local subprocess, optionally watching for file changes."""
+    import json as json_mod
+    import subprocess
+    import time
+
+    command = manifest_data.get("command")
+    if not command:
         typer.echo(
-            f"📋 Agent: {manifest_data.get('id', 'unknown')} v{manifest_data.get('version', '?')}"
+            "Error: Manifest has no 'command' field. Cannot run locally.", err=True
+        )
+        raise typer.Exit(code=1)
+
+    agent_dir = manifest_file.parent
+
+    def run_once() -> int:
+        typer.echo(f"Running: {' '.join(command)}")
+        try:
+            proc = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=str(agent_dir),
+                text=True,
+            )
+            stdin_data = json_mod.dumps(inputs) if inputs else ""
+            stdout, stderr = proc.communicate(input=stdin_data, timeout=120)
+
+            # Parse and display NDJSON events from stdout
+            for line in stdout.strip().splitlines():
+                try:
+                    event = json_mod.loads(line)
+                    etype = event.get("type", "?")
+                    if etype == "log":
+                        level = event.get("level", "info").upper()
+                        msg = event.get("message", "")
+                        typer.echo(f"  [{level}] {msg}")
+                    elif etype == "checkpoint":
+                        stage = event.get("data", {}).get("stage", "?")
+                        progress = event.get("data", {}).get("progress", 0)
+                        typer.echo(f"  [CHECKPOINT] {stage} ({progress:.0%})")
+                    elif etype == "output":
+                        key = event.get("data", {}).get("key", "?")
+                        value = event.get("data", {}).get("value", "")
+                        typer.echo(f"  [OUTPUT] {key} = {value}")
+                    else:
+                        typer.echo(
+                            f"  [{etype}] {json_mod.dumps(event.get('data', {}))}"
+                        )
+                except json_mod.JSONDecodeError:
+                    typer.echo(f"  {line}")
+
+            if stderr.strip():
+                for line in stderr.strip().splitlines():
+                    typer.echo(f"  [STDERR] {line}", err=True)
+
+            typer.echo(f"Exit code: {proc.returncode}")
+            return proc.returncode
+
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            typer.echo("Error: Agent timed out after 120s", err=True)
+            return 1
+
+    exit_code = run_once()
+
+    if watch:
+        typer.echo(f"\nWatching {agent_dir} for changes (Ctrl+C to stop)...")
+        last_mtime = _dir_mtime(agent_dir)
+        try:
+            while True:
+                time.sleep(1)
+                current_mtime = _dir_mtime(agent_dir)
+                if current_mtime != last_mtime:
+                    last_mtime = current_mtime
+                    typer.echo(f"\n--- File changed, re-running ---")
+                    exit_code = run_once()
+        except KeyboardInterrupt:
+            typer.echo("\nStopped watching.")
+
+    raise typer.Exit(code=exit_code)
+
+
+def _dir_mtime(directory: Path) -> float:
+    """Return the most recent modification time of any file in directory."""
+    latest = 0.0
+    for p in directory.rglob("*"):
+        if p.is_file() and not p.name.startswith("."):
+            try:
+                mt = p.stat().st_mtime
+                if mt > latest:
+                    latest = mt
+            except OSError:
+                pass
+    return latest
+
+
+def _dev_run_remote(
+    manifest_data: dict,
+    inputs: dict,
+    orchestrator_url: str,
+    follow: bool,
+):
+    """Submit agent execution to orchestrator via API."""
+    import time
+
+    # Build a run plan with a single agent node
+    run_data = {
+        "plan": {
+            "nodes": [
+                {
+                    "id": "dev-node",
+                    "type": "agent",
+                    "agent_id": manifest_data.get("id", "unknown"),
+                    "inputs": inputs,
+                }
+            ],
+            "edges": [],
+        },
+        "auto_start": True,
+    }
+
+    try:
+        response = requests.post(
+            f"{orchestrator_url}/api/v1/runs", json=run_data, timeout=30
         )
 
-        if inputs:
-            typer.echo(f"📥 Inputs: {inputs}")
+        if response.status_code in (200, 201):
+            result = response.json()
+            run_id = result.get("run", {}).get("id", result.get("id"))
+            typer.echo(f"Run created: {run_id}")
 
-        # Submit for execution
-        try:
-            response = requests.post(
-                f"{orchestrator_url}/agents/schedule", json=execution_data, timeout=30
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                resource_id = result.get("resource_id")
-                typer.echo(
-                    f"✅ Agent scheduled successfully with resource ID: {resource_id}"
-                )
-
-                if follow and resource_id:
-                    typer.echo("👀 Following execution logs...")
-                    # Poll for status
-                    import time
-
-                    while True:
-                        try:
-                            status_response = requests.get(
-                                f"{orchestrator_url}/jobs/{resource_id}/status",
-                                timeout=10,
+            if follow and run_id:
+                typer.echo("Following execution...")
+                while True:
+                    try:
+                        status_response = requests.get(
+                            f"{orchestrator_url}/api/v1/runs/{run_id}",
+                            timeout=10,
+                        )
+                        if status_response.status_code == 200:
+                            run_info = status_response.json()
+                            run_status = run_info.get("run", {}).get(
+                                "status", "unknown"
                             )
-                            if status_response.status_code == 200:
-                                status_data = status_response.json()
-                                status = status_data.get("status", {}).get(
-                                    "status", "unknown"
-                                )
-                                typer.echo(f"📊 Status: {status}")
+                            typer.echo(f"  Status: {run_status}")
 
-                                if status in ["succeeded", "failed"]:
-                                    break
-                                elif status == "running":
-                                    typer.echo("🔄 Agent is running...")
+                            if run_status in ("succeeded", "failed", "cancelled"):
+                                break
 
-                            time.sleep(2)
-                        except requests.RequestException as e:
-                            typer.echo(f"⚠️  Warning: Could not check status: {e}")
-                            break
-                        except KeyboardInterrupt:
-                            typer.echo("\n🛑 Stopped following logs")
-                            break
-
-            else:
-                error_detail = response.text
-                typer.echo(f"❌ Agent execution failed: {error_detail}", err=True)
-                raise typer.Exit(code=1)
-
-        except requests.RequestException as e:
-            typer.echo(f"❌ Error connecting to orchestrator: {e}", err=True)
+                        time.sleep(2)
+                    except requests.RequestException as e:
+                        typer.echo(f"Warning: Could not check status: {e}")
+                        break
+                    except KeyboardInterrupt:
+                        typer.echo("\nStopped following.")
+                        break
+        else:
+            typer.echo(f"Error: {response.status_code} {response.text}", err=True)
             raise typer.Exit(code=1)
 
-    except Exception as e:
-        typer.echo(f"❌ Error executing agent: {e}", err=True)
+    except requests.RequestException as e:
+        typer.echo(f"Error connecting to orchestrator: {e}", err=True)
         raise typer.Exit(code=1)
 
 
