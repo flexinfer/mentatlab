@@ -23,29 +23,27 @@
 
 1. **M0 Complete** - Go-first backend, Python archived, engine stub removed, frontend uses nginx
 2. **CI/CD Fixed** - e2e test now has Harbor auth+TLS, deploy.sh uses Go Dockerfiles
-3. **Frontend API wiring audited** - 4 mismatches identified for M1 (see below)
+3. **M1.1 + M1.2 Complete** - Frontend API wiring fixed, agent command resolution fixed, canvas-to-run loop wired
 4. **Go backend API is comprehensive** - runs, agents, flows, artifacts, SSE streaming all have endpoints
 5. **Gateway proxies all paths** to orchestrator via reverse proxy + WebSocket hub
 
-## M1 API Wiring Audit (2026-02-15)
+## M1 Progress (2026-02-15)
 
-Critical mismatches to fix in M1.2:
+### Completed
+- **M1.1**: Agent command resolution fixed — default agents have Command fields, fallback resolver maps `mentatlab.echo` → `agents/echo/main.py`
+- **M1.2**: All 4 frontend API mismatches fixed — `/api/v1` prefix, SSE URL, `sse_url` field name
+- **Canvas wiring**: "Run" button reads actual canvas state, converts to RunPlan, calls createRun(auto_start=true). Graph panel SSE subscription already works.
 
-1. **SSE path mismatch**: `streamingService.ts:148` expects `/api/v1/streams/{id}/sse` but backend serves `/api/v1/runs/{id}/events`. The `orchestratorSSE.ts` client uses the correct path.
-2. **Response field naming**: `POST /api/v1/runs/{id}/start` returns `sseUrl` (camelCase) but frontend schema expects `sse_url` (snake_case). Frontend handles both.
-3. **ListRuns pagination**: Backend returns `{runs, total, limit, offset}`, frontend expects `{runs}` or array. Both handled but inconsistent.
-4. **Base URL mixing**: `streamingService.ts` mixes gateway and orchestrator URLs for streaming. Should consistently use gateway.
-
-Key sources:
-- Frontend API config: `services/frontend/src/config/orchestrator.ts`
-- Go routes: `services/orchestrator-go/internal/api/routes.go:35-93`
-- SSE handler: `services/orchestrator-go/internal/api/sse.go:18-193`
-- Frontend SSE client: `services/frontend/src/services/streaming/orchestratorSSE.ts`
+### Remaining (lower priority)
+- **Console/Timeline panels**: Use `flightRecorder` (client-side mock) instead of orchestrator SSE events. Graph panel is correct.
+- **Agent views**: `agentService.ts` fully implemented but no React components consume it. No agent browser UI.
+- **Flow persistence**: Auto-save hook exists but doesn't load flows from backend API on boot. Only localStorage.
+- **M1.5**: E2E integration test with real agent subprocess execution not yet verified.
 
 ## Strategy: Go-First Reboot
 
 **M0** ~~Fix infrastructure~~ DONE
-**M1** Wire the core loop (agent -> flow -> run -> events -> UI)
+**M1** ~~Wire the core loop~~ DONE (core path: canvas → run → events → graph)
 **M2** Enable workflow features (conditionals, foreach, data flow)
 **M3** Harden for production (observability, auth, testing)
 **M4** Polish developer experience (CLI, docs, examples)
@@ -61,5 +59,6 @@ Key sources:
 - [x] ~~CI builds wrong images~~ - Was already correct; assessment agent was wrong
 - [x] ~~E2E test can't pull from Harbor~~ - Fixed: DinD needs --insecure-registry + docker login
 - [x] ~~deploy.sh references Python Dockerfiles~~ - Fixed
-- [ ] Frontend API contracts may not match Go endpoints - 4 mismatches found, fix in M1.2
+- [x] ~~Frontend API contracts may not match Go endpoints~~ - Fixed: 4 mismatches resolved in M1.2
+- [ ] Console/Timeline panels use mock events (flightRecorder) not orchestrator SSE
 - [ ] Data flow between nodes may need Go implementation - check in M2.3

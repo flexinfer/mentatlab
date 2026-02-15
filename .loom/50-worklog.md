@@ -113,3 +113,28 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S1] `services/orchestrator-go/cmd/orchestrator/main.go:97-107` - command resolver closure
   - [S2] `agents/echo/main.py` - actual echo agent location
   - [S3] `services/orchestrator-go/internal/scheduler/scheduler.go:386` - where resolveCmd is called
+
+### M1.2 + Canvas Wiring: Wire frontend core loop - DONE
+
+- What changed:
+  - **M1.2 API fixes** (separate commit a75dca7):
+    - `services/frontend/src/services/api/orchestratorService.ts:30-33`: Added `/api/v1` prefix to all API URLs
+    - `services/frontend/src/services/api/streaming/orchestratorSSE.ts:69-72`: Added `/api/v1` prefix to SSE URLs
+    - `services/frontend/src/services/api/streamingService.ts:148`: Fixed SSE URL from non-existent path
+    - `services/orchestrator-go/internal/api/handlers.go:182`: Fixed `sseUrl` → `sse_url` (snake_case)
+  - **Canvas → Run wiring** (commit 0519cfe):
+    - `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:106-140`: `startOrchestratorRun()` now reads actual canvas nodes/edges from Zustand store, converts to RunPlan, and calls `createRun({ plan, auto_start: true })`
+    - `services/frontend/src/types/orchestrator.ts:139`: Added `auto_start` field to `CreateRunRequest`
+  - **Full core loop verified**:
+    - Canvas → RunPlan conversion → createRun(auto_start) → scheduler enqueue/start → SSE events → graph panel subscription
+    - Graph panel (`useRunGraph.ts:258`) already subscribes to SSE via `streamRunEvents(runId, ...)` when activeRunId changes
+    - BottomDock passes `activeRunId` to GraphPanel which passes to useRunGraph
+- Why: "Run" button (Cmd+R) was hardcoded to always create a demo run with fake nodes (Perception, Ego, Planning, etc.). Now it uses actual canvas state.
+- Frontend audit findings (for future M1 work):
+  - Agent views: `agentService.ts` fully implemented but no React components consume it
+  - Console/Timeline panels: Use client-side `flightRecorder` mock instead of orchestrator SSE (graph panel correctly uses SSE)
+  - Flow persistence: Auto-save exists but doesn't load from backend on boot
+- Sources:
+  - [S1] `services/frontend/src/components/mission-control/layout/BottomDock.tsx:304` - passes activeRunId to GraphPanel
+  - [S2] `services/frontend/src/components/mission-control/panels/graph/useRunGraph.ts:258` - SSE subscription
+  - [S3] `services/orchestrator-go/internal/api/handlers.go:134-143` - auto_start CreateRun handler
