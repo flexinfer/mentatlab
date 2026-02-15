@@ -40,29 +40,30 @@ MentatLab is an AI agent orchestration platform with a Mission Control interface
 - Canvas → RunPlan conversion: properly nests control flow config (camelCase → snake_case mapping)
 - Lineage and Policy overlays deferred to M3 (require artifact tracking + policy engine backends)
 
+### M3: Production Hardening — Complete
+
+- OpenTelemetry tracing initialized in both services, trace_id in structured logs
+- Business metrics recorded in scheduler (runs_active, runs_total, nodes_total, node_duration, events_total)
+- OTLP spans on CreateRun, StartRun, StreamEvents, scheduleNode
+- Dataflow service initialized from DATAFLOW_TYPE/MINIO env vars
+- Auth middleware (OIDC, disabled by default) + per-IP rate limiting on API subrouter
+- K8s images pinned to `:v0.0.0-placeholder`, PDBs consolidated
+- 15 handler tests, CI coverage reporting for Go + frontend
+
 ## Roadmap
 
-### M3: Production Hardening
-
-Reliability, observability, and security for real workloads.
-
-- [ ] **OpenTelemetry integration**: Wire tracing stubs in Go services ([Issue #5](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/5))
-- [ ] **Prometheus metrics**: Add ServiceMonitor CRDs, Grafana dashboards ([Issue #6](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/6))
-- [ ] **Lineage overlay**: Requires artifact tracking backend (deferred from M2)
-- [ ] **Policy overlay**: Requires policy engine (deferred from M2)
-- [ ] **Authentication**: Enable Cloudflare Access + JWT validation
-- [ ] **Test coverage**: 60% Go, 40% frontend targets
-- [ ] **K8s hardening**: Pin image versions, NetworkPolicies, HPA tuning
-
-### M4: Developer Experience
+### M4: Developer Experience — In Progress
 
 Polished CLI, documentation, and onboarding.
 
-- [ ] **Enhanced mentatctl CLI**: Local dev workflow, hot reload ([Issue #2](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/2))
-- [ ] **Agent SDK docs**: Document NDJSON contract, event types, "Build Your First Agent" tutorial ([Issue #3](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/3))
-- [ ] **Example flows**: 3-5 demo flows, Go agent template, demo mode
+- [x] **Archive aspirational specs**: 13 milestone spec files moved to `docs/archive/milestone-specs/`
+- [x] **Go agent template**: `cli/mentatctl/templates/go/` with full NDJSON contract implementation
+- [x] **Example flows**: `conditional_routing.json`, `foreach_batch.json`, `data_pipeline.json`
+- [x] **README update**: Accurate quickstart, architecture, configuration, docs links
+- [ ] **Verify agent-sdk.md**: Ensure docs match current implementation
+- [ ] **mentatctl hot reload**: Verify `dev run` works with subprocess driver ([Issue #2](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/2))
 - [ ] **Tracing UI**: Visual trace exploration ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7))
-- [ ] **Consolidate docs**: Archive aspirational specs, update README
+- [ ] **Demo mode**: Pre-load example flows on startup
 
 ### Deferred (Future)
 
@@ -83,4 +84,4 @@ These features have zero implementation and are parked for future consideration:
 | [AGENTS.md](AGENTS.md) | Agent guidance |
 | [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md) | Detailed M0-M4 plan |
 | [.loom/00-index.md](.loom/00-index.md) | Progress tracking |
-| [docs/v1.0_milestone_spec.md](docs/v1.0_milestone_spec.md) | Archived: WASM/PKI aspirational spec |
+| [docs/archive/milestone-specs/](docs/archive/milestone-specs/) | Archived aspirational specs (WASM, PKI, etc.) |

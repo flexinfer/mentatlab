@@ -1,0 +1,56 @@
+{
+  "apiVersion": "v1alpha1",
+  "kind": "Flow",
+  "meta": {
+    "id": "demo.foreach-batch",
+    "name": "Batch Processing",
+    "description": "Process a collection of items in parallel using ForEach",
+    "version": "0.1.0",
+    "createdBy": "@mentatlab",
+    "createdAt": "2026-02-15T00:00:00Z"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "source",
+        "type": "mentatlab.echo",
+        "position": {"x": 120, "y": 160},
+        "outputs": {"items": ["doc-1", "doc-2", "doc-3", "doc-4"]}
+      },
+      {
+        "id": "loop",
+        "type": "for_each",
+        "position": {"x": 400, "y": 160},
+        "params": {
+          "for_each": {
+            "collection": "inputs.source.items",
+            "item_var": "doc",
+            "index_var": "i",
+            "max_parallel": 2,
+            "body": ["process"]
+          }
+        }
+      },
+      {
+        "id": "process",
+        "type": "mentatlab.echo",
+        "position": {"x": 680, "y": 160},
+        "params": {"prompt": "Process document ${doc}"}
+      },
+      {
+        "id": "aggregate",
+        "type": "mentatlab.echo",
+        "position": {"x": 960, "y": 160},
+        "params": {"prompt": "Aggregate batch results"}
+      }
+    ],
+    "edges": [
+      {"from": "source.items", "to": "loop.input"},
+      {"from": "loop.output", "to": "aggregate.text"}
+    ]
+  },
+  "layout": {
+    "zoom": 0.8,
+    "viewport": {"x": 0, "y": 0}
+  }
+}

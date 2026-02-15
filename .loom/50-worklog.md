@@ -240,3 +240,25 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S1] `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:120-158` - new conversion logic
   - [S2] `services/frontend/src/nodes/ForEachNode.tsx:18-30` - ForEachNodeData interface (flat)
   - [S3] `services/frontend/src/types/orchestrator.ts:68-96` - PlanNode interface (nested)
+
+### CI Fix: Missing @vitest/coverage-v8 - DONE
+
+- What happened: Pipeline 1131 test-frontend failed with `Cannot find dependency '@vitest/coverage-v8'` after M3 added `-- --coverage` flag to `npm test`.
+- What changed: Added `@vitest/coverage-v8@^3.2.4` to `services/frontend/package.json` devDependencies.
+- What verified: `npm test -- --coverage` succeeds locally, 65/65 tests pass.
+
+### M4: Developer Experience - IN PROGRESS
+
+- What changed:
+  - **Archive specs**: Moved 13 aspirational milestone spec files (`v1.0_milestone_spec.md`, `v1.1_milestone_spec.md`, `v2.0_milestone_spec.md`, summaries, PKI/WASM guides, gap analysis, rearchitecture plan, MVP roadmap, PR plan) to `docs/archive/milestone-specs/`.
+  - **Go agent template**: Created `cli/mentatctl/templates/go/` with manifest.yaml (go1.23 runtime), Dockerfile (multi-stage alpine), go.mod, and main.go implementing full NDJSON contract (emit, checkpoint, logInfo, logError, emitOutput). Updated `agent_commands.py:27` to accept `go` template.
+  - **Example flows**: Created 3 new flows in `examples/`:
+    - `conditional_routing.json` — switch/case routing based on classifier output
+    - `foreach_batch.json` — parallel batch processing with max_parallel=2
+    - `data_pipeline.json` — multi-stage DAG with parallel ingest → validate/enrich → transform → output
+  - **README.md**: Rewrote root README with docker-compose quickstart, architecture diagram, config table, agent scaffolding, example flows table, documentation links.
+  - **ROADMAP.md**: Updated M3 as complete, M4 in progress with completed/remaining items.
+- Sources:
+  - [S1] `cli/mentatctl/templates/go/src/main.go` - Go agent template
+  - [S2] `examples/conditional_routing.json` - conditional flow example
+  - [S3] `docs/archive/milestone-specs/` - 13 archived files

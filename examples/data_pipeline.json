@@ -1,0 +1,57 @@
+{
+  "apiVersion": "v1alpha1",
+  "kind": "Flow",
+  "meta": {
+    "id": "demo.data-pipeline",
+    "name": "Data Pipeline",
+    "description": "Multi-stage pipeline demonstrating node-to-node data flow",
+    "version": "0.1.0",
+    "createdBy": "@mentatlab",
+    "createdAt": "2026-02-15T00:00:00Z"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "ingest",
+        "type": "mentatlab.echo",
+        "position": {"x": 120, "y": 80},
+        "params": {"prompt": "Ingest raw data"}
+      },
+      {
+        "id": "validate",
+        "type": "mentatlab.echo",
+        "position": {"x": 400, "y": 80},
+        "params": {"prompt": "Validate schema and clean data"}
+      },
+      {
+        "id": "enrich",
+        "type": "mentatlab.echo",
+        "position": {"x": 400, "y": 240},
+        "params": {"prompt": "Enrich with external metadata"}
+      },
+      {
+        "id": "transform",
+        "type": "mentatlab.echo",
+        "position": {"x": 680, "y": 160},
+        "params": {"prompt": "Transform and merge validated + enriched data"}
+      },
+      {
+        "id": "output",
+        "type": "mentatlab.echo",
+        "position": {"x": 960, "y": 160},
+        "params": {"prompt": "Write to output store"}
+      }
+    ],
+    "edges": [
+      {"from": "ingest.result", "to": "validate.text"},
+      {"from": "ingest.result", "to": "enrich.text"},
+      {"from": "validate.result", "to": "transform.text"},
+      {"from": "enrich.result", "to": "transform.text"},
+      {"from": "transform.result", "to": "output.text"}
+    ]
+  },
+  "layout": {
+    "zoom": 0.85,
+    "viewport": {"x": 0, "y": 0}
+  }
+}
