@@ -138,3 +138,13 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S1] `services/frontend/src/components/mission-control/layout/BottomDock.tsx:304` - passes activeRunId to GraphPanel
   - [S2] `services/frontend/src/components/mission-control/panels/graph/useRunGraph.ts:258` - SSE subscription
   - [S3] `services/orchestrator-go/internal/api/handlers.go:134-143` - auto_start CreateRun handler
+
+### E2E Pipeline Fix (Round 2) - DONE
+
+- What happened: Pipeline 1105 e2e-test failed in 15s with `artifact library/mentatlab-orchestrator-go:089d14e2 not found`
+- Root cause: `docker login` at `.gitlab-ci.yml:252-259` checked for `/root/.docker/config.json` which only exists in BuildKit pods (K8s secret mount). The `docker:24-cli` e2e job container has no Harbor credentials.
+- What changed: `.gitlab-ci.yml:252-259`: Replaced config file check with `HARBOR_USER`/`HARBOR_PASSWORD` CI/CD variable login.
+- **Action required**: Set `HARBOR_USER` and `HARBOR_PASSWORD` as protected CI/CD variables in GitLab Settings > CI/CD > Variables.
+- Sources:
+  - [S1] Pipeline 1105 e2e-test trace: `Error response from daemon: unknown: artifact library/mentatlab-orchestrator-go:089d14e2 not found`
+  - [S2] `.gitlab-ci.yml:252-259` - docker login now uses CI/CD variables
