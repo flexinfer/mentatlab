@@ -15,21 +15,36 @@
 - [x] Assess actual codebase state vs documented claims
 - [x] Identify critical infrastructure issues blocking deployment
 - [x] Produce evidence-based implementation plan (M0-M4)
-- [ ] Execute M0: Foundation (Infrastructure Fix)
+- [x] Execute M0: Foundation (Infrastructure Fix)
+- [x] Fix CI/CD pipeline (e2e test, deploy script)
 - [ ] Execute M1: Core Loop (Agent Dev + Execution)
 
-## Key Findings (2026-02-14)
+## Key Findings (2026-02-15)
 
-1. **Go services are functional** - gateway-go and orchestrator-go compile, tests pass, real scheduler logic exists
-2. **Python services are legacy** - well-written but superseded; K8s deploys Go, docker-compose deploys Python
-3. **Frontend is coherent** - Mission Control layout with canvas, overlays, panels all exist; wiring to backend incomplete
-4. **CI/CD has critical bugs** - builds Python images with Go names; deployment likely broken
-5. **Milestone specs are fiction** - v1.0/v1.1/v2.0 specs describe WASM/PKI/Marketplace with zero implementation
-6. **10 frontend enhancements verified** - console virtualization, shortcuts, overlays, etc. are real
+1. **M0 Complete** - Go-first backend, Python archived, engine stub removed, frontend uses nginx
+2. **CI/CD Fixed** - e2e test now has Harbor auth+TLS, deploy.sh uses Go Dockerfiles
+3. **Frontend API wiring audited** - 4 mismatches identified for M1 (see below)
+4. **Go backend API is comprehensive** - runs, agents, flows, artifacts, SSE streaming all have endpoints
+5. **Gateway proxies all paths** to orchestrator via reverse proxy + WebSocket hub
+
+## M1 API Wiring Audit (2026-02-15)
+
+Critical mismatches to fix in M1.2:
+
+1. **SSE path mismatch**: `streamingService.ts:148` expects `/api/v1/streams/{id}/sse` but backend serves `/api/v1/runs/{id}/events`. The `orchestratorSSE.ts` client uses the correct path.
+2. **Response field naming**: `POST /api/v1/runs/{id}/start` returns `sseUrl` (camelCase) but frontend schema expects `sse_url` (snake_case). Frontend handles both.
+3. **ListRuns pagination**: Backend returns `{runs, total, limit, offset}`, frontend expects `{runs}` or array. Both handled but inconsistent.
+4. **Base URL mixing**: `streamingService.ts` mixes gateway and orchestrator URLs for streaming. Should consistently use gateway.
+
+Key sources:
+- Frontend API config: `services/frontend/src/config/orchestrator.ts`
+- Go routes: `services/orchestrator-go/internal/api/routes.go:35-93`
+- SSE handler: `services/orchestrator-go/internal/api/sse.go:18-193`
+- Frontend SSE client: `services/frontend/src/services/streaming/orchestratorSSE.ts`
 
 ## Strategy: Go-First Reboot
 
-**M0** Fix infrastructure (CI/CD, docker-compose, ports, legacy cleanup)
+**M0** ~~Fix infrastructure~~ DONE
 **M1** Wire the core loop (agent -> flow -> run -> events -> UI)
 **M2** Enable workflow features (conditionals, foreach, data flow)
 **M3** Harden for production (observability, auth, testing)
@@ -43,6 +58,8 @@
 
 ## Risks
 
-- [x] ~CI builds wrong images~ - Identified, fix in M0.1
-- [ ] Frontend API contracts may not match Go endpoints - audit in M1.2
+- [x] ~~CI builds wrong images~~ - Was already correct; assessment agent was wrong
+- [x] ~~E2E test can't pull from Harbor~~ - Fixed: DinD needs --insecure-registry + docker login
+- [x] ~~deploy.sh references Python Dockerfiles~~ - Fixed
+- [ ] Frontend API contracts may not match Go endpoints - 4 mismatches found, fix in M1.2
 - [ ] Data flow between nodes may need Go implementation - check in M2.3

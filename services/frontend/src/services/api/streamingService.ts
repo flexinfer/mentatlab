@@ -140,12 +140,12 @@ const normalizedGateway = String(gatewayBase || getOrchestratorBaseUrl()).replac
 const wsBase = (import.meta.env.VITE_WS_URL as string) || httpToWs(normalizedGateway);
 
 // Default endpoints point at Gateway streaming paths for local-dev.
+// SSE for run events uses orchestratorSSE.ts with /api/v1/runs/{id}/events.
+// This service handles general WebSocket streaming via the gateway hub.
 export const streamingService = new StreamingService(
   'default-stream-id',
-  // WebSocket endpoint for a default stream id (frontend will create per-stream clients as needed)
   `${wsBase}/ws/streams/default-stream-id`,
-  // SSE endpoint for a default stream id
-  `${normalizedGateway}/api/v1/streams/default-stream-id/sse`
+  `${normalizedGateway}/api/v1/runs/default/events`
 );
 
 // Register default client so it can be closed when user cancels/stops

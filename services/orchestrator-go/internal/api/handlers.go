@@ -179,9 +179,9 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.respondJSON(w, http.StatusOK, map[string]interface{}{
-		"runId":  runID,
-		"status": "running",
-		"sseUrl": "/api/v1/runs/" + runID + "/events",
+		"runId":   runID,
+		"status":  "running",
+		"sse_url": "/api/v1/runs/" + runID + "/events",
 	})
 }
 

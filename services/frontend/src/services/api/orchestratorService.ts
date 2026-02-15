@@ -28,7 +28,9 @@ class OrchestratorService {
   }
 
   private baseUrl(): string {
-    return getOrchestratorBaseUrl().replace(/\/$/, "");
+    const base = getOrchestratorBaseUrl().replace(/\/$/, "");
+    // Ensure /api/v1 prefix — the Go orchestrator serves all endpoints under this path
+    return base.endsWith("/api/v1") ? base : `${base}/api/v1`;
   }
 
   /**

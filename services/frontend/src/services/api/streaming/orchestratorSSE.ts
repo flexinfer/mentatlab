@@ -67,9 +67,11 @@ export type OrchestratorSSEConfig = {
  
    private buildUrl(runId: string, replay?: number): string {
      const base = this.config.baseUrl!.replace(/\/$/, '');
+     // Ensure /api/v1 prefix — Go orchestrator serves all endpoints under this path
+     const prefix = base.endsWith('/api/v1') ? base : `${base}/api/v1`;
      const q = new URLSearchParams();
      if (replay !== undefined) q.set('replay', String(replay));
-     return `${base}/runs/${encodeURIComponent(runId)}/events${q.toString() ? `?${q.toString()}` : ''}`;
+     return `${prefix}/runs/${encodeURIComponent(runId)}/events${q.toString() ? `?${q.toString()}` : ''}`;
    }
  
    connect(runId: string, handlers: OrchestratorSSEHandlers = {}, replay?: number): Promise<void> {
