@@ -222,7 +222,7 @@ e2e-test:
   services:
     - name: docker:24-dind
       alias: docker
-      command: ["--tls=false"]
+      command: ["--tls=false", "--insecure-registry=registry.harbor.lan"]
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
@@ -230,7 +230,7 @@ e2e-test:
     GATEWAY_IMAGE: "${REGISTRY}/mentatlab-gateway-go:${CI_COMMIT_SHORT_SHA}"
     FRONTEND_IMAGE: "${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}"
   before_script:
-    - apk add --no-cache docker-compose curl jq git
+    - apk add --no-cache curl jq git
     # Clone repo (global GIT_STRATEGY is none)
     - |
       echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
@@ -249,27 +249,41 @@ e2e-test:
         sleep 2
       done
     - docker info
+    # Authenticate DinD with Harbor using runner-provided credentials
+    - |
+      if [ -f /root/.docker/config.json ]; then
+        echo "Harbor credentials found, configuring Docker auth..."
+        docker login registry.harbor.lan || echo "docker login failed; will retry with images"
+      else
+        echo "No Docker credentials found at /root/.docker/config.json"
+      fi
   script:
     - |
       echo "=== Starting E2E Tests ==="
 
-      # Create docker-compose override for CI
-      cat > docker-compose.ci.yml << 'EOF'
+      # Create compose override for CI (uses pre-built images instead of building)
+      cat > docker-compose.ci.yml <<CIEOF
       services:
         orchestrator:
-          image: ${ORCHESTRATOR_IMAGE:-registry.harbor.lan/library/mentatlab-orchestrator-go:latest}
+          image: ${ORCHESTRATOR_IMAGE}
           build: !reset null
         gateway:
-          image: ${GATEWAY_IMAGE:-registry.harbor.lan/library/mentatlab-gateway-go:latest}
+          image: ${GATEWAY_IMAGE}
           build: !reset null
         frontend:
-          image: ${FRONTEND_IMAGE:-registry.harbor.lan/library/mentatlab-frontend:latest}
+          image: ${FRONTEND_IMAGE}
           build: !reset null
-      EOF
+      CIEOF
 
-      # Start services
+      # Pull images explicitly (better error messages than compose)
+      echo "Pulling images..."
+      docker pull "${ORCHESTRATOR_IMAGE}"
+      docker pull "${GATEWAY_IMAGE}"
+      docker pull "${FRONTEND_IMAGE}"
+
+      # Start services using docker compose v2 (supports !reset null)
       echo "Starting services..."
-      docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+      docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 
       # Wait for services to be healthy
       echo "Waiting for services to be healthy..."
@@ -315,11 +329,10 @@ e2e-test:
 
       echo "=== All E2E Tests Passed ==="
   after_script:
-    - docker-compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=100 || true
-    - docker-compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
+    - docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=100 || true
+    - docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
-  allow_failure: true
 
 # ==============================================================================
 # DEPLOY STAGE

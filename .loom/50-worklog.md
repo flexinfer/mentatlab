@@ -63,3 +63,25 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - `go test ./...` passes for both services (scheduler: 30+, hub: 15, middleware: 20+)
   - `npx tsc --noEmit` passes for frontend
   - No stale imports or references to removed engine package
+
+### CI/CD + Deploy Fixes - DONE
+
+- What changed:
+  - `.gitlab-ci.yml` e2e-test job:
+    - Added `--insecure-registry=registry.harbor.lan` to DinD command (Harbor uses internal CA)
+    - Added docker login step using runner-provided credentials from `/root/.docker/config.json`
+    - Switched from `docker-compose` v1 to `docker compose` v2 (supports `!reset null` YAML tag)
+    - Added explicit `docker pull` before compose up (better error messages)
+    - Removed `allow_failure: true` — e2e now blocks the pipeline
+    - Removed unnecessary `docker-compose` apk install (v2 plugin included in docker:24-cli)
+  - `k8s/deploy.sh`:
+    - Fixed orchestrator build: `services/orchestrator/Dockerfile` → `services/orchestrator-go/Dockerfile`
+    - Fixed gateway build: `services/gateway/Dockerfile` → `services/gateway-go/Dockerfile`
+    - Fixed image names: `mentatlab-orchestrator` → `mentatlab-orchestrator-go`, same for gateway
+    - Removed deprecated `--record` flag from `kubectl set image`
+- Why: E2E test was failing because DinD had no Harbor auth/CA. Deploy script still referenced Python Dockerfiles.
+- Root cause: BuildKit has Harbor creds via K8s secret mount; DinD service container doesn't share those mounts.
+- Sources:
+  - [S1] `.gitlab-ci.yml:221` - DinD `--insecure-registry` flag
+  - [S2] `k8s/deploy.sh:125-130` - Go Dockerfile references
+  - [S3] Pipeline 1094 e2e-test log - `artifact library/mentatlab-gateway-go:931dd027 not found`
