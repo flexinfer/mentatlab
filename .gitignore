@@ -18,6 +18,11 @@ services/gateway/.pdm-python
 logs/
 compose-logs.txt
 
+# Coverage output
+coverage/
+**/coverage/
+*.out
+
 # Test/tooling outputs
 /bin/
 /etc/
