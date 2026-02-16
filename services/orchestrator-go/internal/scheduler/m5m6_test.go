@@ -36,7 +36,7 @@ func TestRunTimeout_ContextExpires(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	runID, err := store.CreateRun(ctx, "timeout-test", plan)
+	runID, err := store.CreateRun(ctx, "timeout-test", plan, "")
 	if err != nil {
 		t.Fatalf("failed to create run: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestRunTimeout_PlanOverridesDefault(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	runID, _ := store.CreateRun(ctx, "plan-timeout-test", plan)
+	runID, _ := store.CreateRun(ctx, "plan-timeout-test", plan, "")
 	s.EnqueueRun(ctx, runID, "plan-timeout-test", plan)
 	s.StartRun(ctx, runID)
 
@@ -240,7 +240,7 @@ func TestGateApprove(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	runID, _ := store.CreateRun(ctx, "gate-test", plan)
+	runID, _ := store.CreateRun(ctx, "gate-test", plan, "")
 	s.EnqueueRun(ctx, runID, "gate-test", plan)
 	s.StartRun(ctx, runID)
 
@@ -287,7 +287,7 @@ func TestGateReject(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	runID, _ := store.CreateRun(ctx, "gate-reject", plan)
+	runID, _ := store.CreateRun(ctx, "gate-reject", plan, "")
 	s.EnqueueRun(ctx, runID, "gate-reject", plan)
 	s.StartRun(ctx, runID)
 
@@ -325,7 +325,7 @@ func TestGateTimeout_AutoReject(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	runID, _ := store.CreateRun(ctx, "gate-timeout", plan)
+	runID, _ := store.CreateRun(ctx, "gate-timeout", plan, "")
 	s.EnqueueRun(ctx, runID, "gate-timeout", plan)
 	s.StartRun(ctx, runID)
 

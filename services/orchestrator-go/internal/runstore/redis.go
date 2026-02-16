@@ -150,7 +150,7 @@ func (s *RedisStore) setTTL(ctx context.Context, runID string) error {
 }
 
 // CreateRun creates a new run record.
-func (s *RedisStore) CreateRun(ctx context.Context, name string, plan *types.Plan) (string, error) {
+func (s *RedisStore) CreateRun(ctx context.Context, name string, plan *types.Plan, owner string) (string, error) {
 	runID := generateRunID()
 	now := time.Now().UTC()
 
@@ -180,6 +180,7 @@ func (s *RedisStore) CreateRun(ctx context.Context, name string, plan *types.Pla
 	pipe.HSet(ctx, s.keyMeta(runID), map[string]interface{}{
 		"runId":      runID,
 		"name":       name,
+		"owner":      owner,
 		"status":     string(types.RunStatusQueued),
 		"startedAt":  "",
 		"finishedAt": "",
@@ -196,6 +197,12 @@ func (s *RedisStore) CreateRun(ctx context.Context, name string, plan *types.Pla
 
 	// Sequence counter
 	pipe.Set(ctx, s.keySeq(runID), "0", 0)
+
+	// Add to sorted set index (score = createdAt unix nanos for ordering)
+	pipe.ZAdd(ctx, s.prefix+":index", redis.Z{
+		Score:  float64(now.UnixNano()),
+		Member: runID,
+	})
 
 	if _, err := pipe.Exec(ctx); err != nil {
 		return "", fmt.Errorf("create run: %w", err)
@@ -222,6 +229,7 @@ func (s *RedisStore) GetRunMeta(ctx context.Context, runID string) (*types.RunMe
 	result := &types.RunMeta{
 		ID:     runID,
 		Name:   meta["name"],
+		Owner:  meta["owner"],
 		Status: types.RunStatus(meta["status"]),
 	}
 
@@ -266,10 +274,13 @@ func (s *RedisStore) GetRun(ctx context.Context, runID string) (*types.Run, erro
 	}
 
 	run := &types.Run{
-		ID:     runID,
-		Name:   meta["name"],
-		Status: types.RunStatus(meta["status"]),
-		Error:  meta["error"],
+		ID:            runID,
+		Name:          meta["name"],
+		Owner:         meta["owner"],
+		WebhookURL:    meta["webhookURL"],
+		WebhookSecret: meta["webhookSecret"],
+		Status:        types.RunStatus(meta["status"]),
+		Error:         meta["error"],
 	}
 
 	if meta["startedAt"] != "" {
@@ -331,6 +342,118 @@ func (s *RedisStore) ListRuns(ctx context.Context) ([]string, error) {
 	}
 
 	return runIDs, nil
+}
+
+// ListRunsWithOptions returns run IDs matching the given filter options.
+func (s *RedisStore) ListRunsWithOptions(ctx context.Context, opts *ListRunsOptions) ([]string, error) {
+	if opts == nil || opts.Owner == "" {
+		return s.ListRuns(ctx)
+	}
+
+	// Scan all runs and filter by owner
+	allIDs, err := s.ListRuns(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var filtered []string
+	for _, id := range allIDs {
+		owner, err := s.client.HGet(ctx, s.keyMeta(id), "owner").Result()
+		if err != nil {
+			continue
+		}
+		if owner == opts.Owner {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered, nil
+}
+
+// ListRunsPaged returns a paginated list of run metadata using cursor-based pagination.
+func (s *RedisStore) ListRunsPaged(ctx context.Context, opts *PageOptions) (*PagedResult, error) {
+	if opts == nil {
+		opts = &PageOptions{}
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	indexKey := s.prefix + ":index"
+
+	// Get total count
+	total, err := s.client.ZCard(ctx, indexKey).Result()
+	if err != nil {
+		return nil, fmt.Errorf("count runs: %w", err)
+	}
+
+	// Use ZREVRANGEBYSCORE for newest-first ordering
+	maxScore := "+inf"
+	if opts.Cursor != "" {
+		cursorTime, _, err := decodeCursor(opts.Cursor)
+		if err == nil {
+			// Exclusive: use score just below the cursor timestamp
+			maxScore = fmt.Sprintf("(%d", cursorTime.UnixNano())
+		}
+	}
+
+	// Fetch limit+1 to detect if there are more pages
+	ids, err := s.client.ZRevRangeByScore(ctx, indexKey, &redis.ZRangeBy{
+		Min:   "-inf",
+		Max:   maxScore,
+		Count: int64(limit + 1),
+	}).Result()
+	if err != nil {
+		return nil, fmt.Errorf("query index: %w", err)
+	}
+
+	// Build RunMeta for each ID, applying owner filter
+	var runs []*types.RunMeta
+	for _, id := range ids {
+		if len(runs) >= limit {
+			break
+		}
+		meta, err := s.GetRunMeta(ctx, id)
+		if err != nil {
+			continue
+		}
+		if opts.Owner != "" && meta.Owner != opts.Owner {
+			continue
+		}
+		runs = append(runs, meta)
+	}
+
+	result := &PagedResult{
+		Runs:  runs,
+		Total: int(total),
+	}
+
+	// Set next cursor if there might be more
+	if len(ids) > limit && len(runs) > 0 {
+		last := runs[len(runs)-1]
+		// Look up the score (createdAt) for the last run
+		score, err := s.client.ZScore(ctx, indexKey, last.ID).Result()
+		if err == nil {
+			result.NextCursor = encodeCursor(time.Unix(0, int64(score)), last.ID)
+		}
+	}
+
+	return result, nil
+}
+
+// SetRunWebhook stores webhook callback details for a run.
+func (s *RedisStore) SetRunWebhook(ctx context.Context, runID, webhookURL, webhookSecret string) error {
+	fields := map[string]interface{}{
+		"webhookURL":    webhookURL,
+		"webhookSecret": webhookSecret,
+	}
+	if err := s.client.HSet(ctx, s.keyMeta(runID), fields).Err(); err != nil {
+		return fmt.Errorf("set webhook: %w", err)
+	}
+	return nil
 }
 
 // UpdateRunStatus updates the run's status and optional timestamps.

@@ -59,7 +59,7 @@ func TestExecuteForEach_Sequential(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-seq", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-seq", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestExecuteForEach_Parallel(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-parallel", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-parallel", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestExecuteForEach_EmptyCollection(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-empty", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-empty", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestExecuteForEach_ErrorInIteration(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-error", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-error", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -384,7 +384,7 @@ func TestExecuteForEach_Cancellation(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(context.Background(), "test-foreach-cancel", plan)
+	runID, err := store.CreateRun(context.Background(), "test-foreach-cancel", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -446,7 +446,7 @@ func TestExecuteForEach_InvalidCollection(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-invalid", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-invalid", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -496,7 +496,7 @@ func TestExecuteForEach_NonSliceCollection(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-nonslice", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-nonslice", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -543,7 +543,7 @@ func TestExecuteForEach_NoConfig(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-noconfig", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-noconfig", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -614,7 +614,7 @@ func TestExecuteForEach_IterationEnvVars(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-env", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-env", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -697,7 +697,7 @@ func TestExecuteForEach_EmitEvents(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-events", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-events", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -765,7 +765,7 @@ func TestExecuteLoopBody_EmptyBody(t *testing.T) {
 	ctx := context.Background()
 
 	plan := &types.Plan{}
-	runID, err := store.CreateRun(ctx, "test-empty-body", plan)
+	runID, err := store.CreateRun(ctx, "test-empty-body", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -792,7 +792,7 @@ func TestExecuteLoopBody_MissingBodyNode(t *testing.T) {
 	ctx := context.Background()
 
 	plan := &types.Plan{}
-	runID, err := store.CreateRun(ctx, "test-missing-body", plan)
+	runID, err := store.CreateRun(ctx, "test-missing-body", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -826,7 +826,7 @@ func TestExecuteBodyNode_NoCommand(t *testing.T) {
 	ctx := context.Background()
 
 	plan := &types.Plan{}
-	runID, err := store.CreateRun(ctx, "test-no-cmd", plan)
+	runID, err := store.CreateRun(ctx, "test-no-cmd", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}

@@ -293,7 +293,7 @@ func TestStreamEventsContentType(t *testing.T) {
 		Nodes: []types.NodeSpec{
 			{ID: "n1", Type: "agent", AgentID: "mentatlab.echo"},
 		},
-	})
+	}, "")
 	if err != nil {
 		t.Fatalf("failed to create run: %v", err)
 	}

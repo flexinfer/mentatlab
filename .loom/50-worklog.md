@@ -320,3 +320,51 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S2] Pipeline 1148 — all stages green (lint, test, build, e2e, deploy)
   - [S3] `kubectl get pods -n mentatlab` — all pods 1/1 Running
   - [S4] `kubectl get kustomization mentatlab -n flux-system` — `Ready: True`
+
+### M7: Multi-User & API Maturity - DONE
+
+- What changed (5 sub-milestones):
+
+  **M7.1 — User identity propagation**:
+  - `services/gateway-go/main.go`: Proxy director now forwards `X-User-Email` and `X-User-Type` headers from Cloudflare Access claims to orchestrator.
+  - `services/orchestrator-go/pkg/types/run.go`: Added `Owner` field to `Run` struct.
+  - `services/orchestrator-go/internal/runstore/store.go`: `CreateRun` signature updated to accept `owner` param. Added `ListRunsWithOptions` with `Owner` filter.
+  - `services/orchestrator-go/internal/runstore/memory.go`: `memoryRun` stores `owner`, `webhookURL`, `webhookSecret`. `ListRunsWithOptions` filters by owner.
+  - `services/orchestrator-go/internal/runstore/redis.go`: Stores owner in run meta hash. `ListRunsWithOptions` filters by owner.
+  - `services/orchestrator-go/internal/api/handlers.go`: `CreateRun` handler extracts owner from `X-User-Email` header via `getOwnerFromRequest()`. `CreateFlow` handler now sets `CreatedBy` from user header when not provided.
+
+  **M7.2 — API key authentication**:
+  - `services/orchestrator-go/internal/auth/apikey.go` (NEW): Redis-backed `APIKeyStore` with `GenerateKey` (`mlk_` prefix, sha256 hashed), `ValidateKey`, `RevokeKey`, `ListKeys`. `IsAPIKey` helper checks prefix.
+  - `services/orchestrator-go/internal/auth/middleware.go`: Auth handler checks for `mlk_` prefix before falling back to OIDC. API key validation sets `X-User-Email` from key owner.
+  - `services/orchestrator-go/internal/api/handlers_apikey.go` (NEW): `CreateAPIKey` (POST), `ListAPIKeys` (GET), `RevokeAPIKey` (DELETE) handlers. Strips `key_hash` from list responses.
+  - `services/orchestrator-go/internal/api/routes.go`: Added `/apikeys` routes.
+  - `services/orchestrator-go/cmd/orchestrator/main.go`: Wired `APIKeyStore` into auth middleware and handler options. Added `redisClient` helper.
+
+  **M7.3 — Cursor-based pagination**:
+  - `services/orchestrator-go/internal/runstore/store.go`: Added `PagedResult`, `PageOptions` types. Added `ListRunsPaged` to `RunStore` interface. Added `encodeCursor`/`decodeCursor` helpers (base64 `timestamp:id`).
+  - `services/orchestrator-go/internal/runstore/memory.go`: `ListRunsPaged` sorts by `createdAt` descending, applies cursor-based slicing.
+  - `services/orchestrator-go/internal/runstore/redis.go`: `CreateRun` now `ZADD`s to sorted set index (`prefix:index`). `ListRunsPaged` uses `ZREVRANGEBYSCORE` for efficient range queries.
+  - `services/orchestrator-go/internal/api/handlers.go`: `ListRuns` rewritten to support `?cursor=` with `next_cursor` in response. Legacy `?offset=` still works as fallback.
+  - `services/orchestrator-go/internal/flowstore/store.go`: Added `FlowPagedResult` type, `Cursor` field to `ListOptions`.
+
+  **M7.4 — Webhook callbacks on run completion**:
+  - `services/orchestrator-go/pkg/types/run.go`: Added `WebhookURL`, `WebhookSecret` fields to `Run`.
+  - `services/orchestrator-go/internal/runstore/store.go`: Added `SetRunWebhook` to `RunStore` interface.
+  - `services/orchestrator-go/internal/runstore/memory.go`: Implemented `SetRunWebhook`.
+  - `services/orchestrator-go/internal/runstore/redis.go`: Implemented `SetRunWebhook` (stores in meta hash).
+  - `services/orchestrator-go/internal/scheduler/callback.go` (NEW): `CallbackPayload` struct, `fireWebhookCallback` reads run and fires async, `deliverWebhook` POSTs with HMAC-SHA256 signature (`X-MentatLab-Signature`), 3 retries with exponential backoff.
+  - `services/orchestrator-go/internal/scheduler/scheduler.go`: Calls `fireWebhookCallback` at 3 terminal states in `checkRunCompletion` (cancelled, all succeeded/skipped, failed).
+  - `services/orchestrator-go/internal/api/handlers.go`: `CreateRunRequest` includes `WebhookURL`/`WebhookSecret`. Handler calls `SetRunWebhook` after run creation.
+
+  **M7.5 — Load testing baseline**:
+  - `tests/load/orchestrator.js` (NEW): k6 load test with 3 scenarios: CRUD throughput (ramping 1→10 VUs), concurrent run execution (5 VUs), pagination stress (3 VUs). SLO thresholds: create p95<200ms, list p95<300ms, get p95<100ms, errors<5%.
+
+- Tests:
+  - `services/orchestrator-go/internal/api/handlers_m7_test.go` (NEW): 4 tests — `TestCreateRunWithWebhook`, `TestListRunsCursorPagination`, `TestListRunsOwnerFilter`, `TestCreateFlowSetsCreatedBy`. All passing.
+  - Full test suite (`go vet ./... && go test ./...`): All passing.
+- Sources:
+  - [S1] `services/orchestrator-go/internal/auth/apikey.go` — API key store
+  - [S2] `services/orchestrator-go/internal/scheduler/callback.go` — webhook delivery
+  - [S3] `services/orchestrator-go/internal/runstore/store.go` — pagination types + cursor helpers
+  - [S4] `services/orchestrator-go/internal/api/handlers_m7_test.go` — M7 tests
+  - [S5] `tests/load/orchestrator.js` — k6 load test

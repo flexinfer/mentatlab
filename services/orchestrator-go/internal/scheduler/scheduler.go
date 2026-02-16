@@ -683,6 +683,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
+		s.fireWebhookCallback(ctx, rctx.runID)
 		// Note: metrics for cancelled runs are recorded in CancelRun
 		return true
 	}
@@ -718,6 +719,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusSucceeded, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "succeeded")
+		s.fireWebhookCallback(ctx, rctx.runID)
 		metrics.RunsActive.Dec()
 		metrics.RunsTotal.WithLabelValues("succeeded").Inc()
 		return true
@@ -728,6 +730,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
+		s.fireWebhookCallback(ctx, rctx.runID)
 		metrics.RunsActive.Dec()
 		metrics.RunsTotal.WithLabelValues("failed").Inc()
 		return true

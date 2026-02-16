@@ -54,7 +54,15 @@ type UpdateFlowRequest struct {
 type ListOptions struct {
 	Limit     int
 	Offset    int
+	Cursor    string // Opaque cursor for cursor-based pagination (overrides Offset)
 	CreatedBy string // Filter by creator
+}
+
+// FlowPagedResult holds a page of flows with cursor for next page.
+type FlowPagedResult struct {
+	Flows      []*Flow `json:"flows"`
+	NextCursor string  `json:"next_cursor,omitempty"`
+	Total      int     `json:"total"`
 }
 
 // FlowStore defines the interface for flow persistence.

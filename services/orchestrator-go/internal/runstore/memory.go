@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -17,7 +18,10 @@ type memoryRun struct {
 	mu          sync.RWMutex
 	id          string
 	name        string
-	plan        *types.Plan
+	owner         string
+	webhookURL    string
+	webhookSecret string
+	plan          *types.Plan
 	status      types.RunStatus
 	startedAt   *time.Time
 	finishedAt  *time.Time
@@ -58,7 +62,7 @@ func generateRunID() string {
 	return hex.EncodeToString(b)
 }
 
-func (s *MemoryStore) CreateRun(ctx context.Context, name string, plan *types.Plan) (string, error) {
+func (s *MemoryStore) CreateRun(ctx context.Context, name string, plan *types.Plan, owner string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -79,6 +83,7 @@ func (s *MemoryStore) CreateRun(ctx context.Context, name string, plan *types.Pl
 	s.runs[runID] = &memoryRun{
 		id:          runID,
 		name:        name,
+		owner:       owner,
 		plan:        plan,
 		status:      types.RunStatusQueued,
 		nodes:       nodes,
@@ -109,6 +114,7 @@ func (s *MemoryStore) GetRunMeta(ctx context.Context, runID string) (*types.RunM
 	return &types.RunMeta{
 		ID:         run.id,
 		Name:       run.name,
+		Owner:      run.owner,
 		Status:     run.status,
 		StartedAt:  run.startedAt,
 		FinishedAt: run.finishedAt,
@@ -131,11 +137,14 @@ func (s *MemoryStore) GetRun(ctx context.Context, runID string) (*types.Run, err
 	defer run.mu.RUnlock()
 
 	return &types.Run{
-		ID:         run.id,
-		Name:       run.name,
-		Status:     run.status,
-		Plan:       run.plan,
-		StartedAt:  run.startedAt,
+		ID:            run.id,
+		Name:          run.name,
+		Owner:         run.owner,
+		WebhookURL:    run.webhookURL,
+		WebhookSecret: run.webhookSecret,
+		Status:        run.status,
+		Plan:          run.plan,
+		StartedAt:     run.startedAt,
 		FinishedAt: run.finishedAt,
 		Error:      run.error,
 		CreatedAt:  run.createdAt,
@@ -152,6 +161,127 @@ func (s *MemoryStore) ListRuns(ctx context.Context) ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+func (s *MemoryStore) ListRunsWithOptions(ctx context.Context, opts *ListRunsOptions) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids := make([]string, 0, len(s.runs))
+	for id, run := range s.runs {
+		if opts != nil && opts.Owner != "" {
+			run.mu.RLock()
+			owner := run.owner
+			run.mu.RUnlock()
+			if owner != opts.Owner {
+				continue
+			}
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (s *MemoryStore) SetRunWebhook(ctx context.Context, runID, webhookURL, webhookSecret string) error {
+	s.mu.RLock()
+	run, ok := s.runs[runID]
+	s.mu.RUnlock()
+
+	if !ok {
+		return ErrRunNotFound
+	}
+
+	run.mu.Lock()
+	run.webhookURL = webhookURL
+	run.webhookSecret = webhookSecret
+	run.mu.Unlock()
+	return nil
+}
+
+func (s *MemoryStore) ListRunsPaged(ctx context.Context, opts *PageOptions) (*PagedResult, error) {
+	if opts == nil {
+		opts = &PageOptions{}
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Collect matching runs with metadata
+	type entry struct {
+		meta      *types.RunMeta
+		createdAt time.Time
+	}
+	var entries []entry
+	for _, run := range s.runs {
+		run.mu.RLock()
+		if opts.Owner != "" && run.owner != opts.Owner {
+			run.mu.RUnlock()
+			continue
+		}
+		e := entry{
+			meta: &types.RunMeta{
+				ID:         run.id,
+				Name:       run.name,
+				Owner:      run.owner,
+				Status:     run.status,
+				StartedAt:  run.startedAt,
+				FinishedAt: run.finishedAt,
+			},
+			createdAt: run.createdAt,
+		}
+		run.mu.RUnlock()
+		entries = append(entries, e)
+	}
+
+	// Sort by createdAt descending (newest first)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].createdAt.After(entries[j].createdAt)
+	})
+
+	// Apply cursor: skip entries until we find one older than the cursor timestamp
+	startIdx := 0
+	if opts.Cursor != "" {
+		cursorTime, cursorID, err := decodeCursor(opts.Cursor)
+		if err == nil {
+			for i, e := range entries {
+				if e.createdAt.Before(cursorTime) || (e.createdAt.Equal(cursorTime) && e.meta.ID <= cursorID) {
+					startIdx = i
+					break
+				}
+			}
+		}
+	}
+
+	// Slice the page
+	total := len(entries)
+	end := startIdx + limit
+	if end > total {
+		end = total
+	}
+	page := entries[startIdx:end]
+
+	result := &PagedResult{
+		Runs:  make([]*types.RunMeta, len(page)),
+		Total: total,
+	}
+	for i, e := range page {
+		result.Runs[i] = e.meta
+	}
+
+	// Set next cursor if there are more results
+	if end < total {
+		last := entries[end-1]
+		result.NextCursor = encodeCursor(last.createdAt, last.meta.ID)
+	}
+
+	return result, nil
 }
 
 func (s *MemoryStore) UpdateRunStatus(ctx context.Context, runID string, status types.RunStatus, startedAt, finishedAt *string) error {

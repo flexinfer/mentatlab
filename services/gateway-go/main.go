@@ -220,6 +220,11 @@ func main() {
 		originalDirector(req)
 		// Inject Cloudflare Access service token for internal requests
 		authMiddleware.InjectServiceToken(req)
+		// Forward authenticated user identity to downstream services
+		if user := middleware.GetUserFromContext(req.Context()); user != nil {
+			req.Header.Set("X-User-Email", user.Email)
+			req.Header.Set("X-User-Type", user.Type)
+		}
 	}
 
 	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

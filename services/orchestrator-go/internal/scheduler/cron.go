@@ -180,7 +180,7 @@ func (cr *CronRunner) triggerRun(sched *Schedule, triggerTime time.Time) {
 	}
 
 	runName := fmt.Sprintf("%s (cron %s)", flow.Name, sched.Cron)
-	runID, err := cr.runStore.CreateRun(ctx, runName, &plan)
+	runID, err := cr.runStore.CreateRun(ctx, runName, &plan, "system/cron")
 	if err != nil {
 		cr.logger.Error("cron: failed to create run",
 			slog.String("schedule_id", sched.ID),

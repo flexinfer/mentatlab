@@ -19,6 +19,7 @@ const claimsContextKey contextKey = "claims"
 // Middleware provides HTTP middleware for authentication and authorization.
 type Middleware struct {
 	provider      *Provider
+	apiKeyStore   *APIKeyStore
 	enabled       bool
 	publicPaths   map[string]bool
 	requiredRoles []string
@@ -34,6 +35,9 @@ type MiddlewareConfig struct {
 
 	// RequiredRoles are roles required for all protected endpoints
 	RequiredRoles []string
+
+	// APIKeyStore enables API key authentication alongside OIDC
+	APIKeyStore *APIKeyStore
 }
 
 // NewMiddleware creates a new auth middleware.
@@ -54,6 +58,7 @@ func NewMiddleware(provider *Provider, cfg *MiddlewareConfig) *Middleware {
 
 	return &Middleware{
 		provider:      provider,
+		apiKeyStore:   cfg.APIKeyStore,
 		enabled:       cfg.Enabled,
 		publicPaths:   publicPaths,
 		requiredRoles: cfg.RequiredRoles,
@@ -88,7 +93,25 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			return
 		}
 
-		// Verify token
+		// Try API key authentication first (mlk_ prefix)
+		if m.apiKeyStore != nil && IsAPIKey(token) {
+			apiKey, err := m.apiKeyStore.ValidateKey(r.Context(), token)
+			if err != nil {
+				m.unauthorized(w, "invalid api key")
+				return
+			}
+			// Inject API key owner as claims
+			claims := &Claims{
+				Email: apiKey.Owner,
+			}
+			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
+			// Also set X-User-Email header so getOwnerFromRequest works
+			r.Header.Set("X-User-Email", apiKey.Owner)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		// Fall back to OIDC token verification
 		claims, err := m.provider.VerifyToken(r.Context(), token)
 		if err != nil {
 			// Try as access token via userinfo

@@ -32,22 +32,26 @@ const (
 type Run struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name,omitempty"`
+	Owner       string            `json:"owner,omitempty"`         // User who created the run (email)
 	Status      RunStatus         `json:"status"`
 	Plan        *Plan             `json:"plan,omitempty"`
 	FlowID      string            `json:"flow_id,omitempty"`      // Source flow ID for lineage
 	ParentRunID string            `json:"parent_run_id,omitempty"` // Cloned from this run
 	StartedAt   *time.Time        `json:"started_at,omitempty"`
 	FinishedAt  *time.Time        `json:"finished_at,omitempty"`
-	Error       string            `json:"error,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	Error          string            `json:"error,omitempty"`
+	WebhookURL     string            `json:"webhook_url,omitempty"`    // URL to POST on completion
+	WebhookSecret  string            `json:"webhook_secret,omitempty"` // HMAC-SHA256 signing secret
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
 }
 
 // RunMeta is a lightweight representation of a run for listing.
 type RunMeta struct {
 	ID         string            `json:"id"`
 	Name       string            `json:"name,omitempty"`
+	Owner      string            `json:"owner,omitempty"`
 	Status     RunStatus         `json:"status"`
 	StartedAt  *time.Time        `json:"started_at,omitempty"`
 	FinishedAt *time.Time        `json:"finished_at,omitempty"`

@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/auth"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/dataflow"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
@@ -38,6 +39,7 @@ type Handlers struct {
 	k8sClient   *k8s.Client
 	dataflowSvc *dataflow.Service
 	cronRunner  *scheduler.CronRunner
+	apiKeyStore *auth.APIKeyStore
 	config      *config.Config
 	logger      *slog.Logger
 }
@@ -49,6 +51,7 @@ type HandlerOptions struct {
 	K8sClient   *k8s.Client
 	DataflowSvc *dataflow.Service
 	CronRunner  *scheduler.CronRunner
+	APIKeyStore *auth.APIKeyStore
 }
 
 // NewHandlers creates a new Handlers instance.
@@ -69,8 +72,19 @@ func NewHandlers(store runstore.RunStore, sched *scheduler.Scheduler, v *validat
 		h.k8sClient = opts.K8sClient
 		h.dataflowSvc = opts.DataflowSvc
 		h.cronRunner = opts.CronRunner
+		h.apiKeyStore = opts.APIKeyStore
 	}
 	return h
+}
+
+// getOwnerFromRequest extracts the user identity (email) from the request.
+// It checks X-User-Email header (set by gateway) first, then OIDC claims.
+func getOwnerFromRequest(r *http.Request) string {
+	// Check gateway-forwarded header first
+	if email := r.Header.Get("X-User-Email"); email != "" {
+		return email
+	}
+	return ""
 }
 
 // --- Health Endpoints ---
@@ -105,9 +119,11 @@ func (h *Handlers) Ready(w http.ResponseWriter, r *http.Request) {
 
 // CreateRunRequest is the request body for creating a run.
 type CreateRunRequest struct {
-	Name      string      `json:"name"`
-	Plan      *types.Plan `json:"plan"`
-	AutoStart bool        `json:"auto_start,omitempty"` // Start execution immediately
+	Name          string      `json:"name"`
+	Plan          *types.Plan `json:"plan"`
+	AutoStart     bool        `json:"auto_start,omitempty"`      // Start execution immediately
+	WebhookURL    string      `json:"webhook_url,omitempty"`     // URL to POST on completion
+	WebhookSecret string      `json:"webhook_secret,omitempty"`  // HMAC-SHA256 signing secret
 }
 
 // CreateRunResponse is the response body after creating a run.
@@ -128,10 +144,18 @@ func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runID, err := h.store.CreateRun(ctx, req.Name, req.Plan)
+	owner := getOwnerFromRequest(r)
+	runID, err := h.store.CreateRun(ctx, req.Name, req.Plan, owner)
 	if err != nil {
-		h.respondError(w, r,http.StatusInternalServerError, "failed to create run", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to create run", err)
 		return
+	}
+
+	// Store webhook callback if provided
+	if req.WebhookURL != "" {
+		if err := h.store.SetRunWebhook(ctx, runID, req.WebhookURL, req.WebhookSecret); err != nil {
+			h.logger.Warn("failed to set webhook", "error", err, "runId", runID)
+		}
 	}
 
 	resp := CreateRunResponse{
@@ -199,34 +223,64 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListRuns handles GET /api/v1/runs
+// Supports cursor-based pagination (?cursor=&limit=) and legacy offset pagination (?offset=&limit=).
 func (h *Handlers) ListRuns(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Parse pagination parameters
-	limit := 50 // Default limit
-	offset := 0
-
+	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
 			limit = parsed
-			if limit > 500 { // Cap at 500
+			if limit > 500 {
 				limit = 500
 			}
 		}
 	}
+
+	cursor := r.URL.Query().Get("cursor")
+	ownerFilter := r.URL.Query().Get("owner")
+
+	// If cursor is provided (or no offset), use cursor-based pagination
+	if cursor != "" || r.URL.Query().Get("offset") == "" {
+		result, err := h.store.ListRunsPaged(ctx, &runstore.PageOptions{
+			Cursor: cursor,
+			Limit:  limit,
+			Owner:  ownerFilter,
+		})
+		if err != nil {
+			h.respondError(w, r, http.StatusInternalServerError, "failed to list runs", err)
+			return
+		}
+		h.respondJSON(w, http.StatusOK, map[string]interface{}{
+			"runs":        result.Runs,
+			"total":       result.Total,
+			"limit":       limit,
+			"next_cursor": result.NextCursor,
+		})
+		return
+	}
+
+	// Legacy offset-based pagination
+	offset := 0
 	if o := r.URL.Query().Get("offset"); o != "" {
 		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
 			offset = parsed
 		}
 	}
 
-	runIDs, err := h.store.ListRuns(ctx)
+	var runIDs []string
+	var err error
+	if ownerFilter != "" {
+		runIDs, err = h.store.ListRunsWithOptions(ctx, &runstore.ListRunsOptions{Owner: ownerFilter})
+	} else {
+		runIDs, err = h.store.ListRuns(ctx)
+	}
 	if err != nil {
-		h.respondError(w, r,http.StatusInternalServerError, "failed to list runs", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to list runs", err)
 		return
 	}
 
-	// Apply pagination
 	total := len(runIDs)
 	if offset > total {
 		offset = total
@@ -366,7 +420,7 @@ func (h *Handlers) ScheduleAgent(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	runID, err := h.store.CreateRun(ctx, agentID, plan)
+	runID, err := h.store.CreateRun(ctx, agentID, plan, getOwnerFromRequest(r))
 	if err != nil {
 		h.respondError(w, r,http.StatusInternalServerError, "failed to schedule agent", err)
 		return
@@ -586,6 +640,11 @@ func (h *Handlers) CreateFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set CreatedBy from authenticated user if not already provided
+	if req.CreatedBy == "" {
+		req.CreatedBy = getOwnerFromRequest(r)
+	}
+
 	flow, err := h.flowStore.Create(ctx, &req)
 	if err != nil {
 		if errors.Is(err, flowstore.ErrFlowExists) {
@@ -707,10 +766,13 @@ func (h *Handlers) ListFlows(w http.ResponseWriter, r *http.Request) {
 	if createdBy := r.URL.Query().Get("created_by"); createdBy != "" {
 		opts.CreatedBy = createdBy
 	}
+	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
+		opts.Cursor = cursor
+	}
 
 	flows, err := h.flowStore.List(ctx, opts)
 	if err != nil {
-		h.respondError(w, r,http.StatusInternalServerError, "failed to list flows", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to list flows", err)
 		return
 	}
 
@@ -1048,7 +1110,7 @@ func (h *Handlers) RunStoreSelfCheck(w http.ResponseWriter, r *http.Request) {
 	// Simple self-check: create a run, append event, read it back, delete it
 	start := time.Now()
 
-	runID, err := h.store.CreateRun(ctx, "_selfcheck", nil)
+	runID, err := h.store.CreateRun(ctx, "_selfcheck", nil, "")
 	if err != nil {
 		h.respondError(w, r,http.StatusInternalServerError, "selfcheck failed: create", err)
 		return

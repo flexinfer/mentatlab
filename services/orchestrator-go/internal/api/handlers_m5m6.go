@@ -178,7 +178,7 @@ func (h *Handlers) TriggerWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	runID, err := h.store.CreateRun(ctx, flow.Name+" (webhook)", plan)
+	runID, err := h.store.CreateRun(ctx, flow.Name+" (webhook)", plan, getOwnerFromRequest(r))
 	if err != nil {
 		h.respondError(w, r, http.StatusInternalServerError, "failed to create run", err)
 		return
@@ -231,7 +231,7 @@ func (h *Handlers) CloneRun(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&req)
 	}
 
-	newRunID, err := h.store.CreateRun(ctx, run.Name+" (clone)", run.Plan)
+	newRunID, err := h.store.CreateRun(ctx, run.Name+" (clone)", run.Plan, getOwnerFromRequest(r))
 	if err != nil {
 		h.respondError(w, r, http.StatusInternalServerError, "failed to create cloned run", err)
 		return
@@ -297,7 +297,7 @@ func (h *Handlers) RunFlow(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	runID, err := h.store.CreateRun(ctx, flow.Name, plan)
+	runID, err := h.store.CreateRun(ctx, flow.Name, plan, getOwnerFromRequest(r))
 	if err != nil {
 		h.respondError(w, r, http.StatusInternalServerError, "failed to create run", err)
 		return

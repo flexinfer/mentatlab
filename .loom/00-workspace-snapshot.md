@@ -1,6 +1,6 @@
 # Workspace Snapshot
 
-- Generated: 2026-02-14T12:34:49-05:00
+- Generated: 2026-02-16
 - Root: `/Users/cblevins/workspace/services/mentatlab`
 - Git toplevel: `/Users/cblevins/workspace/services/mentatlab`
 - Platform: `macOS-26.3-arm64-arm-64bit`
@@ -8,12 +8,20 @@
 
 ## Git
 ```
-## main...origin/main
- M ROADMAP.md
- M docs/v1.0_milestone_spec.md
-?? .loom/
-?? docs/roadmap-reconciliation-2026-02-12.md
-?? docs/roadmap-reconciliation-2026-02-14.md
+## main
+ M services/gateway-go/main.go
+ M services/orchestrator-go/internal/api/handlers.go
+ M services/orchestrator-go/internal/api/handlers_m5m6.go
+ M services/orchestrator-go/internal/api/handlers_test.go
+ M services/orchestrator-go/internal/runstore/memory.go
+ M services/orchestrator-go/internal/runstore/redis.go
+ M services/orchestrator-go/internal/runstore/store.go
+ M services/orchestrator-go/internal/scheduler/conditional_test.go
+ M services/orchestrator-go/internal/scheduler/cron.go
+ M services/orchestrator-go/internal/scheduler/foreach_test.go
+ M services/orchestrator-go/internal/scheduler/m5m6_test.go
+ M services/orchestrator-go/pkg/types/run.go
+?? docs/roadmap-reconciliation-2026-02-16.md
 ```
 
 ### Remotes
@@ -30,7 +38,19 @@ origin	https://gitlab.flexinfer.ai/services/mentatlab.git (push)
 
 ### HEAD
 ```
-83baa77 chore(branding): refresh repo assets
+58a0b9b docs: update loom context for deploy + add M7 plan
+```
+
+### Recent Commits
+```
+58a0b9b docs: update loom context for deploy + add M7 plan
+1f659b0 fix(k8s): add nginx writable volumes to frontend deployment
+85c0996 fix(k8s): use imagePullPolicy Always for :latest tags
+fa4b9e1 fix(k8s): add MinIO network policies, fix bucket-init job
+261a6b1 fix(k8s): use :latest image tags for Flux compatibility
+45f710f feat(m5-m6): run timeouts, retry policies, gates, webhooks, cron, cloning
+c6c0b27 docs: mark M4 complete, update roadmap and worklog
+8581bcb feat(m4): demo mode with example flows, fix mentatctl dev run
 ```
 
 ## Top-Level Layout

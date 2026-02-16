@@ -102,6 +102,11 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/webhooks", s.handlers.CreateWebhook).Methods("POST")
 	api.HandleFunc("/webhooks/trigger/{flowId}", s.handlers.TriggerWebhook).Methods("POST")
 
+	// API key management
+	api.HandleFunc("/apikeys", s.handlers.CreateAPIKey).Methods("POST")
+	api.HandleFunc("/apikeys", s.handlers.ListAPIKeys).Methods("GET")
+	api.HandleFunc("/apikeys/{id}", s.handlers.RevokeAPIKey).Methods("DELETE")
+
 	// Schedule management (cron)
 	api.HandleFunc("/schedules", s.handlers.CreateSchedule).Methods("POST")
 	api.HandleFunc("/schedules", s.handlers.ListSchedules).Methods("GET")

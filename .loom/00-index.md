@@ -23,15 +23,15 @@
 - [x] Execute M4: Developer Experience (CLI, docs, examples) — tracing UI deferred
 - [x] Execute M5-M6: Backend implementation (timeouts, retries, gates, webhooks, cron, cloning)
 - [x] Deploy M5-M6 to K3s cluster (fix image tags, network policies, nginx volumes)
-- [ ] Execute M7: Multi-User & API Maturity
+- [x] Execute M7: Multi-User & API Maturity
 
 ## Key Findings (2026-02-16)
 
-1. **M0-M4 Complete** — Go-first backend, CI/CD, core loop, workflow features, hardening, dev experience
+1. **M0-M7 Complete** — Go-first backend, CI/CD, core loop, workflow features, hardening, dev experience, multi-user, API maturity
 2. **M5-M6 Backend Complete** — Timeouts, retry policies, gates, webhooks, cron, cloning all implemented with tests
 3. **Deployed to K3s** — All pods Running, Flux Ready, MinIO bucket created, M5-M6 endpoints verified
 4. **Deploy lessons** — Flux overrides CI kustomize edits; need `images` transformer. `:latest` + `IfNotPresent` = stale. NetworkPolicies must explicitly allow MinIO traffic.
-5. **Gateway does NOT propagate user identity** — Auth extracts claims but doesn't forward to orchestrator (M7 gap)
+5. **M7 implemented** — User identity propagation, API key auth, cursor pagination, webhook callbacks, load testing baseline
 
 ## M1 Progress — Complete
 
@@ -91,7 +91,7 @@
 **M4** ~~Polish developer experience~~ DONE (tracing UI deferred)
 **M5** Production readiness — DEPLOYED (backend complete, K3s deployment validated, infra live-tests pending)
 **M6** Workflow maturity — DEPLOYED (backend + frontend complete, K3s deployment validated, live-tests pending)
-**M7** Multi-user & API maturity — PLANNING
+**M7** Multi-user & API maturity — DONE
 
 ## M5 Progress — Deployed
 
@@ -138,28 +138,22 @@
 ### Remaining
 - [ ] Tracing UI: Visual trace exploration (deferred — requires OTLP query backend + frontend waterfall component)
 
-## M7 Planning — Multi-User & API Maturity
+## M7 Progress — Complete
 
-### Current Baseline (from codebase exploration)
-- **Auth**: OIDC middleware in orchestrator (`internal/auth/`), Cloudflare Access JWT in gateway (`middleware/auth.go`). Both disabled by default. Gateway does NOT forward user identity headers to orchestrator.
-- **Ownership**: `Flow.CreatedBy` exists but unused for access control. `Run` and `Agent` have no `Owner` field.
-- **Pagination**: All list endpoints use offset-based pagination (limit/offset). Backend fetches ALL items then slices in Go. Redis stores use SETs (not sorted sets), so no range queries.
-- **Run completion hooks**: `checkRunCompletion()` in scheduler emits SSE events but has no webhook callback mechanism.
-- **Load testing**: No k6/locust/vegeta configs exist.
-
-### Planned Scope
-- **M7.1**: User identity propagation — forward user headers from gateway, add `Owner` to Run, filter by owner
-- **M7.2**: API key authentication — Redis-backed key store, validate in auth middleware alongside JWT
-- **M7.3**: Cursor-based pagination — Redis sorted sets (ZADD with timestamp scores), `next_cursor` in responses
-- **M7.4**: Webhook callbacks on run completion — async POST with retry, HMAC signatures
-- **M7.5**: Load testing baseline — k6 scripts, SLO targets, baseline metrics
+### Completed
+- **M7.1**: User identity propagation — gateway forwards `X-User-Email`/`X-User-Type` headers, `Run.Owner` field, `ListRunsWithOptions` owner filter, `CreateFlow` sets `CreatedBy` from headers.
+- **M7.2**: API key authentication — Redis-backed `APIKeyStore` (`mlk_` prefix, sha256 hashed), auth middleware checks API key before OIDC fallback, CRUD handlers at `/apikeys`.
+- **M7.3**: Cursor-based pagination — base64 `timestamp:id` cursors, Redis sorted set index (`ZADD`/`ZREVRANGEBYSCORE`), `next_cursor` in `ListRuns` response, legacy offset fallback preserved.
+- **M7.4**: Webhook callbacks on run completion — `fireWebhookCallback` at 3 terminal states, HMAC-SHA256 signed POST (`X-MentatLab-Signature`), 3 retries with exponential backoff.
+- **M7.5**: Load testing baseline — k6 script with 3 scenarios (CRUD throughput, concurrent runs, pagination stress), SLO thresholds defined.
+- **Tests**: 4 M7-specific tests (`handlers_m7_test.go`), full suite passing.
 
 ### Key Sources
-- `services/orchestrator-go/internal/auth/middleware.go` — OIDC claims extraction
-- `services/gateway-go/middleware/auth.go` — CF Access JWT, `UserInfo` struct
-- `services/gateway-go/main.go:214-227` — proxy director (no user header forwarding)
-- `services/orchestrator-go/internal/runstore/redis.go` — Redis hash-based run storage
-- `services/orchestrator-go/internal/scheduler/scheduler.go:671-737` — run completion logic
+- `services/orchestrator-go/internal/auth/apikey.go` — API key store
+- `services/orchestrator-go/internal/scheduler/callback.go` — webhook delivery
+- `services/orchestrator-go/internal/runstore/store.go` — pagination types, cursor helpers, SetRunWebhook
+- `services/orchestrator-go/internal/api/handlers_m7_test.go` — M7 tests
+- `tests/load/orchestrator.js` — k6 load test
 
 ## Open Questions
 

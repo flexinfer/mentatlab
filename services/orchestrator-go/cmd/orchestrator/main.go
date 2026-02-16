@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/api"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/auth"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
@@ -190,6 +192,17 @@ func main() {
 	}
 	defer flows.Close()
 
+	// Initialize API key store (requires Redis)
+	var apiKeyStore *auth.APIKeyStore
+	if cfg.RunStoreType == "redis" {
+		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
+		apiKeyRedis := redisClient(redisAddr, cfg.RedisPassword, cfg.RedisDB)
+		if apiKeyRedis != nil {
+			apiKeyStore = auth.NewAPIKeyStore(apiKeyRedis)
+			logger.Info("API key store initialized (Redis)")
+		}
+	}
+
 	// Initialize CronRunner for scheduled runs
 	cronRunner := scheduler.NewCronRunner(sched, flows, store, logger.With(slog.String("component", "cron")))
 	cronRunner.Start()
@@ -250,6 +263,7 @@ func main() {
 			authMiddleware = auth.NewMiddleware(authProvider, &auth.MiddlewareConfig{
 				Enabled:     true,
 				PublicPaths: []string{"/health", "/healthz", "/ready", "/metrics"},
+				APIKeyStore: apiKeyStore,
 			})
 			logger.Info("OIDC auth middleware initialized", slog.String("issuer", cfg.OIDCIssuer))
 		}
@@ -262,6 +276,7 @@ func main() {
 		K8sClient:   k8sClient,
 		DataflowSvc: dataflowSvc,
 		CronRunner:  cronRunner,
+		APIKeyStore: apiKeyStore,
 	}
 	handlers := api.NewHandlers(store, sched, v, cfg, logger, handlerOpts)
 	server := api.NewServer(handlers, authMiddleware, cfg.RateLimitRPS, cfg.RateLimitBurst)
@@ -307,4 +322,13 @@ func main() {
 	}
 
 	logger.Info("server stopped")
+}
+
+// redisClient creates a Redis client for the given address.
+func redisClient(addr, password string, db int) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr:     addr,
+		Password: password,
+		DB:       db,
+	})
 }
