@@ -85,14 +85,14 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            - name: cache
-              mountPath: /home/node/.cache
-            - name: vite-temp
-              mountPath: /app/node_modules/.vite-temp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
       volumes:
         - name: tmp
           emptyDir: {}
-        - name: cache
+        - name: nginx-cache
           emptyDir: {}
-        - name: vite-temp
+        - name: nginx-run
           emptyDir: {}
