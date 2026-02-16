@@ -18,6 +18,18 @@ resources:
   - servicemonitor.yaml
   - grafana-dashboards.yaml
 
+# Override placeholder image tags — CI pushes :latest on every main build.
+# For pinned deploys, CI can use `kustomize edit set image` before applying.
+images:
+  - name: registry.harbor.lan/library/mentatlab-orchestrator-go
+    newTag: latest
+  - name: registry.harbor.lan/library/mentatlab-gateway-go
+    newTag: latest
+  - name: registry.harbor.lan/library/mentatlab-frontend
+    newTag: latest
+  - name: registry.harbor.lan/library/mentatlab-echoagent
+    newTag: latest
+
 # Common labels for all resources (use 'labels' not 'commonLabels' to avoid modifying immutable selectors)
 labels:
   - pairs:
