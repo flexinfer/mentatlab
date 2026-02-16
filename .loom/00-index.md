@@ -21,14 +21,17 @@
 - [x] Execute M2: Workflow Power (conditionals, foreach, data flow)
 - [x] Execute M3: Production Hardening (observability, auth, testing)
 - [x] Execute M4: Developer Experience (CLI, docs, examples) — tracing UI deferred
+- [x] Execute M5-M6: Backend implementation (timeouts, retries, gates, webhooks, cron, cloning)
+- [x] Deploy M5-M6 to K3s cluster (fix image tags, network policies, nginx volumes)
+- [ ] Execute M7: Multi-User & API Maturity
 
-## Key Findings (2026-02-15)
+## Key Findings (2026-02-16)
 
-1. **M0 Complete** - Go-first backend, Python archived, engine stub removed, frontend uses nginx
-2. **CI/CD Fixed** - e2e test passes (pipeline 1119). Harbor auth uses instance-level CI vars with `raw=true`, e2e pulls `:latest` tags, DinD has `--insecure-registry`
-3. **M1 Complete** - Core loop wired, M1 remainders finished (TimelinePanel SSE, flow load-on-boot, agent browser UI)
-4. **Go backend API is comprehensive** - runs, agents, flows, artifacts, SSE streaming all have endpoints
-5. **Gateway proxies all paths** to orchestrator via reverse proxy + WebSocket hub
+1. **M0-M4 Complete** — Go-first backend, CI/CD, core loop, workflow features, hardening, dev experience
+2. **M5-M6 Backend Complete** — Timeouts, retry policies, gates, webhooks, cron, cloning all implemented with tests
+3. **Deployed to K3s** — All pods Running, Flux Ready, MinIO bucket created, M5-M6 endpoints verified
+4. **Deploy lessons** — Flux overrides CI kustomize edits; need `images` transformer. `:latest` + `IfNotPresent` = stale. NetworkPolicies must explicitly allow MinIO traffic.
+5. **Gateway does NOT propagate user identity** — Auth extracts claims but doesn't forward to orchestrator (M7 gap)
 
 ## M1 Progress — Complete
 
@@ -86,37 +89,39 @@
 **M2** ~~Enable workflow features~~ DONE (conditionals, foreach sub-DAG, data flow, contract overlay, canvas→RunPlan wiring; lineage/policy deferred to M3)
 **M3** ~~Harden for production~~ DONE (observability, auth, testing, K8s manifests)
 **M4** ~~Polish developer experience~~ DONE (tracing UI deferred)
-**M5** Production readiness — IN PROGRESS (backend complete, infra validation pending)
-**M6** Workflow maturity — IN PROGRESS (backend + frontend complete, infra validation pending)
+**M5** Production readiness — DEPLOYED (backend complete, K3s deployment validated, infra live-tests pending)
+**M6** Workflow maturity — DEPLOYED (backend + frontend complete, K3s deployment validated, live-tests pending)
+**M7** Multi-user & API maturity — PLANNING
 
-## M5 Progress — In Progress
+## M5 Progress — Deployed
 
-### Completed (Backend)
-- **M5.3**: Run-level timeouts — `Plan.Timeout` field on plan, `ORCH_DEFAULT_RUN_TIMEOUT` env var, `context.WithTimeout` in scheduler. Plan-level overrides default. On timeout: cancels active tasks, closes gates, marks run failed with reason "timeout".
-- **M5.4**: Configurable per-node retry policies — `RetryPolicy` struct with `MaxRetries`, `BackoffType` (fixed/exponential/linear), `BackoffBase`, `BackoffMax`. Node-level policy overrides global defaults.
-- **M5.5**: Grafana dashboards — Two ConfigMaps in `k8s/grafana-dashboards.yaml`: orchestrator dashboard (11 panels: active runs, throughput, node success rate, P99 duration, SSE connections, event throughput, retries, queue depth, K8s jobs, runstore ops) and gateway dashboard (5 panels: request rate, error rate, latency percentiles, SSE duration, requests by path).
-- **K8s manifests**: MinIO deployment (`k8s/minio.yaml`), `ORCH_DEFAULT_RUN_TIMEOUT` env var in orchestrator deployment, kustomization updated.
-- **Tests**: `m5m6_test.go` — run timeout, retry policy (exponential/fixed/linear/fallback/cap), all passing.
+### Completed (Backend + Infra)
+- **M5.3**: Run-level timeouts — `Plan.Timeout` field on plan, `ORCH_DEFAULT_RUN_TIMEOUT` env var, `context.WithTimeout` in scheduler.
+- **M5.4**: Configurable per-node retry policies — `RetryPolicy` struct with fixed/exponential/linear backoff.
+- **M5.5**: Grafana dashboards — orchestrator (11 panels) + gateway (5 panels) as ConfigMaps.
+- **K8s deployment**: MinIO running with bucket created, Grafana dashboards applied to monitoring namespace.
+- **Deploy fixes**: Image tag transformer in kustomization.yaml, `imagePullPolicy: Always`, MinIO NetworkPolicies, nginx volume mounts.
+- **Tests**: `m5m6_test.go` — all passing.
 
-### Pending (Infrastructure)
-- [ ] M5.1: Build echo agent image, deploy to K3s, validate K8s job driver
-- [ ] M5.2: Deploy MinIO, verify artifact flow end-to-end
-- [ ] M5.6: Full-stack smoke test on K3s
+### Pending (Live Validation)
+- [ ] M5.1: Build echo agent image, validate K8s job driver end-to-end
+- [ ] M5.2: Test artifact upload/download flow through MinIO
+- [ ] M5.6: Full-stack smoke test with run execution on K3s
 
-## M6 Progress — In Progress
+## M6 Progress — Deployed
 
-### Completed (Backend + Frontend)
-- **M6.1**: Gate nodes — `GateConfig` type, `NodeStatusWaitingApproval` status, `executeGate` in scheduler with approval channels, auto-timeout, `ApproveGate`/`RejectGate` methods, REST endpoints. Frontend `GateNode.tsx` component with approve/reject buttons.
-- **M6.2**: Webhook triggers — `WebhookToken` on Flow, `POST /webhooks` generates token, `POST /webhooks/trigger/{flowId}` validates token and creates+starts run.
-- **M6.3**: Run cloning — `POST /runs/{id}/clone` copies plan (with optional auto_start), `POST /flows/{id}/run` converts flow graph to plan. `FlowID`/`ParentRunID` lineage on Run type. Frontend clone/re-run buttons in RunsPanel.
-- **M6.4**: Cron scheduled runs — `CronRunner` goroutine, 5-field cron parser, schedule CRUD endpoints, `triggerRun` creates runs from flows.
-- **M6.5**: Frontend polish — GateNode component registered in GraphPanel, retry policy editor + timeout config in InspectorPanel, clone/re-run buttons in RunsPanel, gate node conversion in WorkspaceProvider.
-- **Types**: `GateConfig`, `RetryPolicy`, `BackoffType` added to frontend types. `RunPlan.timeout`, `Run.flow_id`/`parent_run_id`, `RunStatus.waiting_approval` added.
-- **API client**: `approveGate`, `rejectGate`, `cloneRun`, `runFlow` methods added to `orchestratorService.ts`.
-- **Tests**: `m5m6_test.go` — gate approve/reject/timeout, cron parsing, CronRunner CRUD, all passing.
+### Completed (Backend + Frontend + Infra)
+- **M6.1**: Gate nodes — GateConfig, waiting_approval status, approve/reject REST + frontend.
+- **M6.2**: Webhook triggers — per-flow tokens, trigger endpoint creates+starts runs.
+- **M6.3**: Run cloning — clone endpoint, flow→run shortcut, lineage tracking.
+- **M6.4**: Cron scheduled runs — CronRunner goroutine, 5-field parser, schedule CRUD.
+- **M6.5**: Frontend polish — GateNode, retry editor, timeout config, clone/re-run buttons.
+- **K8s deployment**: All endpoints verified on cluster (`/api/v1/schedules` responds).
 
-### Pending (Infrastructure)
-- [ ] Live validation of gates, webhooks, cron on K3s cluster
+### Pending (Live Validation)
+- [ ] Test gate approval flow in browser (requires active run with gate node)
+- [ ] Test webhook trigger from external system
+- [ ] Verify cron triggers fire on schedule
 
 ## M4 Progress — Complete
 
@@ -132,6 +137,29 @@
 
 ### Remaining
 - [ ] Tracing UI: Visual trace exploration (deferred — requires OTLP query backend + frontend waterfall component)
+
+## M7 Planning — Multi-User & API Maturity
+
+### Current Baseline (from codebase exploration)
+- **Auth**: OIDC middleware in orchestrator (`internal/auth/`), Cloudflare Access JWT in gateway (`middleware/auth.go`). Both disabled by default. Gateway does NOT forward user identity headers to orchestrator.
+- **Ownership**: `Flow.CreatedBy` exists but unused for access control. `Run` and `Agent` have no `Owner` field.
+- **Pagination**: All list endpoints use offset-based pagination (limit/offset). Backend fetches ALL items then slices in Go. Redis stores use SETs (not sorted sets), so no range queries.
+- **Run completion hooks**: `checkRunCompletion()` in scheduler emits SSE events but has no webhook callback mechanism.
+- **Load testing**: No k6/locust/vegeta configs exist.
+
+### Planned Scope
+- **M7.1**: User identity propagation — forward user headers from gateway, add `Owner` to Run, filter by owner
+- **M7.2**: API key authentication — Redis-backed key store, validate in auth middleware alongside JWT
+- **M7.3**: Cursor-based pagination — Redis sorted sets (ZADD with timestamp scores), `next_cursor` in responses
+- **M7.4**: Webhook callbacks on run completion — async POST with retry, HMAC signatures
+- **M7.5**: Load testing baseline — k6 scripts, SLO targets, baseline metrics
+
+### Key Sources
+- `services/orchestrator-go/internal/auth/middleware.go` — OIDC claims extraction
+- `services/gateway-go/middleware/auth.go` — CF Access JWT, `UserInfo` struct
+- `services/gateway-go/main.go:214-227` — proxy director (no user header forwarding)
+- `services/orchestrator-go/internal/runstore/redis.go` — Redis hash-based run storage
+- `services/orchestrator-go/internal/scheduler/scheduler.go:671-737` — run completion logic
 
 ## Open Questions
 

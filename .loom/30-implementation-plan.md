@@ -304,6 +304,85 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 ---
 
+### M7: Multi-User & API Maturity
+
+**Goal:** The platform supports user identity, API key authentication, efficient pagination, and completion callbacks. Establish load testing baselines.
+
+#### M7.1 User identity propagation
+- Gateway proxy director forwards `X-User-Email`, `X-User-Name`, `X-User-Groups` headers to orchestrator
+- Orchestrator extracts user from request context (headers or OIDC claims)
+- Add `Owner` field to `types.Run` (string, email)
+- `CreateRun` sets `Owner` from request context
+- `ListRuns` accepts `?owner=` filter, returns only matching runs
+- `Flow.CreatedBy` already exists — enforce it on Create/Update, add filter to `ListFlows`
+- No hard multi-tenant isolation (soft filtering, not RBAC) — keep scope small
+- **Baseline:** Gateway `middleware/auth.go` has `UserInfo` with Email/Groups. Proxy at `main.go:214-227` injects service token but NOT user headers. Orchestrator `internal/auth/middleware.go` extracts OIDC claims. Run type at `pkg/types/run.go` has no Owner field.
+- **Files:** `services/gateway-go/main.go:214-227`, `services/orchestrator-go/pkg/types/run.go`, `services/orchestrator-go/internal/api/handlers.go:118-200`, `services/orchestrator-go/internal/runstore/store.go`
+
+#### M7.2 API key authentication
+- New `apikeys` Redis hash: `apikey:{sha256(key)}` → JSON with `owner`, `name`, `created_at`, `last_used`, `scopes`
+- `POST /api/v1/apikeys` — generate key (returns plaintext once), store hash
+- `DELETE /api/v1/apikeys/{id}` — revoke
+- `GET /api/v1/apikeys` — list (owner filter, no plaintext)
+- Auth middleware accepts `Authorization: Bearer <api_key>` alongside JWT/OIDC
+- API key auth extracts owner email from stored key metadata
+- Rate limiting applies per-key (not just per-IP)
+- **Baseline:** `internal/auth/middleware.go` checks `Enabled` flag, validates OIDC token. No API key path exists.
+- **Files:** `services/orchestrator-go/internal/auth/apikey.go` (new), `services/orchestrator-go/internal/auth/middleware.go`, `services/orchestrator-go/internal/api/routes.go`
+
+#### M7.3 Cursor-based pagination
+- Migrate run index from hash iteration to Redis sorted set: `ZADD runs:index <created_at_unix> <run_id>`
+- `ListRuns` accepts `?cursor=` (base64-encoded `created_at:run_id`) and `?limit=` (default 50)
+- Response includes `next_cursor` field (empty string = no more pages)
+- Apply same pattern to flows (`ZADD flows:index`) and agents (`ZADD agents:index`)
+- Memory backends: sort by CreatedAt, use same cursor semantics
+- Keep backward compatibility: if no `cursor` param, use offset pagination (deprecated)
+- **Baseline:** `ListRuns` returns `[]string` (all IDs), sliced in Go. Redis uses `runs:{id}:meta` hashes + SMembers. No sorted sets. `ListFlows`/`ListAgents` use `ListOptions{Limit, Offset}`.
+- **Files:** `services/orchestrator-go/internal/runstore/redis.go`, `services/orchestrator-go/internal/flowstore/redis.go`, `services/orchestrator-go/internal/registry/redis.go`, `services/orchestrator-go/internal/api/handlers.go`
+
+#### M7.4 Webhook callbacks on run completion
+- Add optional `WebhookURL` and `WebhookSecret` fields to `types.Run` (set at creation or via update)
+- After `checkRunCompletion()` marks run finished, if `WebhookURL` is set:
+  - POST JSON payload: `{run_id, status, started_at, finished_at, outputs, error}`
+  - Include `X-Mentatlab-Signature` header (HMAC-SHA256 of body with secret)
+  - Retry up to 3 times with exponential backoff (1s, 5s, 25s)
+  - Log delivery status, store last attempt result on run metadata
+- **Baseline:** `checkRunCompletion()` at `scheduler.go:671-737` updates store + emits SSE event. No callback mechanism. `TriggerWebhook` in `handlers_m5m6.go` handles inbound triggers (not outbound callbacks).
+- **Files:** `services/orchestrator-go/internal/scheduler/scheduler.go:671-737`, `services/orchestrator-go/internal/scheduler/callback.go` (new), `services/orchestrator-go/pkg/types/run.go`
+
+#### M7.5 Load testing baseline
+- Create `tests/load/` directory with k6 scripts
+- Scenarios:
+  - CRUD throughput: create/list/get runs, flows, agents at increasing RPS
+  - Concurrent execution: start N runs simultaneously, measure completion time
+  - SSE fan-out: N clients subscribing to run events, measure delivery latency
+  - Webhook delivery: measure callback latency and retry behavior
+- Define initial SLO targets:
+  - API CRUD: p99 < 200ms at 100 RPS
+  - Run creation to first event: p99 < 1s
+  - SSE delivery latency: p99 < 500ms
+  - Webhook callback delivery: p99 < 5s
+- Run against local docker-compose and K3s cluster, publish baseline report
+- **Baseline:** No load testing infrastructure exists.
+- **Files:** `tests/load/` (new directory), `tests/load/k6-crud.js`, `tests/load/k6-execution.js`, `tests/load/k6-sse.js`
+
+**Acceptance:** API requests carry user identity and runs have owners. API keys work for programmatic access. List endpoints support cursor pagination with `next_cursor`. Run completion triggers webhook callbacks with HMAC signatures. Load test suite produces reproducible baseline metrics.
+
+---
+
+### M8: Frontend Quality (Future)
+
+**Goal:** Frontend test coverage, accessibility, large DAG performance, and responsive layout.
+
+- Component test coverage to 40%+ (25+ test files)
+- Accessibility audit (axe-core, ARIA, keyboard nav)
+- Large DAG performance (100-node render benchmarks)
+- Responsive layout for mobile monitoring
+- Tracing UI (Issue #7 — Tempo query proxy + waterfall component)
+- **Status:** Not started
+
+---
+
 ## Test Plan
 
 | Milestone | Test Type | What | Tool |
@@ -317,6 +396,11 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 | M3 | Load | Concurrent run execution | k6 or custom |
 | M3 | Security | Auth enforcement, CORS, CSP | Manual + automated |
 | M4 | Acceptance | New developer onboarding | Manual walkthrough |
+| M5 | Integration | Timeout + retry behavior | Go unit tests (`m5m6_test.go`) |
+| M6 | Integration | Gates, webhooks, cron, cloning | Go unit tests (`m5m6_test.go`) |
+| M7 | Unit | API key auth, cursor pagination, callback delivery | Go unit tests |
+| M7 | Load | CRUD throughput, SSE fan-out, concurrent runs | k6 scripts |
+| M7 | Security | API key validation, HMAC signatures, owner isolation | Manual + Go tests |
 
 ## Rollout / Backout
 
@@ -328,23 +412,27 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 ## Acceptance Criteria
 
-1. **M0 Done:** `docker-compose up` and `k8s/deploy.sh` both produce working systems with Go backends
-2. **M1 Done:** End-to-end agent execution visible in the UI
-3. **M2 Done:** Conditional and foreach flows execute correctly
-4. **M3 Done:** Observability, auth, and test coverage targets met
-5. **M4 Done:** 5-minute onboarding for new developers
-6. **M5 Done:** Platform runs on K3s with timeouts, retries, and Grafana dashboards
-7. **M6 Done:** Gates, webhooks, cloning, cron schedules, and frontend controls functional
+1. **M0 Done:** `docker-compose up` and `k8s/deploy.sh` both produce working systems with Go backends ✅
+2. **M1 Done:** End-to-end agent execution visible in the UI ✅
+3. **M2 Done:** Conditional and foreach flows execute correctly ✅
+4. **M3 Done:** Observability, auth, and test coverage targets met ✅
+5. **M4 Done:** 5-minute onboarding for new developers ✅
+6. **M5 Done:** Platform runs on K3s with timeouts, retries, and Grafana dashboards ✅ (deployed, live validation pending)
+7. **M6 Done:** Gates, webhooks, cloning, cron schedules, and frontend controls functional ✅ (deployed, live validation pending)
+8. **M7 Done:** User identity on runs, API key auth, cursor pagination, webhook callbacks, load test baseline
 
 ## Risks / Dependencies
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Go orchestrator's K8s driver has untested edge cases | Medium | High | Test with real K8s cluster in M1.5 |
-| Frontend API contracts don't match Go endpoints | High | Medium | Audit in M1.2, fix mismatches |
-| Data flow between nodes (MinIO) not implemented in Go | Medium | High | Check `internal/dataflow/` in M2.3; may need implementation |
-| CI/CD rework breaks existing deployments | Low | High | Test in staging namespace first |
-| Python agent compatibility with Go orchestrator | Low | Medium | Agent contract is stdin/stdout; should be backend-agnostic |
+| ~~Go orchestrator's K8s driver has untested edge cases~~ | ~~Medium~~ | ~~High~~ | ~~Test with real K8s cluster in M1.5~~ — Mitigated: deployed to K3s |
+| ~~Frontend API contracts don't match Go endpoints~~ | ~~High~~ | ~~Medium~~ | ~~Audit in M1.2, fix mismatches~~ — Resolved: 4 mismatches fixed |
+| ~~CI/CD rework breaks existing deployments~~ | ~~Low~~ | ~~High~~ | ~~Test in staging namespace first~~ — Resolved |
+| Flux reverts CI deploy overrides | Medium | Medium | Solved: use kustomize `images` transformer in Git (not runtime) |
+| Redis sorted set migration breaks existing data | Medium | High | Dual-write during migration, fallback to hash iteration |
+| Gateway→Orchestrator header forwarding breaks auth | Low | Medium | Feature-flag identity propagation, test with auth disabled first |
+| Load testing reveals performance bottleneck | Medium | Medium | Address bottlenecks as M7.5 findings, prioritize in M8 |
+| K8s job driver untested with real agent images | Medium | High | Build echo agent image, test in M5.1 (still pending) |
 
 ## Sources
 

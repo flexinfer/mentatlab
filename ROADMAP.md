@@ -63,26 +63,36 @@ MentatLab is an AI agent orchestration platform with a Mission Control interface
 - mentatctl `dev run`: fixed endpoints, added `--local` subprocess mode with NDJSON parsing, `--watch` for file-change re-runs
 - Tracing UI deferred ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7)) — requires OTLP query backend
 
-### M5: Production Readiness — In Progress
+### M5: Production Readiness — Deployed
 
-Backend implementation complete. Infrastructure validation pending.
+Backend implementation complete. Deployed to K3s. Live validation of K8s job driver and artifact flow pending.
 
 - **M5.1**: K8s job driver validation on real cluster (pending live test)
-- **M5.2**: MinIO data flow end-to-end verification (pending live test)
-- **M5.3**: Run-level timeouts — `Plan.Timeout` field, `ORCH_DEFAULT_RUN_TIMEOUT` env var, context-based cancellation
-- **M5.4**: Configurable per-node retry policies — `RetryPolicy` struct with fixed/exponential/linear backoff
-- **M5.5**: Grafana dashboards — orchestrator + gateway dashboards as ConfigMaps
-- **M5.6**: Full-stack smoke test on K3s (pending cluster deployment)
+- **M5.2**: MinIO data flow end-to-end verification (MinIO deployed, pending artifact test)
+- **M5.3**: Run-level timeouts — `Plan.Timeout` field, `ORCH_DEFAULT_RUN_TIMEOUT` env var ✅
+- **M5.4**: Configurable per-node retry policies — `RetryPolicy` struct with fixed/exponential/linear backoff ✅
+- **M5.5**: Grafana dashboards — orchestrator + gateway dashboards as ConfigMaps ✅
+- **M5.6**: Full-stack smoke test on K3s (services running, full execution test pending)
 
-### M6: Workflow Maturity — In Progress
+### M6: Workflow Maturity — Deployed
 
-Backend implementation complete. Frontend controls implemented. Infrastructure validation pending.
+Backend + frontend complete. Deployed to K3s. All API endpoints verified responsive.
 
-- **M6.1**: Manual approval gates — `gate` node type, `waiting_approval` status, approve/reject endpoints
-- **M6.2**: Webhook triggers — per-flow webhook tokens, `POST /webhooks/trigger/{flowId}` creates and starts runs
-- **M6.3**: Run templates and cloning — `POST /runs/{id}/clone`, `POST /flows/{id}/run` shortcuts
-- **M6.4**: Cron scheduled runs — `CronRunner` with 5-field cron expressions, schedule CRUD endpoints
-- **M6.5**: Frontend polish — GateNode component, retry policy editor, timeout config, clone/re-run buttons
+- **M6.1**: Manual approval gates — `gate` node type, `waiting_approval` status, approve/reject endpoints ✅
+- **M6.2**: Webhook triggers — per-flow webhook tokens, `POST /webhooks/trigger/{flowId}` ✅
+- **M6.3**: Run templates and cloning — `POST /runs/{id}/clone`, `POST /flows/{id}/run` ✅
+- **M6.4**: Cron scheduled runs — `CronRunner` with 5-field cron expressions, schedule CRUD ✅
+- **M6.5**: Frontend polish — GateNode, retry editor, timeout config, clone/re-run buttons ✅
+
+### M7: Multi-User & API Maturity — Planning
+
+User identity, programmatic access, pagination, and completion callbacks.
+
+- **M7.1**: User identity propagation — forward user headers from gateway to orchestrator, add `Owner` to runs
+- **M7.2**: API key authentication — Redis-backed key store, validate alongside JWT/OIDC
+- **M7.3**: Cursor-based pagination — Redis sorted sets with timestamp scores, `next_cursor` responses
+- **M7.4**: Webhook callbacks on run completion — async POST with HMAC signatures, retry logic
+- **M7.5**: Load testing baseline — k6 scripts for CRUD, execution, SSE, with SLO targets
 
 ### Deferred (Future)
 
@@ -93,7 +103,7 @@ These features have zero implementation and are parked for future consideration:
 - **Review System**: Community reviews and moderation ([Issue #10](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/10))
 - **Security Scanning**: Automated vulnerability analysis ([Issue #11](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/11))
 - **WASM Runtime**: Sandboxed execution for agents ([Issue #12](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/12))
-- **Signed Attestations / PKI**: Cryptographic agent manifest verification
+- **Signed Attestations / PKI**: Cryptographic agent manifest verification ([Issue #24](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/24))
 
 ## References
 
@@ -101,6 +111,6 @@ These features have zero implementation and are parked for future consideration:
 |----------|---------|
 | [README.md](README.md) | Project overview |
 | [AGENTS.md](AGENTS.md) | Agent guidance |
-| [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md) | Detailed M0-M6 plan |
+| [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md) | Detailed M0-M7 plan |
 | [.loom/00-index.md](.loom/00-index.md) | Progress tracking |
 | [docs/archive/milestone-specs/](docs/archive/milestone-specs/) | Archived aspirational specs (WASM, PKI, etc.) |

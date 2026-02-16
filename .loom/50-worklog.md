@@ -276,3 +276,47 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S1] `services/frontend/src/data/exampleFlows.ts` - bundled example flows
   - [S2] `services/frontend/src/hooks/useFlowLoader.ts:70-75` - demo mode fallback
   - [S3] `cli/mentatctl/main.py:98-175` - _dev_run_local subprocess execution
+
+## 2026-02-16
+
+### M5-M6: Backend Implementation - DONE
+
+- What changed:
+  - **M5.3 Run timeouts**: Added `Timeout` field to `types.Plan`, `ORCH_DEFAULT_RUN_TIMEOUT` config. `StartRun` creates `context.WithTimeout`. On expiry: cancels tasks, closes gates, marks failed.
+  - **M5.4 Retry policies**: Added `RetryPolicy` struct with `MaxRetries`, `BackoffType` (fixed/exponential/linear), `BackoffBase`, `BackoffMax`. `resolveRetryPolicy()` resolves node-level overrides.
+  - **M5.5 Grafana dashboards**: Two ConfigMaps in `k8s/grafana-dashboards.yaml` — orchestrator (11 panels) and gateway (5 panels).
+  - **M6.1 Gate nodes**: `GateConfig` type, `waiting_approval` status, `executeGate` with approval channels, auto-timeout, approve/reject REST endpoints.
+  - **M6.2 Webhooks**: `WebhookToken` on Flow, `POST /webhooks` generates token, `POST /webhooks/trigger/{flowId}` validates and starts run.
+  - **M6.3 Run cloning**: `POST /runs/{id}/clone`, `POST /flows/{id}/run`. `FlowID`/`ParentRunID` lineage.
+  - **M6.4 Cron**: `CronRunner` goroutine, 5-field parser, schedule CRUD.
+  - **M6.5 Frontend**: GateNode component, retry policy editor, timeout config, clone/re-run buttons, gate conversion in WorkspaceProvider, new API client methods.
+- Tests: 13 tests in `m5m6_test.go` (timeouts, retries, gates, cron) — all passing. Full suite passes.
+- Sources:
+  - [S1] `services/orchestrator-go/internal/scheduler/scheduler.go` - timeout + gate execution
+  - [S2] `services/orchestrator-go/internal/api/handlers_m5m6.go` - all M5-M6 API handlers
+  - [S3] `services/orchestrator-go/internal/api/routes.go:91-109` - new routes
+  - [S4] `services/orchestrator-go/internal/scheduler/cron.go` - CronRunner
+  - [S5] `services/frontend/src/nodes/GateNode.tsx` - gate node component
+
+### Deploy to K3s Cluster - DONE (4 fixes)
+
+- **Fix 1 — Image tags**: Flux reconciles from Git, reverting CI's runtime `kustomize edit set image` overrides. Manifests had `:v0.0.0-placeholder` which doesn't exist in Harbor.
+  - Fix: Added `images` transformer to `k8s/kustomization.yaml` overriding all 4 images to `:latest` (always pushed by CI).
+  - Source: `k8s/kustomization.yaml:21-32` — images transformer
+- **Fix 2 — imagePullPolicy**: `:latest` with `IfNotPresent` serves stale cached images. Nodes had old builds cached.
+  - Fix: Changed `imagePullPolicy: Always` for all Harbor images (orchestrator, gateway, frontend, echoagent).
+  - Source: `k8s/orchestrator.yaml:46`, `k8s/gateway.yaml:45`, `k8s/frontend.yaml:45`, `k8s/echoagent.yaml:30`
+- **Fix 3 — MinIO network policies**: `default-deny-all` NetworkPolicy blocked all MinIO ingress and bucket-init job egress.
+  - Fix: Added `minio-policy` (allows ingress from orchestrator + bucket-init) and `minio-init-policy` (allows job egress to MinIO).
+  - Source: `k8s/network-policies.yaml` — 2 new policies
+- **Fix 4 — Frontend nginx volumes**: `readOnlyRootFilesystem: true` prevented nginx from writing to `/var/cache/nginx/`. Old Vite-specific emptyDir mounts wrong paths.
+  - Fix: Replaced Vite volumes (`/home/node/.cache`, `/app/node_modules/.vite-temp`) with nginx paths (`/var/cache/nginx`, `/var/run`).
+  - Source: `k8s/frontend.yaml:86-99` — nginx volume mounts
+- **MinIO credentials**: Created `minio-credentials` secret in mentatlab namespace for MINIO_ACCESS_KEY/MINIO_SECRET_KEY.
+- **Grafana dashboards**: Applied ConfigMaps to monitoring namespace.
+- Final state: All pods Running, Flux `Ready: True`, MinIO bucket created, M5-M6 API endpoints verified working (`/api/v1/schedules` returns `{"count":0,"schedules":[]}`).
+- Sources:
+  - [S1] Commits: `261a6b1` (image tags), `fa4b9e1` (network policies), `85c0996` (imagePullPolicy), `1f659b0` (nginx volumes)
+  - [S2] Pipeline 1148 — all stages green (lint, test, build, e2e, deploy)
+  - [S3] `kubectl get pods -n mentatlab` — all pods 1/1 Running
+  - [S4] `kubectl get kustomization mentatlab -n flux-system` — `Ready: True`
