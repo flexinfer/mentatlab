@@ -27,7 +27,7 @@ spec:
       containers:
         - name: echoagent
           image: registry.harbor.lan/library/mentatlab-echoagent:v0.0.0-placeholder
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8082
               name: http

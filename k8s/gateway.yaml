@@ -42,7 +42,7 @@ spec:
       containers:
         - name: gateway
           image: registry.harbor.lan/library/mentatlab-gateway-go:v0.0.0-placeholder
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               name: http
