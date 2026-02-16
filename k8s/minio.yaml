@@ -117,7 +117,8 @@ metadata:
   labels:
     app: minio
 spec:
-  backoffLimit: 3
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
   template:
     spec:
       restartPolicy: OnFailure
