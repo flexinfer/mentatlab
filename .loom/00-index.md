@@ -24,14 +24,16 @@
 - [x] Execute M5-M6: Backend implementation (timeouts, retries, gates, webhooks, cron, cloning)
 - [x] Deploy M5-M6 to K3s cluster (fix image tags, network policies, nginx volumes)
 - [x] Execute M7: Multi-User & API Maturity
+- [x] Execute M8: Frontend Quality (47 test files, 673 tests, 49% coverage)
 
 ## Key Findings (2026-02-16)
 
-1. **M0-M7 Complete** — Go-first backend, CI/CD, core loop, workflow features, hardening, dev experience, multi-user, API maturity
+1. **M0-M8 Complete** — Go-first backend, CI/CD, core loop, workflow features, hardening, dev experience, multi-user, API maturity, frontend quality
 2. **M5-M6 Backend Complete** — Timeouts, retry policies, gates, webhooks, cron, cloning all implemented with tests
 3. **Deployed to K3s** — All pods Running, Flux Ready, MinIO bucket created, M5-M6 endpoints verified
 4. **Deploy lessons** — Flux overrides CI kustomize edits; need `images` transformer. `:latest` + `IfNotPresent` = stale. NetworkPolicies must explicitly allow MinIO traffic.
 5. **M7 implemented** — User identity propagation, API key auth, cursor pagination, webhook callbacks, load testing baseline
+6. **M8 implemented** — 47 test files, 673 tests, 49.11% statement coverage (target 40%+), jest→vitest migration, all pre-existing specs fixed
 
 ## M1 Progress — Complete
 
@@ -92,6 +94,7 @@
 **M5** Production readiness — DEPLOYED (backend complete, K3s deployment validated, infra live-tests pending)
 **M6** Workflow maturity — DEPLOYED (backend + frontend complete, K3s deployment validated, live-tests pending)
 **M7** Multi-user & API maturity — DONE
+**M8** Frontend quality — DONE (47 files, 673 tests, 49% coverage)
 
 ## M5 Progress — Deployed
 

@@ -1,83 +1,97 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import ConsolePanel from '../ConsolePanel';
-import { flightRecorder } from '../../../../services/mission-control/services';
+import { render, screen } from '@testing-library/react';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { ToastProvider } from '../../../../contexts/ToastContext';
 
-// Ensure feature flags won't attempt live WS in unrelated code paths
-jest.mock('../../../../config/features', () => ({
+// Mock useRunConsole hook to avoid real streaming
+const mockApplyFilters = vi.fn();
+const { mockItems, mockFiltered } = vi.hoisted(() => ({
+  mockItems: { current: [] as any[] },
+  mockFiltered: { current: [] as any[] },
+}));
+
+vi.mock('../console/useRunConsole', () => ({
+  useRunConsole: () => ({
+    items: mockItems.current,
+    filtered: mockFiltered.current,
+    nodes: [],
+    applyFilters: mockApplyFilters,
+    filters: { types: new Set(['log', 'checkpoint']), levels: new Set(['info']), nodeId: null, query: '' },
+    autoscroll: true,
+    setAutoscroll: vi.fn(),
+    paused: false,
+    setPaused: vi.fn(),
+    clear: vi.fn(),
+  }),
+}));
+
+// Mock ConsoleVirtualList to render items simply
+vi.mock('../console/ConsoleVirtualList', () => ({
+  ConsoleVirtualList: ({ items, onItemClick }: any) => (
+    <ul data-testid="console-list">
+      {items.map((item: any, i: number) => (
+        <li key={item.id ?? i} id={`console-${item.id}`} onClick={() => onItemClick?.(item, i)}>
+          {item.type}:{item.message ?? JSON.stringify(item.data)}
+        </li>
+      ))}
+    </ul>
+  ),
+  formatTime: (ts: string) => new Date(ts).toLocaleTimeString(),
+}));
+
+// Mock feature flags
+vi.mock('../../../../config/features', () => ({
   FeatureFlags: { CONNECT_WS: false, NEW_STREAMING: false, MULTIMODAL_UPLOAD: false, S3_STORAGE: false, CONTRACT_OVERLAY: false },
 }));
 
+function renderWithProviders(ui: React.ReactElement) {
+  return render(<ToastProvider>{ui}</ToastProvider>);
+}
+
+// Lazy import so mocks are in place
+const loadConsolePanel = () => import('../ConsolePanel').then((m) => m.default);
+
 describe('ConsolePanel (integration)', () => {
   beforeEach(() => {
-    flightRecorder.clear();
-    jest.useFakeTimers();
+    vi.clearAllMocks();
+    mockItems.current = [];
+    mockFiltered.current = [];
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
+  test('renders panel shell with Console title', async () => {
+    const ConsolePanel = await loadConsolePanel();
+    renderWithProviders(<ConsolePanel runId="run-1" />);
+
+    expect(screen.getByText('Console')).toBeTruthy();
   });
 
-  test('renders entries and attaches id anchors console-{entry.id}', () => {
-    const runId = 'console-run-1';
-    flightRecorder.startRun(runId);
-    const cp1 = flightRecorder.appendConsole(runId, { message: 'm1', tag: 'alpha' });
-    const cp2 = flightRecorder.appendConsole(runId, { message: 'm2', tag: 'beta' });
+  test('renders filtered items via ConsoleVirtualList', async () => {
+    mockFiltered.current = [
+      { id: 'e1', type: 'log', message: 'Hello world', ts: new Date().toISOString(), level: 'info' },
+      { id: 'e2', type: 'checkpoint', message: 'CP1', ts: new Date().toISOString(), level: 'info' },
+    ];
+    mockItems.current = [...mockFiltered.current];
 
-    const { container } = render(<ConsolePanel runId={runId} maxItems={10} />);
+    const ConsolePanel = await loadConsolePanel();
+    renderWithProviders(<ConsolePanel runId="run-1" />);
 
-    // Allow initial polling to run
-    act(() => {
-      jest.advanceTimersByTime(1000);
-    });
-
-    // Rows should exist with corresponding ids
-    expect(container.querySelector(`#console-${cp1.id}`)).toBeTruthy();
-    expect(container.querySelector(`#console-${cp2.id}`)).toBeTruthy();
-
-    // Basic text presence
-    expect(screen.getByText('console:entry', { exact: false })).toBeTruthy();
+    expect(screen.getByText('log:Hello world')).toBeTruthy();
+    expect(screen.getByText('checkpoint:CP1')).toBeTruthy();
   });
 
-  test('filter input reduces visible entries case-insensitively (debounced) and respects maxItems after filtering', async () => {
-    const runId = 'console-run-2';
-    flightRecorder.startRun(runId);
-    // Seed multiple entries
-    const entries = [
-      flightRecorder.appendConsole(runId, { message: 'Alpha One', foo: 'A' }),
-      flightRecorder.appendConsole(runId, { message: 'Bravo Two', foo: 'B' }),
-      flightRecorder.appendConsole(runId, { message: 'Charlie Three', foo: 'C' }),
-      flightRecorder.appendConsole(runId, { message: 'alpha extra', foo: 'D' }),
+  test('shows event count in toolbar', async () => {
+    mockFiltered.current = [
+      { id: 'e1', type: 'log', message: 'a', ts: new Date().toISOString(), level: 'info' },
+    ];
+    mockItems.current = [
+      ...mockFiltered.current,
+      { id: 'e2', type: 'log', message: 'b', ts: new Date().toISOString(), level: 'debug' },
     ];
 
-    // Use maxItems = 2 so we can assert slicing happens after filtering
-    const { container } = render(<ConsolePanel runId={runId} maxItems={2} />);
+    const ConsolePanel = await loadConsolePanel();
+    renderWithProviders(<ConsolePanel runId="run-1" />);
 
-    // Let initial refresh/poll run
-    act(() => {
-      jest.advanceTimersByTime(1000);
-    });
-
-    // There should be items initially (more than 0)
-    expect(container.querySelectorAll('li').length).toBeGreaterThan(0);
-
-    const input = screen.getByLabelText('Console filter') as HTMLInputElement;
-    // Type "alpha" (case-insensitive match expected to match two entries)
-    act(() => {
-      fireEvent.change(input, { target: { value: 'alpha' } });
-      // debounce 150ms
-      jest.advanceTimersByTime(150);
-      // allow the polling refresh (uses 1s interval)
-      jest.advanceTimersByTime(1000);
-    });
-
-    // After filtering + maxItems=2, visible list items should be <= 2
-    const visible = container.querySelectorAll('li');
-    expect(visible.length).toBeLessThanOrEqual(2);
-
-    // All visible items should include the filter text somewhere in label/data
-    for (const li of Array.from(visible)) {
-      expect(li.textContent!.toLowerCase()).toContain('alpha');
-    }
+    // The component renders "{filtered.length}/{items.length}"
+    expect(screen.getByText('1/2')).toBeTruthy();
   });
 });

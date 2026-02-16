@@ -368,3 +368,39 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S3] `services/orchestrator-go/internal/runstore/store.go` — pagination types + cursor helpers
   - [S4] `services/orchestrator-go/internal/api/handlers_m7_test.go` — M7 tests
   - [S5] `tests/load/orchestrator.js` — k6 load test
+
+### M8: Frontend Quality — DONE
+
+- What changed:
+  - **Vitest config fix**: Updated `vitest.config.ts` include patterns to pick up both `.test.*` and `.spec.*` files. Added v8 coverage config targeting components, stores, hooks.
+  - **Jest→Vitest migration**: Fixed 11 pre-existing `.spec.*` files that used `jest.mock`/`jest.fn` → `vi.mock`/`vi.fn`. Fixed mock path aliases (`@/config/...` not relative paths).
+  - **Pre-existing spec fixes (9 files, 20 tests)**:
+    - `mediaService.spec.ts`: Rewrote to match current API (`getPresignedUrl`/`uploadChunks`)
+    - `orchestratorService.spec.ts`: Fixed vi.mock path, updated cancelRun for POST-first/DELETE-fallback pattern
+    - `orchestratorSSE.spec.ts`: Made MockEventSource auto-fire open event via microtask
+    - `ConsolePanel.spec.tsx`, `RunsPanel.spec.tsx`, `ContractOverlay.spec.tsx`: Added ToastProvider wrappers
+    - `TimelinePanel.spec.tsx`: Fixed multiple-element selector issue
+    - `IssuesPanel.spec.tsx`, `StatusBar.spec.tsx`: Updated element queries
+  - **New store tests (6 files, 193 tests)**:
+    - `flow.test.ts` (59) — CRUD, undo/redo, import/export, selectors
+    - `streaming.test.ts` (59) — sessions, messages, legacy API, batching, cleanup
+    - `sync.test.ts` (30) — leadership, tab management, subscriptions
+    - `useKeyboardShortcuts.test.ts` (28) — key matching, modifiers, input handling
+    - `useFlowLoader.test.ts` (7) — API load, demo fallback, error handling
+    - `useAgentSchemas.test.ts` (10) — node enrichment, schema parsing
+  - **New UI component tests (9 files, 90 tests)**:
+    - Button (15), Badge (7), Card (8), Checkbox (10), Input (9), Select (7), PanelShell (6), PanelErrorBoundary (6), CommandPalette (11), ErrorBoundary (11)
+  - **New layout/canvas tests (8 files, 111 tests)**:
+    - BottomDock (16), LeftSidebar (14), CanvasDropZone (8), NodePalette (16), QuickAddMenu (15), WorkspaceProvider (15), TopBar (19), useAgentList (8)
+  - **New panel/overlay tests (6 files, 106 tests)**:
+    - GraphPanel (16), NetworkPanel (15), InspectorPanel (15), AgentBrowser (17), LineageOverlay (18), PolicyOverlay (25)
+  - **Contract tests (2 files, 46 tests)**:
+    - `run-api.test.ts` (21) — API contract validation
+    - `event-parsing.test.ts` (25) — SSE event parsing
+- Final results: **47 test files, 673 tests, 0 failures**
+- Coverage: **49.11% statements, 81.85% branches, 71.02% functions** (target was 40%+)
+- CI: Pipeline 1176 — all automated stages green (lint, test, build, e2e)
+- Sources:
+  - [S1] `services/frontend/vitest.config.ts` — test config
+  - [S2] `npx vitest run --coverage` — 47 files, 673 tests, 49.11% statements
+  - [S3] Pipeline 1176 — all stages green

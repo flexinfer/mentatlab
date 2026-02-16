@@ -1,3 +1,4 @@
+import { describe, test, expect, vi } from 'vitest';
 import { FlowLinterService } from '../services';
 
 describe('FlowLinterService (unit)', () => {
@@ -33,13 +34,13 @@ describe('FlowLinterService (unit)', () => {
       fix: { id: 'fx-1', title: 'Fix it', action: 'do-fix' },
     } as any;
 
-    const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
     const result = svc.applyQuickFix(flow, issue);
     expect(result).toBe(flow);
     // Expect the debug log to have been called with the applyQuickFix tag and an object
     expect(debugSpy).toHaveBeenCalled();
     // Ensure the alias delegates to applyQuickFix
-    const applyQuickFixSpy = jest.spyOn(svc, 'applyQuickFix');
+    const applyQuickFixSpy = vi.spyOn(svc, 'applyQuickFix');
     const res2 = svc.applyFix(flow, issue);
     expect(applyQuickFixSpy).toHaveBeenCalledWith(flow, issue);
     expect(res2).toBe(flow);

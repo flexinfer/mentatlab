@@ -16,12 +16,17 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/setupTests.ts',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/**/*.spec.ts', 'src/**/*.spec.tsx'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
       '**/e2e/**',
-      '**/*.spec.ts',
     ],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'text-summary', 'lcov'],
+      include: ['src/components/**', 'src/stores/**', 'src/hooks/**'],
+      exclude: ['**/__tests__/**', '**/*.test.*', '**/*.spec.*', '**/e2e/**'],
+    },
   },
 });

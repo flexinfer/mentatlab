@@ -50,6 +50,7 @@
     "@rollup/plugin-commonjs": "^28.0.9",
     "@tailwindcss/postcss": "^4.1.11",
     "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/user-event": "^14.6.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.10.0",
     "@types/testing-library__user-event": "^4.1.1",

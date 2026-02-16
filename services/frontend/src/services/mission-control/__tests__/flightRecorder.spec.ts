@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { flightRecorder } from '../../mission-control/services';
 
 describe('FlightRecorderService', () => {
@@ -29,7 +30,7 @@ describe('FlightRecorderService', () => {
     flightRecorder.startRun(runId);
     const cp = flightRecorder.appendConsole(runId, { message: 'select-me' });
 
-    const listener = jest.fn();
+    const listener = vi.fn();
     const unsub = flightRecorder.onSelect(listener);
 
     flightRecorder.selectCheckpoint(runId, cp.id);
@@ -46,7 +47,7 @@ describe('FlightRecorderService', () => {
     flightRecorder.startRun(runId);
     const cp = flightRecorder.appendConsole(runId, { message: 'keep-out' });
 
-    const listener = jest.fn();
+    const listener = vi.fn();
     const unsub = flightRecorder.onSelect(listener);
 
     // Unknown run
