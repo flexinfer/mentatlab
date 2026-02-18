@@ -96,7 +96,7 @@
 **M6** Workflow maturity — DEPLOYED (backend + frontend complete, K3s deployment validated, live-tests pending)
 **M7** Multi-user & API maturity — DONE
 **M8** Frontend quality — DONE (47 files, 673 tests, 49% coverage)
-**M9** Observability & tracing UI — PLANNING (span enrichment, trace-to-run correlation, waterfall panel)
+**M9** Observability & tracing UI — IN PROGRESS (M9.1-M9.5 complete: spans, correlation, Tempo, trace proxy. M9.6 pending: waterfall UI)
 
 ## M5 Progress — Deployed
 

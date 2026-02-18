@@ -389,41 +389,40 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 **Goal:** Rich distributed tracing with deep span coverage, trace-to-run correlation, and a visual trace explorer in the MentatLab UI.
 
-#### M9.1 Scheduler span enrichment
-- Add OTel spans to all scheduler execution paths that currently lack instrumentation:
+#### M9.1 Scheduler span enrichment — Complete
+- Added OTel spans to all scheduler execution paths:
   - `executeConditional` — with `expression`, `selected_branch` attributes
   - `executeForEach` — with `collection_size`, `max_parallel` attributes
   - `executeLoopBody` — with `iteration_index`, `body_node_count` attributes
   - `executeGate` — with `gate_timeout`, `decision` attributes
   - `onNodeFinished` — with `exit_code`, `will_retry` attributes
   - `checkRunCompletion` — with `final_status`, `node_count` attributes
-  - `handleRunTimeout` — with `timeout_duration` attribute
+  - `handleRunTimeout` — with `reason`, `timeout_duration` attributes
   - `captureNodeOutputs` — with `output_count` attribute
   - `buildExprEnvironment` — with `predecessor_count` attribute
-- **Baseline:** Only 2 scheduler spans exist: `scheduler.StartRun`, `scheduler.scheduleNode`
 - **Files:** `services/orchestrator-go/internal/scheduler/scheduler.go`, `conditional.go`, `foreach.go`
 
-#### M9.2 API + callback span enrichment
-- Add OTel spans to remaining API handlers:
-  - `ListRuns`, `GetRun`, `DeleteRun`
+#### M9.2 API + callback span enrichment — Complete
+- Added OTel spans to all remaining API handlers:
+  - `ListRuns`, `GetRun`, `DeleteRun`, `CancelRun`
   - `CreateFlow`, `ListFlows`, `GetFlow`, `UpdateFlow`, `DeleteFlow`
-  - `RegisterAgent`, `ListAgents`, `GetAgent`, `UpdateAgent`, `DeleteAgent`
+  - `CreateAgent`, `ListAgents`, `GetAgent`, `UpdateAgent`, `DeleteAgent`
   - `ApproveGate`, `RejectGate`
-  - `TriggerWebhook`, `CloneRun`, `RunFlow`
+  - `CreateWebhook`, `TriggerWebhook`, `CloneRun`, `RunFlow`
   - `CreateSchedule`, `ListSchedules`, `GetSchedule`, `DeleteSchedule`
   - `CreateAPIKey`, `ListAPIKeys`, `RevokeAPIKey`
-- Add spans to webhook callback delivery:
-  - `fireWebhookCallback` — with `run_id`, `webhook_url` attributes
-  - `deliverWebhook` — with `attempt`, `status_code` attributes
-- **Baseline:** Only 3 API spans exist: `api.CreateRun`, `api.StartRun`, `api.StreamEvents`
+- Added spans to webhook callback delivery:
+  - `fireWebhookCallback` — with `run_id`, `webhook_url`, `webhook_configured` attributes
+  - `deliverWebhook` — with `attempts`, `status_code`, `delivery_failed` attributes
 - **Files:** `services/orchestrator-go/internal/api/handlers.go`, `handlers_m5m6.go`, `handlers_apikey.go`, `services/orchestrator-go/internal/scheduler/callback.go`
 
-#### M9.3 Run↔Trace correlation
-- Extract trace_id from OTel span context in `StartRun` and store on Run metadata (`Run.TraceID` field)
-- Return `trace_id` in GET `/api/v1/runs/{id}` response
-- Add `trace_id` to SSE run events (run_started, run_completed)
-- Frontend displays trace_id on run detail view
-- **Files:** `services/orchestrator-go/pkg/types/run.go`, `internal/scheduler/scheduler.go`, `internal/api/handlers.go`
+#### M9.3 Run↔Trace correlation — Complete
+- `TraceID` field added to `types.Run` and `types.RunMeta`
+- `SetRunTraceID()` on `RunStore` interface, implemented in memory + Redis backends
+- `StartRun` captures trace_id from OTel span context and stores on run
+- `trace_id` returned in GET `/api/v1/runs/{id}` response
+- `trace_id` included in SSE status events (`emitRunStatus`) for frontend correlation
+- **Files:** `services/orchestrator-go/pkg/types/run.go`, `internal/runstore/store.go`, `internal/runstore/memory.go`, `internal/runstore/redis.go`, `internal/scheduler/scheduler.go`
 
 #### M9.4 Local dev Tempo — Complete
 - Added Grafana Tempo 2.6.1 container to `docker-compose.yml` and `docker-compose.dev.yml`

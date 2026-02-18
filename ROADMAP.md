@@ -106,15 +106,15 @@ Component test coverage, vitest migration, and contract tests.
 - **M8.6**: Contract tests — run API validation (21), SSE event parsing (25) ✅
 - **Results**: 47 test files, 673 tests, 49% statement coverage (target 40%+)
 
-### M9: Observability & Tracing UI — Planning
+### M9: Observability & Tracing UI — In Progress
 
 Deep span instrumentation, trace-to-run correlation, and visual trace exploration in the UI.
 
-- **M9.1**: Scheduler span enrichment — add spans to executeConditional, executeForEach, executeLoopBody, executeGate, onNodeFinished, checkRunCompletion, handleRunTimeout, captureNodeOutputs, buildExprEnvironment
-- **M9.2**: API + callback spans — add spans to remaining API handlers (CRUD, gates, webhooks, schedules), fireWebhookCallback, deliverWebhook
-- **M9.3**: Run↔Trace correlation — store trace_id on Run metadata at StartRun, expose in GET /runs/{id} response
-- **M9.4**: Local dev Tempo — add Tempo container to docker-compose, enable tracing env vars, verify spans arrive
-- **M9.5**: Trace query proxy — gateway endpoint `/api/v1/traces/{traceID}` proxying Tempo HTTP API ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7))
+- **M9.1**: Scheduler span enrichment — spans on executeConditional, executeForEach, executeLoopBody, executeGate, onNodeFinished, checkRunCompletion, handleRunTimeout, captureNodeOutputs, buildExprEnvironment ✅
+- **M9.2**: API + callback spans — spans on all remaining API handlers (CRUD, gates, webhooks, schedules, API keys), fireWebhookCallback, deliverWebhook ✅
+- **M9.3**: Run↔Trace correlation — `TraceID` field on Run/RunMeta, stored at StartRun, returned in GET /runs/{id} and SSE status events ✅
+- **M9.4**: Local dev Tempo — Tempo 2.6.1 + Grafana 11.4.0 in docker-compose, auto-provisioned Tempo datasource ✅
+- **M9.5**: Trace query proxy — gateway `GET /api/v1/traces/{traceID}` and `GET /api/v1/traces?run_id={runID}` proxying Tempo HTTP API ✅ ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7))
 - **M9.6**: Trace waterfall UI — frontend panel showing span hierarchy as waterfall timeline with service name, operation, duration, status
 
 ### Deferred (Future)
