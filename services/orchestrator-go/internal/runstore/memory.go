@@ -19,6 +19,7 @@ type memoryRun struct {
 	id          string
 	name        string
 	owner         string
+	traceID       string
 	webhookURL    string
 	webhookSecret string
 	plan          *types.Plan
@@ -115,6 +116,7 @@ func (s *MemoryStore) GetRunMeta(ctx context.Context, runID string) (*types.RunM
 		ID:         run.id,
 		Name:       run.name,
 		Owner:      run.owner,
+		TraceID:    run.traceID,
 		Status:     run.status,
 		StartedAt:  run.startedAt,
 		FinishedAt: run.finishedAt,
@@ -140,6 +142,7 @@ func (s *MemoryStore) GetRun(ctx context.Context, runID string) (*types.Run, err
 		ID:            run.id,
 		Name:          run.name,
 		Owner:         run.owner,
+		TraceID:       run.traceID,
 		WebhookURL:    run.webhookURL,
 		WebhookSecret: run.webhookSecret,
 		Status:        run.status,
@@ -194,6 +197,21 @@ func (s *MemoryStore) SetRunWebhook(ctx context.Context, runID, webhookURL, webh
 	run.mu.Lock()
 	run.webhookURL = webhookURL
 	run.webhookSecret = webhookSecret
+	run.mu.Unlock()
+	return nil
+}
+
+func (s *MemoryStore) SetRunTraceID(ctx context.Context, runID, traceID string) error {
+	s.mu.RLock()
+	run, ok := s.runs[runID]
+	s.mu.RUnlock()
+
+	if !ok {
+		return ErrRunNotFound
+	}
+
+	run.mu.Lock()
+	run.traceID = traceID
 	run.mu.Unlock()
 	return nil
 }

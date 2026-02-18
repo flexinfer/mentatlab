@@ -190,6 +190,13 @@ func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
 	)
 	defer span.End()
 
+	// Capture OTel trace ID and store on the run for correlation
+	if traceID := span.SpanContext().TraceID(); traceID.IsValid() {
+		if err := s.store.SetRunTraceID(ctx, runID, traceID.String()); err != nil {
+			s.logger.Warn("failed to set trace ID on run", slog.String("run_id", runID), slog.Any("error", err))
+		}
+	}
+
 	s.runsMu.Lock()
 	rctx, exists := s.runs[runID]
 	s.runsMu.Unlock()
@@ -334,9 +341,20 @@ func (s *Scheduler) runLoop(ctx context.Context, rctx *runContext) {
 
 // handleRunTimeout cancels active tasks and marks the run as failed due to timeout.
 func (s *Scheduler) handleRunTimeout(ctx context.Context, rctx *runContext, err error) {
+	_, span := tracer.Start(context.Background(), "scheduler.handleRunTimeout",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+		),
+	)
+	defer span.End()
+
 	reason := "timeout"
 	if err == context.Canceled {
 		reason = "cancelled"
+	}
+	span.SetAttributes(attribute.String("reason", reason))
+	if rctx.planTimeout > 0 {
+		span.SetAttributes(attribute.String("timeout_duration", rctx.planTimeout.String()))
 	}
 
 	s.logger.Warn("run terminated",
@@ -542,6 +560,15 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 
 // onNodeFinished handles node completion - success, failure, or retry.
 func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID string, exitCode int) {
+	_, span := tracer.Start(ctx, "scheduler.onNodeFinished",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+			attribute.String("node_id", nodeID),
+			attribute.Int("exit_code", exitCode),
+		),
+	)
+	defer span.End()
+
 	spec := rctx.nodeSpecs[nodeID]
 	finishedAt := time.Now().UTC()
 
@@ -577,7 +604,9 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 	} else {
 		// Failure - check if we should retry
 		maxRetries, backoffSec := s.resolveRetryPolicy(spec, attempts)
-		if attempts < maxRetries {
+		willRetry := attempts < maxRetries
+		span.SetAttributes(attribute.Bool("will_retry", willRetry))
+		if willRetry {
 			// Update state back to pending for retry
 			newState := &types.NodeState{
 				NodeID:     nodeID,
@@ -670,6 +699,14 @@ func (s *Scheduler) resolveRetryPolicy(spec *types.NodeSpec, attempt int) (maxRe
 
 // checkRunCompletion determines if the run is complete and emits final status.
 func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bool {
+	_, span := tracer.Start(ctx, "scheduler.checkRunCompletion",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+			attribute.Int("node_count", len(rctx.nodeSpecs)),
+		),
+	)
+	defer span.End()
+
 	// Check cancelled
 	rctx.cancelledMu.Lock()
 	cancelled := rctx.cancelled
@@ -680,6 +717,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 	rctx.tasksMu.Unlock()
 
 	if cancelled && activeTasks == 0 {
+		span.SetAttributes(attribute.String("final_status", "cancelled"))
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
@@ -716,6 +754,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 
 	// All nodes resolved (succeeded + skipped)
 	if succeeded+skipped == total {
+		span.SetAttributes(attribute.String("final_status", "succeeded"))
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusSucceeded, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "succeeded")
@@ -727,6 +766,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 
 	// Failed with no hope of completion (no running, pending, or waiting nodes)
 	if failed > 0 && running == 0 && pending == 0 && waiting == 0 {
+		span.SetAttributes(attribute.String("final_status", "failed"))
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
@@ -757,10 +797,15 @@ func (s *Scheduler) emitEvent(ctx context.Context, runID, eventType string, data
 }
 
 func (s *Scheduler) emitRunStatus(ctx context.Context, runID, status string) {
-	s.emitEvent(ctx, runID, "status", map[string]interface{}{
+	data := map[string]interface{}{
 		"runId":  runID,
 		"status": status,
-	}, "", "")
+	}
+	// Include trace_id in status events for frontend correlation
+	if traceID := trace.SpanContextFromContext(ctx).TraceID(); traceID.IsValid() {
+		data["trace_id"] = traceID.String()
+	}
+	s.emitEvent(ctx, runID, "status", data, "", "")
 }
 
 func (s *Scheduler) emitNodeStatus(ctx context.Context, runID, nodeID, status string, extra map[string]interface{}) {
@@ -780,6 +825,14 @@ func (s *Scheduler) emitNodeStatus(ctx context.Context, runID, nodeID, status st
 // downstream nodes to access predecessor outputs through the expression
 // environment (e.g., inputs.node_id.field).
 func (s *Scheduler) captureNodeOutputs(ctx context.Context, runID, nodeID string) {
+	_, span := tracer.Start(ctx, "scheduler.captureNodeOutputs",
+		trace.WithAttributes(
+			attribute.String("run_id", runID),
+			attribute.String("node_id", nodeID),
+		),
+	)
+	defer span.End()
+
 	events, err := s.store.GetEventsSince(ctx, runID, "")
 	if err != nil {
 		s.logger.Warn("failed to read events for output capture",
@@ -826,6 +879,8 @@ func (s *Scheduler) captureNodeOutputs(ctx context.Context, runID, nodeID string
 		}
 	}
 
+	span.SetAttributes(attribute.Int("output_count", len(outputs)))
+
 	if len(outputs) == 0 {
 		return
 	}
@@ -840,7 +895,18 @@ func (s *Scheduler) captureNodeOutputs(ctx context.Context, runID, nodeID string
 
 // executeGate blocks a node until external approval or rejection (or timeout).
 func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID string, spec *types.NodeSpec) {
+	ctx, span := tracer.Start(ctx, "scheduler.executeGate",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+			attribute.String("node_id", nodeID),
+		),
+	)
+	defer span.End()
+
 	gate := spec.Gate
+	if gate.Timeout > 0 {
+		span.SetAttributes(attribute.String("gate_timeout", gate.Timeout.String()))
+	}
 
 	// Create a channel for approval signals
 	ch := make(chan string, 1)
@@ -898,6 +964,8 @@ func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID st
 		// Run cancelled or timed out
 		return
 	}
+
+	span.SetAttributes(attribute.String("decision", decision))
 
 	exitCode := 0
 	if decision == "reject" {

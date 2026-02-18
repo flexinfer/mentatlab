@@ -6,7 +6,7 @@
 - MCP inventory: `00-mcp-inventory.md`
 - **Assessment: `10-research.md`** - Full codebase audit with sourced findings
 - Product spec: `20-product-spec.md`
-- **Implementation plan: `30-implementation-plan.md`** - M0-M4 milestone plan
+- **Implementation plan: `30-implementation-plan.md`** - M0-M9 milestone plan
 - **Decisions: `40-decisions.md`** - Go-first, archive aspirational specs, keep agents
 - Worklog: `50-worklog.md`
 
@@ -25,8 +25,9 @@
 - [x] Deploy M5-M6 to K3s cluster (fix image tags, network policies, nginx volumes)
 - [x] Execute M7: Multi-User & API Maturity
 - [x] Execute M8: Frontend Quality (47 test files, 673 tests, 49% coverage)
+- [ ] Execute M9: Observability & Tracing UI (span enrichment → trace query → waterfall UI)
 
-## Key Findings (2026-02-16)
+## Key Findings (2026-02-17)
 
 1. **M0-M8 Complete** — Go-first backend, CI/CD, core loop, workflow features, hardening, dev experience, multi-user, API maturity, frontend quality
 2. **M5-M6 Backend Complete** — Timeouts, retry policies, gates, webhooks, cron, cloning all implemented with tests
@@ -95,6 +96,7 @@
 **M6** Workflow maturity — DEPLOYED (backend + frontend complete, K3s deployment validated, live-tests pending)
 **M7** Multi-user & API maturity — DONE
 **M8** Frontend quality — DONE (47 files, 673 tests, 49% coverage)
+**M9** Observability & tracing UI — PLANNING (span enrichment, trace-to-run correlation, waterfall panel)
 
 ## M5 Progress — Deployed
 
@@ -139,7 +141,7 @@
 - **mentatctl dev run**: Fixed endpoint (`/api/v1/runs`), port (7070), implemented `--local` subprocess mode with NDJSON parsing, added `--watch` for file-change re-runs
 
 ### Remaining
-- [ ] Tracing UI: Visual trace exploration (deferred — requires OTLP query backend + frontend waterfall component)
+- [ ] Tracing UI: Now scoped as M9 (span enrichment → query proxy → waterfall panel)
 
 ## M7 Progress — Complete
 

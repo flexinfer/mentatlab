@@ -227,10 +227,11 @@ func (s *RedisStore) GetRunMeta(ctx context.Context, runID string) (*types.RunMe
 	}
 
 	result := &types.RunMeta{
-		ID:     runID,
-		Name:   meta["name"],
-		Owner:  meta["owner"],
-		Status: types.RunStatus(meta["status"]),
+		ID:      runID,
+		Name:    meta["name"],
+		Owner:   meta["owner"],
+		TraceID: meta["traceID"],
+		Status:  types.RunStatus(meta["status"]),
 	}
 
 	if meta["startedAt"] != "" {
@@ -277,6 +278,7 @@ func (s *RedisStore) GetRun(ctx context.Context, runID string) (*types.Run, erro
 		ID:            runID,
 		Name:          meta["name"],
 		Owner:         meta["owner"],
+		TraceID:       meta["traceID"],
 		WebhookURL:    meta["webhookURL"],
 		WebhookSecret: meta["webhookSecret"],
 		Status:        types.RunStatus(meta["status"]),
@@ -452,6 +454,14 @@ func (s *RedisStore) SetRunWebhook(ctx context.Context, runID, webhookURL, webho
 	}
 	if err := s.client.HSet(ctx, s.keyMeta(runID), fields).Err(); err != nil {
 		return fmt.Errorf("set webhook: %w", err)
+	}
+	return nil
+}
+
+// SetRunTraceID stores the OpenTelemetry trace ID on the run metadata.
+func (s *RedisStore) SetRunTraceID(ctx context.Context, runID, traceID string) error {
+	if err := s.client.HSet(ctx, s.keyMeta(runID), "traceID", traceID).Err(); err != nil {
+		return fmt.Errorf("set trace id: %w", err)
 	}
 	return nil
 }

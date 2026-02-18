@@ -48,6 +48,7 @@ type RunStore interface {
 	ListRunsWithOptions(ctx context.Context, opts *ListRunsOptions) ([]string, error)
 	ListRunsPaged(ctx context.Context, opts *PageOptions) (*PagedResult, error)
 	SetRunWebhook(ctx context.Context, runID, webhookURL, webhookSecret string) error
+	SetRunTraceID(ctx context.Context, runID, traceID string) error
 	UpdateRunStatus(ctx context.Context, runID string, status types.RunStatus, startedAt, finishedAt *string) error
 	CancelRun(ctx context.Context, runID string) error
 

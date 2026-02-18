@@ -84,15 +84,38 @@ Backend + frontend complete. Deployed to K3s. All API endpoints verified respons
 - **M6.4**: Cron scheduled runs — `CronRunner` with 5-field cron expressions, schedule CRUD ✅
 - **M6.5**: Frontend polish — GateNode, retry editor, timeout config, clone/re-run buttons ✅
 
-### M7: Multi-User & API Maturity — Planning
+### M7: Multi-User & API Maturity — Complete
 
 User identity, programmatic access, pagination, and completion callbacks.
 
-- **M7.1**: User identity propagation — forward user headers from gateway to orchestrator, add `Owner` to runs
-- **M7.2**: API key authentication — Redis-backed key store, validate alongside JWT/OIDC
-- **M7.3**: Cursor-based pagination — Redis sorted sets with timestamp scores, `next_cursor` responses
-- **M7.4**: Webhook callbacks on run completion — async POST with HMAC signatures, retry logic
-- **M7.5**: Load testing baseline — k6 scripts for CRUD, execution, SSE, with SLO targets
+- **M7.1**: User identity propagation — gateway forwards `X-User-Email`/`X-User-Type` headers, `Run.Owner` field, owner-filtered list ✅ ([Issue #30](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/30))
+- **M7.2**: API key authentication — Redis-backed `APIKeyStore` (`mlk_` prefix, sha256 hashed), auth middleware fallback chain ✅ ([Issue #31](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/31))
+- **M7.3**: Cursor-based pagination — base64 `timestamp:id` cursors, Redis sorted set index, `next_cursor` responses ✅ ([Issue #32](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/32))
+- **M7.4**: Webhook callbacks on run completion — HMAC-SHA256 signed POST, 3 retries with exponential backoff ✅ ([Issue #33](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/33))
+- **M7.5**: Load testing baseline — k6 scripts for CRUD throughput, concurrent runs, pagination stress ✅ ([Issue #34](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/34))
+
+### M8: Frontend Quality — Complete
+
+Component test coverage, vitest migration, and contract tests.
+
+- **M8.1**: Vitest config + jest→vitest migration — 11 pre-existing spec files fixed ✅
+- **M8.2**: Store tests — flow (59), streaming (59), sync (30), keyboard shortcuts (28) ✅
+- **M8.3**: UI component tests — Button, Badge, Card, Checkbox, Input, Select, PanelShell, CommandPalette, ErrorBoundary ✅
+- **M8.4**: Layout/canvas tests — BottomDock, LeftSidebar, CanvasDropZone, NodePalette, QuickAddMenu, WorkspaceProvider, TopBar ✅
+- **M8.5**: Panel/overlay tests — GraphPanel, NetworkPanel, InspectorPanel, AgentBrowser, LineageOverlay, PolicyOverlay ✅
+- **M8.6**: Contract tests — run API validation (21), SSE event parsing (25) ✅
+- **Results**: 47 test files, 673 tests, 49% statement coverage (target 40%+)
+
+### M9: Observability & Tracing UI — Planning
+
+Deep span instrumentation, trace-to-run correlation, and visual trace exploration in the UI.
+
+- **M9.1**: Scheduler span enrichment — add spans to executeConditional, executeForEach, executeLoopBody, executeGate, onNodeFinished, checkRunCompletion, handleRunTimeout, captureNodeOutputs, buildExprEnvironment
+- **M9.2**: API + callback spans — add spans to remaining API handlers (CRUD, gates, webhooks, schedules), fireWebhookCallback, deliverWebhook
+- **M9.3**: Run↔Trace correlation — store trace_id on Run metadata at StartRun, expose in GET /runs/{id} response
+- **M9.4**: Local dev Tempo — add Tempo container to docker-compose, enable tracing env vars, verify spans arrive
+- **M9.5**: Trace query proxy — gateway endpoint `/api/v1/traces/{traceID}` proxying Tempo HTTP API ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7))
+- **M9.6**: Trace waterfall UI — frontend panel showing span hierarchy as waterfall timeline with service name, operation, duration, status
 
 ### Deferred (Future)
 
@@ -111,6 +134,6 @@ These features have zero implementation and are parked for future consideration:
 |----------|---------|
 | [README.md](README.md) | Project overview |
 | [AGENTS.md](AGENTS.md) | Agent guidance |
-| [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md) | Detailed M0-M7 plan |
+| [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md) | Detailed M0-M9 plan |
 | [.loom/00-index.md](.loom/00-index.md) | Progress tracking |
 | [docs/archive/milestone-specs/](docs/archive/milestone-specs/) | Archived aspirational specs (WASM, PKI, etc.) |

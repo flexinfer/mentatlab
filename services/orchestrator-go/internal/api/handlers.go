@@ -225,7 +225,8 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 // ListRuns handles GET /api/v1/runs
 // Supports cursor-based pagination (?cursor=&limit=) and legacy offset pagination (?offset=&limit=).
 func (h *Handlers) ListRuns(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.ListRuns")
+	defer span.End()
 
 	// Parse pagination parameters
 	limit := 50
@@ -301,9 +302,13 @@ func (h *Handlers) ListRuns(w http.ResponseWriter, r *http.Request) {
 
 // GetRun handles GET /api/v1/runs/{id}
 func (h *Handlers) GetRun(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	runID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.GetRun",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
 
 	run, err := h.store.GetRun(ctx, runID)
 	if err != nil {
@@ -320,9 +325,13 @@ func (h *Handlers) GetRun(w http.ResponseWriter, r *http.Request) {
 
 // DeleteRun handles DELETE /api/v1/runs/{id}
 func (h *Handlers) DeleteRun(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	runID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.DeleteRun",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
 
 	if err := h.store.CancelRun(ctx, runID); err != nil {
 		if errors.Is(err, runstore.ErrRunNotFound) {
@@ -338,9 +347,13 @@ func (h *Handlers) DeleteRun(w http.ResponseWriter, r *http.Request) {
 
 // CancelRun handles POST /api/v1/runs/{id}/cancel
 func (h *Handlers) CancelRun(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	runID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.CancelRun",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
 
 	// Use scheduler if available (it handles both scheduler state and store state)
 	if h.scheduler != nil {
@@ -471,7 +484,8 @@ func (h *Handlers) ValidateManifest(w http.ResponseWriter, r *http.Request) {
 
 // ListAgents handles GET /api/v1/agents
 func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.ListAgents")
+	defer span.End()
 
 	// Parse query parameters for filtering
 	opts := &registry.ListOptions{}
@@ -517,7 +531,8 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 
 // CreateAgent handles POST /api/v1/agents
 func (h *Handlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.CreateAgent")
+	defer span.End()
 
 	if h.registry == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
@@ -546,9 +561,13 @@ func (h *Handlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 
 // GetAgent handles GET /api/v1/agents/{id}
 func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	agentID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.GetAgent",
+		trace.WithAttributes(attribute.String("agent_id", agentID)),
+	)
+	defer span.End()
 
 	if h.registry == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
@@ -570,9 +589,13 @@ func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 
 // UpdateAgent handles PUT /api/v1/agents/{id}
 func (h *Handlers) UpdateAgent(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	agentID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.UpdateAgent",
+		trace.WithAttributes(attribute.String("agent_id", agentID)),
+	)
+	defer span.End()
 
 	if h.registry == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
@@ -601,9 +624,13 @@ func (h *Handlers) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 
 // DeleteAgent handles DELETE /api/v1/agents/{id}
 func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	agentID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.DeleteAgent",
+		trace.WithAttributes(attribute.String("agent_id", agentID)),
+	)
+	defer span.End()
 
 	if h.registry == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
@@ -627,7 +654,8 @@ func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 
 // CreateFlow handles POST /api/v1/flows
 func (h *Handlers) CreateFlow(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.CreateFlow")
+	defer span.End()
 
 	if h.flowStore == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
@@ -661,9 +689,13 @@ func (h *Handlers) CreateFlow(w http.ResponseWriter, r *http.Request) {
 
 // GetFlow handles GET /api/v1/flows/{id}
 func (h *Handlers) GetFlow(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	flowID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.GetFlow",
+		trace.WithAttributes(attribute.String("flow_id", flowID)),
+	)
+	defer span.End()
 
 	if h.flowStore == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
@@ -685,9 +717,13 @@ func (h *Handlers) GetFlow(w http.ResponseWriter, r *http.Request) {
 
 // UpdateFlow handles PUT /api/v1/flows/{id}
 func (h *Handlers) UpdateFlow(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	flowID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.UpdateFlow",
+		trace.WithAttributes(attribute.String("flow_id", flowID)),
+	)
+	defer span.End()
 
 	if h.flowStore == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
@@ -716,9 +752,13 @@ func (h *Handlers) UpdateFlow(w http.ResponseWriter, r *http.Request) {
 
 // DeleteFlow handles DELETE /api/v1/flows/{id}
 func (h *Handlers) DeleteFlow(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	flowID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.DeleteFlow",
+		trace.WithAttributes(attribute.String("flow_id", flowID)),
+	)
+	defer span.End()
 
 	if h.flowStore == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
@@ -740,7 +780,8 @@ func (h *Handlers) DeleteFlow(w http.ResponseWriter, r *http.Request) {
 
 // ListFlows handles GET /api/v1/flows
 func (h *Handlers) ListFlows(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.ListFlows")
+	defer span.End()
 
 	if h.flowStore == nil {
 		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))

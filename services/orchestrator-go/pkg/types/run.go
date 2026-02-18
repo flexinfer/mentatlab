@@ -33,6 +33,7 @@ type Run struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name,omitempty"`
 	Owner       string            `json:"owner,omitempty"`         // User who created the run (email)
+	TraceID     string            `json:"trace_id,omitempty"`      // OpenTelemetry trace ID for distributed tracing
 	Status      RunStatus         `json:"status"`
 	Plan        *Plan             `json:"plan,omitempty"`
 	FlowID      string            `json:"flow_id,omitempty"`      // Source flow ID for lineage
@@ -52,6 +53,7 @@ type RunMeta struct {
 	ID         string            `json:"id"`
 	Name       string            `json:"name,omitempty"`
 	Owner      string            `json:"owner,omitempty"`
+	TraceID    string            `json:"trace_id,omitempty"`
 	Status     RunStatus         `json:"status"`
 	StartedAt  *time.Time        `json:"started_at,omitempty"`
 	FinishedAt *time.Time        `json:"finished_at,omitempty"`

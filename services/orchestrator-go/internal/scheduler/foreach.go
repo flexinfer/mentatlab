@@ -7,12 +7,23 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
 // executeForEach executes body nodes for each item in a collection.
 // It supports both sequential and parallel execution based on MaxParallel config.
 func (s *Scheduler) executeForEach(ctx context.Context, rctx *runContext, node *types.NodeSpec) error {
+	ctx, span := tracer.Start(ctx, "scheduler.executeForEach",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+			attribute.String("node_id", node.ID),
+		),
+	)
+	defer span.End()
+
 	config := node.ForEach
 	if config == nil {
 		return fmt.Errorf("node %s has no for_each config", node.ID)
@@ -26,6 +37,11 @@ func (s *Scheduler) executeForEach(ctx context.Context, rctx *runContext, node *
 	if err != nil {
 		return fmt.Errorf("evaluate collection for node %s: %w", node.ID, err)
 	}
+
+	span.SetAttributes(
+		attribute.Int("collection_size", len(items)),
+		attribute.Int("max_parallel", config.MaxParallel),
+	)
 
 	// Emit loop_started event
 	s.emitEvent(ctx, rctx.runID, string(types.EventTypeLoopStarted), map[string]interface{}{
@@ -123,6 +139,16 @@ func (s *Scheduler) executeForEach(ctx context.Context, rctx *runContext, node *
 // sub-DAG scheduling. Body nodes with dependencies between them are executed
 // in the correct order; independent body nodes run in parallel.
 func (s *Scheduler) executeLoopBody(ctx context.Context, rctx *runContext, loopNodeID string, bodyNodeIDs []string, iterEnv map[string]interface{}, iterIndex int) error {
+	_, span := tracer.Start(ctx, "scheduler.executeLoopBody",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+			attribute.String("loop_node_id", loopNodeID),
+			attribute.Int("iteration_index", iterIndex),
+			attribute.Int("body_node_count", len(bodyNodeIDs)),
+		),
+	)
+	defer span.End()
+
 	if len(bodyNodeIDs) == 0 {
 		return nil
 	}

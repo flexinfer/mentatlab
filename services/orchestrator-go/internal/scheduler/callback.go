@@ -12,6 +12,9 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
@@ -28,10 +31,20 @@ type CallbackPayload struct {
 // fireWebhookCallback sends a POST to the run's webhook URL if configured.
 // Called asynchronously after checkRunCompletion marks a run as terminal.
 func (s *Scheduler) fireWebhookCallback(ctx context.Context, runID string) {
+	_, span := tracer.Start(ctx, "scheduler.fireWebhookCallback",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
+
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil || run.WebhookURL == "" {
+		span.SetAttributes(attribute.Bool("webhook_configured", false))
 		return
 	}
+	span.SetAttributes(
+		attribute.Bool("webhook_configured", true),
+		attribute.String("webhook_url", run.WebhookURL),
+	)
 
 	payload := CallbackPayload{
 		RunID:  run.ID,
@@ -56,6 +69,14 @@ func (s *Scheduler) fireWebhookCallback(ctx context.Context, runID string) {
 
 // deliverWebhook sends the webhook with up to 3 retries and exponential backoff.
 func (s *Scheduler) deliverWebhook(url, secret string, body []byte, runID string) {
+	_, span := tracer.Start(context.Background(), "scheduler.deliverWebhook",
+		trace.WithAttributes(
+			attribute.String("run_id", runID),
+			attribute.String("webhook_url", url),
+		),
+	)
+	defer span.End()
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	maxRetries := 3
 	backoff := 2 * time.Second
@@ -99,6 +120,10 @@ func (s *Scheduler) deliverWebhook(url, secret string, body []byte, runID string
 		resp.Body.Close()
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			span.SetAttributes(
+				attribute.Int("attempts", attempt+1),
+				attribute.Int("status_code", resp.StatusCode),
+			)
 			s.logger.Info("webhook: delivered",
 				slog.String("run_id", runID),
 				slog.String("url", url),
@@ -114,6 +139,10 @@ func (s *Scheduler) deliverWebhook(url, secret string, body []byte, runID string
 		)
 	}
 
+	span.SetAttributes(
+		attribute.Int("attempts", maxRetries+1),
+		attribute.Bool("delivery_failed", true),
+	)
 	s.logger.Error("webhook: delivery failed after retries",
 		slog.String("run_id", runID),
 		slog.String("url", url),

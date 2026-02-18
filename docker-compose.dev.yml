@@ -8,6 +8,9 @@ services:
     environment:
       - ORCHESTRATOR_BASE_URL=http://orchestrator:7070
       - PORT=8080
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=tempo:4317
+      - TEMPO_QUERY_URL=http://tempo:3200
     depends_on:
       - orchestrator
     networks:
@@ -22,6 +25,8 @@ services:
     environment:
       - ORCH_RUNSTORE=${ORCH_RUNSTORE:-memory}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=tempo:4317
     networks:
       - mentat-network
 
@@ -34,6 +39,40 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      - mentat-network
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "3200:3200"   # Tempo HTTP API
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3200/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - mentat-network
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - tempo
     networks:
       - mentat-network
 
@@ -72,3 +111,7 @@ services:
 networks:
   mentat-network:
     driver: bridge
+
+volumes:
+  tempo-data:
+  grafana-data:

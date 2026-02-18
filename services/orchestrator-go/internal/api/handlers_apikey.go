@@ -5,11 +5,13 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // CreateAPIKey handles POST /api/v1/apikeys
 func (h *Handlers) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.CreateAPIKey")
+	defer span.End()
 
 	if h.apiKeyStore == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "api key store not available", nil)
@@ -53,7 +55,8 @@ func (h *Handlers) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 // ListAPIKeys handles GET /api/v1/apikeys
 func (h *Handlers) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.ListAPIKeys")
+	defer span.End()
 
 	if h.apiKeyStore == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "api key store not available", nil)
@@ -101,7 +104,8 @@ func (h *Handlers) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 // RevokeAPIKey handles DELETE /api/v1/apikeys/{id}
 func (h *Handlers) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.RevokeAPIKey")
+	defer span.End()
 
 	if h.apiKeyStore == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "api key store not available", nil)
@@ -110,6 +114,7 @@ func (h *Handlers) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	vars := mux.Vars(r)
 	keyID := vars["id"]
+	span.SetAttributes(attribute.String("key_id", keyID))
 
 	// Look up the full hash by listing and matching the ID prefix
 	keys, err := h.apiKeyStore.ListKeys(ctx, "")

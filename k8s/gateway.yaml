@@ -93,6 +93,8 @@ spec:
               value: "true"
             - name: OTLP_ENDPOINT
               value: "tempo.monitoring.svc:4317"
+            - name: TEMPO_QUERY_URL
+              value: "http://tempo.monitoring.svc:3200"
           livenessProbe:
             httpGet:
               path: /health

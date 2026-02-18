@@ -370,16 +370,91 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 ---
 
-### M8: Frontend Quality (Future)
+### M8: Frontend Quality — Complete
 
-**Goal:** Frontend test coverage, accessibility, large DAG performance, and responsive layout.
+**Goal:** Frontend test coverage, vitest migration, and contract tests.
 
-- Component test coverage to 40%+ (25+ test files)
-- Accessibility audit (axe-core, ARIA, keyboard nav)
-- Large DAG performance (100-node render benchmarks)
-- Responsive layout for mobile monitoring
-- Tracing UI (Issue #7 — Tempo query proxy + waterfall component)
-- **Status:** Not started
+- Component test coverage to 40%+ (47 test files, 673 tests, 49.11% statement coverage) ✅
+- Jest→vitest migration: 11 pre-existing spec files fixed ✅
+- Store tests: flow (59), streaming (59), sync (30), keyboard shortcuts (28) ✅
+- UI component tests: Button, Badge, Card, Checkbox, Input, Select, PanelShell, CommandPalette, ErrorBoundary ✅
+- Layout/canvas tests: BottomDock, LeftSidebar, CanvasDropZone, NodePalette, QuickAddMenu, WorkspaceProvider, TopBar ✅
+- Panel/overlay tests: GraphPanel, NetworkPanel, InspectorPanel, AgentBrowser, LineageOverlay, PolicyOverlay ✅
+- Contract tests: run API validation (21), SSE event parsing (25) ✅
+- **Deferred**: Accessibility audit, large DAG performance benchmarks, responsive layout
+
+---
+
+### M9: Observability & Tracing UI
+
+**Goal:** Rich distributed tracing with deep span coverage, trace-to-run correlation, and a visual trace explorer in the MentatLab UI.
+
+#### M9.1 Scheduler span enrichment
+- Add OTel spans to all scheduler execution paths that currently lack instrumentation:
+  - `executeConditional` — with `expression`, `selected_branch` attributes
+  - `executeForEach` — with `collection_size`, `max_parallel` attributes
+  - `executeLoopBody` — with `iteration_index`, `body_node_count` attributes
+  - `executeGate` — with `gate_timeout`, `decision` attributes
+  - `onNodeFinished` — with `exit_code`, `will_retry` attributes
+  - `checkRunCompletion` — with `final_status`, `node_count` attributes
+  - `handleRunTimeout` — with `timeout_duration` attribute
+  - `captureNodeOutputs` — with `output_count` attribute
+  - `buildExprEnvironment` — with `predecessor_count` attribute
+- **Baseline:** Only 2 scheduler spans exist: `scheduler.StartRun`, `scheduler.scheduleNode`
+- **Files:** `services/orchestrator-go/internal/scheduler/scheduler.go`, `conditional.go`, `foreach.go`
+
+#### M9.2 API + callback span enrichment
+- Add OTel spans to remaining API handlers:
+  - `ListRuns`, `GetRun`, `DeleteRun`
+  - `CreateFlow`, `ListFlows`, `GetFlow`, `UpdateFlow`, `DeleteFlow`
+  - `RegisterAgent`, `ListAgents`, `GetAgent`, `UpdateAgent`, `DeleteAgent`
+  - `ApproveGate`, `RejectGate`
+  - `TriggerWebhook`, `CloneRun`, `RunFlow`
+  - `CreateSchedule`, `ListSchedules`, `GetSchedule`, `DeleteSchedule`
+  - `CreateAPIKey`, `ListAPIKeys`, `RevokeAPIKey`
+- Add spans to webhook callback delivery:
+  - `fireWebhookCallback` — with `run_id`, `webhook_url` attributes
+  - `deliverWebhook` — with `attempt`, `status_code` attributes
+- **Baseline:** Only 3 API spans exist: `api.CreateRun`, `api.StartRun`, `api.StreamEvents`
+- **Files:** `services/orchestrator-go/internal/api/handlers.go`, `handlers_m5m6.go`, `handlers_apikey.go`, `services/orchestrator-go/internal/scheduler/callback.go`
+
+#### M9.3 Run↔Trace correlation
+- Extract trace_id from OTel span context in `StartRun` and store on Run metadata (`Run.TraceID` field)
+- Return `trace_id` in GET `/api/v1/runs/{id}` response
+- Add `trace_id` to SSE run events (run_started, run_completed)
+- Frontend displays trace_id on run detail view
+- **Files:** `services/orchestrator-go/pkg/types/run.go`, `internal/scheduler/scheduler.go`, `internal/api/handlers.go`
+
+#### M9.4 Local dev Tempo — Complete
+- Added Grafana Tempo 2.6.1 container to `docker-compose.yml` and `docker-compose.dev.yml`
+- Configured OTLP gRPC (4317), OTLP HTTP (4318), and Tempo HTTP API (3200) receivers
+- Created `observability/tempo/tempo.yaml` — local storage backend
+- Enabled `TRACING_ENABLED=true` and `OTLP_ENDPOINT=tempo:4317` for orchestrator + gateway in both compose files
+- Added Grafana 11.4.0 container with auto-provisioned Tempo datasource (anonymous admin access for local dev)
+- Created `observability/grafana/provisioning/datasources/tempo.yaml`
+- Orchestrator and gateway depend on Tempo health check before starting
+- **Files:** `docker-compose.yml`, `docker-compose.dev.yml`, `observability/tempo/tempo.yaml`, `observability/grafana/provisioning/datasources/tempo.yaml`
+
+#### M9.5 Trace query proxy — Complete
+- `GET /api/v1/traces/{traceID}` proxies to Tempo HTTP API (`/api/traces/{traceID}`)
+- `GET /api/v1/traces?run_id={runID}` looks up trace_id from orchestrator run metadata, then fetches from Tempo
+- New `traces` package in gateway-go with `Handler` struct, 10s HTTP client timeout
+- `TEMPO_QUERY_URL` env var — routes only registered when configured (graceful degradation)
+- Auth headers (`Authorization`, `X-User-Email`) forwarded on orchestrator lookups
+- K8s: added `TEMPO_QUERY_URL=http://tempo.monitoring.svc:3200` to `k8s/gateway.yaml`
+- Docker Compose: added `TEMPO_QUERY_URL=http://tempo:3200` to both compose files
+- **Files:** `services/gateway-go/traces/handler.go` (new), `services/gateway-go/main.go`, `k8s/gateway.yaml`, `docker-compose.yml`, `docker-compose.dev.yml`
+
+#### M9.6 Trace waterfall UI
+- New `TracePanel` component in `services/frontend/src/components/mission-control/panels/`
+- Waterfall timeline showing span hierarchy: service → operation → children
+- Each span bar shows: operation name, duration (ms), status color (green/red/yellow)
+- "View Trace" button on RunsPanel that opens TracePanel for the run's trace_id
+- Keyboard shortcut for quick trace access
+- **Deferred:** Span search/filtering, trace comparison, custom span attribute editing
+- **Files:** `services/frontend/src/components/mission-control/panels/TracePanel.tsx` (new), `services/frontend/src/services/api/traceService.ts` (new)
+
+**Acceptance:** All scheduler and API operations produce OTel spans. Runs have trace_ids. Local dev shows traces in Tempo via docker-compose. Frontend trace panel displays waterfall view for any run.
 
 ---
 
@@ -401,6 +476,11 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 | M7 | Unit | API key auth, cursor pagination, callback delivery | Go unit tests |
 | M7 | Load | CRUD throughput, SSE fan-out, concurrent runs | k6 scripts |
 | M7 | Security | API key validation, HMAC signatures, owner isolation | Manual + Go tests |
+| M8 | Unit | Component, store, layout, panel, overlay tests | vitest (673 tests) |
+| M8 | Contract | Run API validation, SSE event parsing | vitest (46 tests) |
+| M9 | Unit | Span creation for scheduler + API operations | Go unit tests |
+| M9 | Integration | Trace end-to-end: create run → spans arrive in Tempo | docker-compose + curl |
+| M9 | E2E | Trace waterfall panel renders for a run | vitest + Playwright |
 
 ## Rollout / Backout
 
@@ -419,7 +499,9 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 5. **M4 Done:** 5-minute onboarding for new developers ✅
 6. **M5 Done:** Platform runs on K3s with timeouts, retries, and Grafana dashboards ✅ (deployed, live validation pending)
 7. **M6 Done:** Gates, webhooks, cloning, cron schedules, and frontend controls functional ✅ (deployed, live validation pending)
-8. **M7 Done:** User identity on runs, API key auth, cursor pagination, webhook callbacks, load test baseline
+8. **M7 Done:** User identity on runs, API key auth, cursor pagination, webhook callbacks, load test baseline ✅
+9. **M8 Done:** Frontend test coverage exceeds 40%, vitest migration complete, contract tests passing ✅ (47 files, 673 tests, 49%)
+10. **M9 Done:** All scheduler and API operations produce OTel spans. Runs carry trace_ids. Local dev Tempo works. Frontend trace waterfall panel displays spans for any run.
 
 ## Risks / Dependencies
 
@@ -433,6 +515,9 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 | Gateway→Orchestrator header forwarding breaks auth | Low | Medium | Feature-flag identity propagation, test with auth disabled first |
 | Load testing reveals performance bottleneck | Medium | Medium | Address bottlenecks as M7.5 findings, prioritize in M8 |
 | K8s job driver untested with real agent images | Medium | High | Build echo agent image, test in M5.1 (still pending) |
+| Excessive span cardinality impacts Tempo storage | Low | Medium | Use bounded attributes, review cardinality before deploy |
+| Tempo not deployed in monitoring namespace | Medium | High | Verify Tempo exists on cluster before M9.5, deploy if needed |
+| Span overhead impacts scheduler performance | Low | Medium | Benchmark with k6 before/after, use sampling if needed |
 
 ## Sources
 

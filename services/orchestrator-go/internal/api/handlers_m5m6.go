@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
@@ -26,6 +28,14 @@ func (h *Handlers) ApproveGate(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	runID := vars["id"]
 	nodeID := vars["nodeId"]
+
+	_, span := apiTracer.Start(r.Context(), "api.ApproveGate",
+		trace.WithAttributes(
+			attribute.String("run_id", runID),
+			attribute.String("node_id", nodeID),
+		),
+	)
+	defer span.End()
 
 	if h.scheduler == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "scheduler not available", errors.New("scheduler not configured"))
@@ -50,6 +60,14 @@ func (h *Handlers) RejectGate(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	runID := vars["id"]
 	nodeID := vars["nodeId"]
+
+	_, span := apiTracer.Start(r.Context(), "api.RejectGate",
+		trace.WithAttributes(
+			attribute.String("run_id", runID),
+			attribute.String("node_id", nodeID),
+		),
+	)
+	defer span.End()
 
 	if h.scheduler == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "scheduler not available", errors.New("scheduler not configured"))
@@ -78,7 +96,8 @@ type CreateWebhookRequest struct {
 
 // CreateWebhook handles POST /api/v1/webhooks
 func (h *Handlers) CreateWebhook(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.CreateWebhook")
+	defer span.End()
 
 	if h.flowStore == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
@@ -131,9 +150,13 @@ func (h *Handlers) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 
 // TriggerWebhook handles POST /api/v1/webhooks/trigger/{flowId}
 func (h *Handlers) TriggerWebhook(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	flowID := vars["flowId"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.TriggerWebhook",
+		trace.WithAttributes(attribute.String("flow_id", flowID)),
+	)
+	defer span.End()
 
 	if h.flowStore == nil || h.scheduler == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "service not available", errors.New("flow store or scheduler not configured"))
@@ -205,9 +228,13 @@ func (h *Handlers) TriggerWebhook(w http.ResponseWriter, r *http.Request) {
 
 // CloneRun handles POST /api/v1/runs/{id}/clone
 func (h *Handlers) CloneRun(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	runID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.CloneRun",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
 
 	run, err := h.store.GetRun(ctx, runID)
 	if err != nil {
@@ -260,9 +287,13 @@ func (h *Handlers) CloneRun(w http.ResponseWriter, r *http.Request) {
 
 // RunFlow handles POST /api/v1/flows/{id}/run
 func (h *Handlers) RunFlow(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	flowID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.RunFlow",
+		trace.WithAttributes(attribute.String("flow_id", flowID)),
+	)
+	defer span.End()
 
 	if h.flowStore == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
@@ -336,7 +367,8 @@ type CreateScheduleRequest struct {
 
 // CreateSchedule handles POST /api/v1/schedules
 func (h *Handlers) CreateSchedule(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx, span := apiTracer.Start(r.Context(), "api.CreateSchedule")
+	defer span.End()
 
 	if h.flowStore == nil {
 		h.respondError(w, r, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
@@ -399,6 +431,9 @@ func (h *Handlers) CreateSchedule(w http.ResponseWriter, r *http.Request) {
 
 // ListSchedules handles GET /api/v1/schedules
 func (h *Handlers) ListSchedules(w http.ResponseWriter, r *http.Request) {
+	_, span := apiTracer.Start(r.Context(), "api.ListSchedules")
+	defer span.End()
+
 	if h.cronRunner == nil {
 		h.respondJSON(w, http.StatusOK, map[string]interface{}{
 			"schedules": []*scheduler.Schedule{},
@@ -419,6 +454,11 @@ func (h *Handlers) GetSchedule(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
+	_, span := apiTracer.Start(r.Context(), "api.GetSchedule",
+		trace.WithAttributes(attribute.String("schedule_id", id)),
+	)
+	defer span.End()
+
 	if h.cronRunner == nil {
 		h.respondError(w, r, http.StatusNotFound, "schedule not found", errors.New("cron runner not configured"))
 		return
@@ -437,6 +477,11 @@ func (h *Handlers) GetSchedule(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) DeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
+
+	_, span := apiTracer.Start(r.Context(), "api.DeleteSchedule",
+		trace.WithAttributes(attribute.String("schedule_id", id)),
+	)
+	defer span.End()
 
 	if h.cronRunner == nil {
 		h.respondError(w, r, http.StatusNotFound, "schedule not found", errors.New("cron runner not configured"))

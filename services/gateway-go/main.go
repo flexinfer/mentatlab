@@ -16,6 +16,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/gateway-go/hub"
 	"github.com/flexinfer/mentatlab/services/gateway-go/middleware"
 	"github.com/flexinfer/mentatlab/services/gateway-go/tracing"
+	"github.com/flexinfer/mentatlab/services/gateway-go/traces"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -28,6 +29,7 @@ import (
 type Config struct {
 	Port                  string
 	OrchestratorURL       string
+	TempoQueryURL         string
 	RedisAddr             string
 	CFTeamDomain          string
 	CFPolicyAUD           string
@@ -47,6 +49,7 @@ func loadConfig() *Config {
 	cfg := &Config{
 		Port:                  getEnv("PORT", "8080"),
 		OrchestratorURL:       getEnv("ORCHESTRATOR_BASE_URL", "http://localhost:7070"),
+		TempoQueryURL:         getEnv("TEMPO_QUERY_URL", ""),
 		RedisAddr:             getEnv("REDIS_URL", "redis:6379"),
 		CFTeamDomain:          getEnv("CF_TEAM_DOMAIN", ""),
 		CFPolicyAUD:           getEnv("CF_POLICY_AUD", ""),
@@ -225,6 +228,13 @@ func main() {
 			req.Header.Set("X-User-Email", user.Email)
 			req.Header.Set("X-User-Type", user.Type)
 		}
+	}
+
+	// Trace query proxy (routes to Tempo, not orchestrator)
+	if cfg.TempoQueryURL != "" {
+		traceHandler := traces.NewHandler(cfg.TempoQueryURL, cfg.OrchestratorURL, logger)
+		traceHandler.RegisterRoutes(r)
+		logger.Info("trace query proxy enabled", slog.String("tempo_url", cfg.TempoQueryURL))
 	}
 
 	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
