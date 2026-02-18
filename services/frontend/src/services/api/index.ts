@@ -12,6 +12,7 @@ export * from "./flowService";
 export * from "./mediaService";
 export * from "./streamingService"; // Export the new streaming service
 export * from "./orchestratorService";
+export * from "./traceService";
 // Export default instances
 export { httpClient as defaultHttpClient } from "./httpClient";
 // Removed websocketClient export as it's now internal to ApiService
@@ -24,3 +25,4 @@ export { getAgentService } from "./agentService";
 export { getFlowService } from "./flowService";
 export { getMediaService } from "./mediaService";
 export { orchestratorService } from "./orchestratorService";
+export { traceService } from "./traceService";

@@ -314,6 +314,21 @@ export default function RunsPanel(): JSX.Element {
                      <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handleRerun} disabled={!runIdInput}>
                         Re-run
                      </Button>
+                     <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[10px]"
+                        onClick={() => {
+                            if (currentRun?.trace_id) {
+                                window.dispatchEvent(new CustomEvent('openTrace', { detail: { traceId: currentRun.trace_id } }));
+                            } else if (runIdInput) {
+                                window.dispatchEvent(new CustomEvent('openTrace', { detail: { runId: runIdInput } }));
+                            }
+                        }}
+                        disabled={!runIdInput}
+                     >
+                        View Trace
+                     </Button>
                      <Button size="sm" variant="destructive" className="h-7 text-[10px] ml-auto" onClick={handleCancelRun} disabled={!runIdInput}>
                         Cancel Run
                      </Button>

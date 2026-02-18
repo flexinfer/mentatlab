@@ -25,15 +25,17 @@ import RunsPanelImport from '../panels/RunsPanel';
 import NetworkPanel from '../panels/NetworkPanel';
 import GraphPanel from '../panels/GraphPanel';
 import AgentBrowser from '../panels/AgentBrowser';
+import TracePanelImport from '../panels/TracePanel';
 
 // Type assertion needed due to React 19 JSX type changes
 const RunsPanel = RunsPanelImport as unknown as React.FC;
+const TracePanel = TracePanelImport as unknown as React.FC<{ runId?: string | null; traceId?: string | null }>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
-type TabId = 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph' | 'Agents';
+type TabId = 'Console' | 'Run Queue' | 'Timeline' | 'Issues' | 'Runs' | 'Network' | 'Graph' | 'Agents' | 'Traces';
 
 interface TabConfig {
   id: TabId;
@@ -131,6 +133,9 @@ export function BottomDock({ className = '' }: BottomDockProps) {
   // Selected node from Graph (bridged via CustomEvent)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
+  // Trace panel state (bridged from RunsPanel via CustomEvent)
+  const [traceTarget, setTraceTarget] = useState<{ traceId?: string; runId?: string } | null>(null);
+
   // Graph node selection bridge
   useEffect(() => {
     const onNodeSelected = (e: Event) => {
@@ -147,6 +152,17 @@ export function BottomDock({ className = '' }: BottomDockProps) {
     };
   }, []);
 
+  // Listen for openTrace events (from RunsPanel "View Trace" button)
+  useEffect(() => {
+    const onOpenTrace = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setTraceTarget(detail);
+      setActiveBottomTab('Traces');
+    };
+    window.addEventListener('openTrace', onOpenTrace as EventListener);
+    return () => window.removeEventListener('openTrace', onOpenTrace as EventListener);
+  }, [setActiveBottomTab]);
+
   // Reset timeline count when run changes (TimelinePanel owns the actual event count)
   useEffect(() => {
     setTimelineCount(0);
@@ -162,6 +178,7 @@ export function BottomDock({ className = '' }: BottomDockProps) {
     { id: 'Issues', label: 'Issues', badge: issuesCount },
     { id: 'Graph', label: 'Graph', featureFlag: 'MISSION_GRAPH' },
     { id: 'Agents', label: 'Agents', featureFlag: 'ORCHESTRATOR_PANEL' },
+    { id: 'Traces', label: 'Traces', featureFlag: 'ORCHESTRATOR_PANEL' },
   ];
 
   const visibleTabs = tabs.filter(
@@ -296,6 +313,14 @@ export function BottomDock({ className = '' }: BottomDockProps) {
           {activeTab === 'Agents' && isEnabled('ORCHESTRATOR_PANEL') && (
             <PanelErrorBoundary panelName="Agents" compact>
               <AgentBrowser />
+            </PanelErrorBoundary>
+          )}
+          {activeTab === 'Traces' && isEnabled('ORCHESTRATOR_PANEL') && (
+            <PanelErrorBoundary panelName="Traces" compact>
+              <TracePanel
+                runId={traceTarget?.runId || activeRunId}
+                traceId={traceTarget?.traceId}
+              />
             </PanelErrorBoundary>
           )}
         </div>

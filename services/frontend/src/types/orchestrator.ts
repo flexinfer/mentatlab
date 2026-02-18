@@ -139,6 +139,7 @@ export interface Run {
   started_at?: string;
   finished_at?: string;
   owner?: string;
+  trace_id?: string;
   plan?: RunPlan;
   flow_id?: string;
   parent_run_id?: string;

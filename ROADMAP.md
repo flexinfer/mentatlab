@@ -106,7 +106,7 @@ Component test coverage, vitest migration, and contract tests.
 - **M8.6**: Contract tests — run API validation (21), SSE event parsing (25) ✅
 - **Results**: 47 test files, 673 tests, 49% statement coverage (target 40%+)
 
-### M9: Observability & Tracing UI — In Progress
+### M9: Observability & Tracing UI — Complete
 
 Deep span instrumentation, trace-to-run correlation, and visual trace exploration in the UI.
 
@@ -115,7 +115,7 @@ Deep span instrumentation, trace-to-run correlation, and visual trace exploratio
 - **M9.3**: Run↔Trace correlation — `TraceID` field on Run/RunMeta, stored at StartRun, returned in GET /runs/{id} and SSE status events ✅
 - **M9.4**: Local dev Tempo — Tempo 2.6.1 + Grafana 11.4.0 in docker-compose, auto-provisioned Tempo datasource ✅
 - **M9.5**: Trace query proxy — gateway `GET /api/v1/traces/{traceID}` and `GET /api/v1/traces?run_id={runID}` proxying Tempo HTTP API ✅ ([Issue #7](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/7))
-- **M9.6**: Trace waterfall UI — frontend panel showing span hierarchy as waterfall timeline with service name, operation, duration, status
+- **M9.6**: Trace waterfall UI — TracePanel in BottomDock with span hierarchy waterfall, span detail pane, "View Trace" button on RunsPanel ✅
 
 ### Deferred (Future)
 

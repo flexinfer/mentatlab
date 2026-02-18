@@ -444,14 +444,17 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 - Docker Compose: added `TEMPO_QUERY_URL=http://tempo:3200` to both compose files
 - **Files:** `services/gateway-go/traces/handler.go` (new), `services/gateway-go/main.go`, `k8s/gateway.yaml`, `docker-compose.yml`, `docker-compose.dev.yml`
 
-#### M9.6 Trace waterfall UI
-- New `TracePanel` component in `services/frontend/src/components/mission-control/panels/`
-- Waterfall timeline showing span hierarchy: service → operation → children
-- Each span bar shows: operation name, duration (ms), status color (green/red/yellow)
-- "View Trace" button on RunsPanel that opens TracePanel for the run's trace_id
-- Keyboard shortcut for quick trace access
-- **Deferred:** Span search/filtering, trace comparison, custom span attribute editing
-- **Files:** `services/frontend/src/components/mission-control/panels/TracePanel.tsx` (new), `services/frontend/src/services/api/traceService.ts` (new)
+#### M9.6 Trace waterfall UI — Complete
+- `TracePanel` component with waterfall timeline, span detail pane, manual trace ID input
+- `traceService.ts` API client — parses Tempo OTLP JSON, builds span tree, calculates timing
+- Span rows show: service name, operation name, status dot (green/red/amber), duration bar, duration label
+- Span detail pane: operation, service, duration, status, span ID, all attributes
+- "View Trace" button on RunsPanel dispatches `openTrace` CustomEvent → BottomDock switches to Traces tab
+- Registered as "Traces" tab in BottomDock behind `ORCHESTRATOR_PANEL` feature flag
+- React 19 JSX type assertion applied (same pattern as RunsPanel)
+- `trace_id` field added to `Run` type in `types/orchestrator.ts`
+- **Deferred:** Span search/filtering, trace comparison, keyboard shortcut, span attribute editing
+- **Files:** `services/frontend/src/components/mission-control/panels/TracePanel.tsx` (new), `services/frontend/src/services/api/traceService.ts` (new), `services/frontend/src/components/mission-control/layout/BottomDock.tsx`, `services/frontend/src/components/mission-control/panels/RunsPanel.tsx`, `services/frontend/src/types/orchestrator.ts`
 
 **Acceptance:** All scheduler and API operations produce OTel spans. Runs have trace_ids. Local dev shows traces in Tempo via docker-compose. Frontend trace panel displays waterfall view for any run.
 
