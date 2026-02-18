@@ -1,0 +1,24 @@
+# Test files
+*_test.go
+testdata/
+
+# Runtime artifacts
+traces/
+
+# Build artifacts
+*.exe
+*.test
+*.prof
+
+# IDE / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# CI / docs
+.gitlab-ci.yml
+README.md
+LICENSE
+Makefile

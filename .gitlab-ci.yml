@@ -157,9 +157,15 @@ test-frontend:
 # BUILD STAGE
 # ==============================================================================
 
-build-images:
+.build-template: &build-template
   stage: build
   image: registry.harbor.lan/library/ci-builder:latest
+  timeout: 2h
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
   variables:
     BUILDKIT_STEP_LOG_MAX_SIZE: "50000000"
   before_script:
@@ -173,26 +179,25 @@ build-images:
         echo "[$i/30] not ready yet"; sleep 2
       done
       buildctl --addr "${BUILDKIT_HOST}" debug info
-  script:
     - |
-      set -euo pipefail
+      # Shared build_image function with zstd compression and retry-with-fallback
       CACHE_REPO="registry.harbor.lan/library/build-cache"
 
       build_image() {
         local name="$1" context="$2"
         echo "=== Building ${name} from ${context} ==="
 
-        local tags="--output type=image,push=true"
-        tags="${tags},name=${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
-
+        local output="type=image,push=true,compression=zstd,compression-level=3"
+        output="${output},name=${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
         if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-          tags="${tags},name=${REGISTRY}/${name}:latest"
+          output="${output},name=${REGISTRY}/${name}:latest"
         fi
 
-        buildctl --addr "${BUILDKIT_HOST}" build \
+        # First attempt: build with cache
+        if buildctl --addr "${BUILDKIT_HOST}" build \
           --frontend dockerfile.v0 \
-          --local context="${context}" \
-          --local dockerfile="${context}" \
+          --local "context=${context}" \
+          --local "dockerfile=${context}" \
           --opt platform=linux/amd64 \
           --opt "build-arg:GOPROXY=${GOPROXY:-}" \
           --opt "build-arg:npm_config_registry=${npm_config_registry:-}" \
@@ -201,17 +206,47 @@ build-images:
           --opt "build-arg:PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}" \
           --export-cache "type=registry,ref=${CACHE_REPO}:${name},mode=max,image-manifest=true" \
           --import-cache "type=registry,ref=${CACHE_REPO}:${name}" \
-          ${tags}
-      }
+          --output "${output}"; then
+          echo "=== ${name} built successfully ==="
+          return 0
+        fi
 
-      build_image "mentatlab-orchestrator-go" "services/orchestrator-go"
-      build_image "mentatlab-gateway-go" "services/gateway-go"
-      build_image "mentatlab-frontend" "services/frontend"
-      build_image "mentatlab-echoagent" "services/agents/echo"
-      build_image "mentatlab-psyche-sim" "agents/psyche-sim"
-      build_image "mentatlab-ctm-cogpack" "agents/ctm-cogpack"
+        # Second attempt: retry without import-cache (handles cold/corrupt cache)
+        echo "WARNING: ${name} build failed with cache, retrying without cache..."
+        buildctl --addr "${BUILDKIT_HOST}" build \
+          --frontend dockerfile.v0 \
+          --local "context=${context}" \
+          --local "dockerfile=${context}" \
+          --opt platform=linux/amd64 \
+          --opt "build-arg:GOPROXY=${GOPROXY:-}" \
+          --opt "build-arg:npm_config_registry=${npm_config_registry:-}" \
+          --opt "build-arg:NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY:-}" \
+          --opt "build-arg:PIP_INDEX_URL=${PIP_INDEX_URL:-}" \
+          --opt "build-arg:PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}" \
+          --export-cache "type=registry,ref=${CACHE_REPO}:${name},mode=max,image-manifest=true" \
+          --output "${output}"
+        echo "=== ${name} built successfully (no-cache retry) ==="
+      }
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
+
+build-go:
+  <<: *build-template
+  script:
+    - build_image "mentatlab-orchestrator-go" "services/orchestrator-go"
+    - build_image "mentatlab-gateway-go" "services/gateway-go"
+
+build-frontend:
+  <<: *build-template
+  script:
+    - build_image "mentatlab-frontend" "services/frontend"
+
+build-agents:
+  <<: *build-template
+  script:
+    - build_image "mentatlab-echoagent" "services/agents/echo"
+    - build_image "mentatlab-psyche-sim" "agents/psyche-sim"
+    - build_image "mentatlab-ctm-cogpack" "agents/ctm-cogpack"
 
 # ==============================================================================
 # E2E TEST STAGE
@@ -219,7 +254,7 @@ build-images:
 
 e2e-test:
   stage: e2e
-  needs: [build-images]
+  needs: [build-go, build-frontend, build-agents]
   image: docker:24-cli
   services:
     - name: docker:24-dind
@@ -346,7 +381,7 @@ e2e-test:
 deploy:
   stage: deploy
   image: alpine/k8s:1.31.0
-  needs: [build-images]
+  needs: [build-go, build-frontend, build-agents]
   variables:
     NAMESPACE: mentatlab
   before_script:

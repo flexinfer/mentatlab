@@ -1,0 +1,9 @@
+# IDE / OS
+.git
+.gitignore
+.vscode
+.DS_Store
+
+# CI / docs
+README.md
+LICENSE

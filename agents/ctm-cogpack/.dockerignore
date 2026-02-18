@@ -1,0 +1,22 @@
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Virtual environments
+.venv
+venv
+
+# IDE / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# CI / docs
+README.md
+LICENSE

@@ -1,0 +1,32 @@
+# Dependencies (288MB+ — biggest win)
+node_modules
+
+# Build output
+dist
+
+# Test / coverage
+coverage
+*.test.*
+*.spec.*
+__tests__
+__mocks__
+playwright-report
+test-results
+
+# IDE / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Env / logs
+.env
+.env.*
+*.log
+npm-debug.log*
+
+# CI / docs
+.gitlab-ci.yml
+README.md
+LICENSE
