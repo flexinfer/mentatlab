@@ -31,7 +31,7 @@ spec:
   template:
     metadata:
       annotations:
-        mentatlab.io/restart-trigger: "m5.1-k8s-driver-2026-02-18"
+        mentatlab.io/restart-trigger: "m5.1-redis-url-fix-2026-02-18"
       labels:
         app: orchestrator
         component: backend
@@ -59,7 +59,7 @@ spec:
             - name: PORT
               value: "7070"
             - name: REDIS_URL
-              value: "redis:6379"
+              value: "redis://redis:6379"
             # RunStore backend (redis persists runs across pod restarts)
             - name: ORCH_RUNSTORE
               value: "redis"

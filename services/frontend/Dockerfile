@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Frontend - multi-stage build with nginx for production serving
 
 # Stage 1: Build
