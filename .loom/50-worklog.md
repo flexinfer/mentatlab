@@ -404,3 +404,21 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
   - [S1] `services/frontend/vitest.config.ts` — test config
   - [S2] `npx vitest run --coverage` — 47 files, 673 tests, 49.11% statements
   - [S3] Pipeline 1176 — all stages green
+
+## 2026-02-18
+
+### M5.1: K8s Job Driver Validation (partial) — Dockerfile + Unit Tests
+
+- What changed:
+  - `services/agents/echo/Dockerfile`: Hardened for K8s readOnlyRootFilesystem. Added non-root user (uid/gid 1000), PYTHONDONTWRITEBYTECODE=1, PYTHONUNBUFFERED=1. Container now compatible with K8s securityContext in `k8s/echoagent.yaml`.
+  - `services/orchestrator-go/internal/k8s/job_test.go` (NEW): 24 unit tests covering JobBuilder, GetJobStatus, and sanitize helpers.
+    - BuildJob: basic spec, security context, command, env, timeout, no-image error, image pull secrets, resource limits, labels on pod template, no agent ID, no command, default deadline
+    - GetJobStatus: succeeded, failed, running, pending, condition overrides, timestamps
+    - Sanitize: K8s name (lowercase, special chars, truncation), K8s label (allowed chars, truncation)
+- Why: M5.1 required validating the K8s job driver. The echo agent Dockerfile was incompatible with the hardened K8s pod spec (readOnlyRootFilesystem blocks .pyc writes, root user conflicts with runAsNonRoot). The K8s driver code (`internal/k8s/`) had zero test coverage.
+- What verified: All 24 new tests pass. Full orchestrator + gateway test suites pass. `go vet` clean. Pre-commit hooks pass.
+- Remaining for M5.1: Build + push echo agent image to Harbor, live test K8s job driver on cluster (create job, stream logs, verify completion).
+- Sources:
+  - [S1] `services/agents/echo/Dockerfile` — hardened for K8s
+  - [S2] `services/orchestrator-go/internal/k8s/job_test.go` — 24 tests
+  - [S3] Commit `6771508` — pushed to main

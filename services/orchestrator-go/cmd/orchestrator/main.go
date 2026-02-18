@@ -105,11 +105,37 @@ func main() {
 
 	// Initialize driver and scheduler
 	emitter := driver.NewRunStoreEmitter(store)
-	subprocessDriver := driver.NewLocalSubprocessDriver(emitter, &driver.SubprocessConfig{
-		EnvPassthrough: map[string]string{
-			"ORCHESTRATOR_URL": "http://localhost:" + cfg.Port,
-		},
-	})
+
+	// Select execution driver based on ORCH_DRIVER config
+	var execDriver driver.Driver
+	switch cfg.DriverType {
+	case "k8s":
+		k8sCfg := &driver.K8sDriverConfig{
+			K8sConfig: &k8s.Config{
+				InCluster:  cfg.K8sInCluster,
+				Kubeconfig: cfg.K8sKubeconfig,
+				Namespace:  cfg.K8sNamespace,
+			},
+			JobConfig: &k8s.JobConfig{
+				Namespace:        cfg.K8sNamespace,
+				ImagePullSecrets: cfg.K8sImagePullSecrets,
+			},
+		}
+		k8sDriver, err := driver.NewK8sDriver(emitter, k8sCfg)
+		if err != nil {
+			logger.Error("failed to create K8s driver", "error", err)
+			os.Exit(1)
+		}
+		execDriver = k8sDriver
+		logger.Info("using K8s job driver", slog.String("namespace", cfg.K8sNamespace))
+	default:
+		execDriver = driver.NewLocalSubprocessDriver(emitter, &driver.SubprocessConfig{
+			EnvPassthrough: map[string]string{
+				"ORCHESTRATOR_URL": "http://localhost:" + cfg.Port,
+			},
+		})
+		logger.Info("using subprocess driver")
+	}
 
 	// Command resolver for agents
 	resolveCmd := func(node *types.NodeSpec) []string {
@@ -134,9 +160,10 @@ func main() {
 		DefaultBackoffSecs: cfg.DefaultBackoffSecs,
 		DefaultRunTimeout:  cfg.DefaultRunTimeout,
 	}
-	sched := scheduler.New(store, subprocessDriver, resolveCmd, schedCfg, logger.With(slog.String("component", "scheduler")))
+	sched := scheduler.New(store, execDriver, resolveCmd, schedCfg, logger.With(slog.String("component", "scheduler")))
 
 	logger.Info("scheduler initialized",
+		slog.String("driver", cfg.DriverType),
 		slog.Int("max_parallelism", cfg.MaxParallelism),
 		slog.Int("default_retries", cfg.DefaultMaxRetries),
 		slog.Duration("default_run_timeout", cfg.DefaultRunTimeout),

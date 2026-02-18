@@ -90,6 +90,15 @@ spec:
                   name: minio-credentials
                   key: MINIO_SECRET_KEY
                   optional: true
+            # Driver — use K8s Jobs for agent execution
+            - name: ORCH_DRIVER
+              value: "k8s"
+            - name: K8S_IN_CLUSTER
+              value: "true"
+            - name: K8S_NAMESPACE
+              value: "mentatlab"
+            - name: K8S_IMAGE_PULL_SECRETS
+              value: "harbor-creds"
             # Scheduler
             - name: ORCH_DEFAULT_RUN_TIMEOUT
               value: "30m"

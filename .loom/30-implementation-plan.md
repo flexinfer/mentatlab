@@ -217,11 +217,13 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 **Goal:** Platform runs on K3s with validated K8s job driver, working artifact storage, Grafana dashboards, and production-grade scheduler features (timeouts, retries).
 
 #### M5.1 Validate K8s job driver on real cluster
+- ~~Harden echo agent Dockerfile for K8s (non-root user, readOnlyRootFilesystem compat)~~ ✅
+- ~~Add unit tests for JobBuilder, GetJobStatus, sanitize helpers (24 tests)~~ ✅
 - Build and push echo agent image to Harbor
 - Deploy orchestrator with `K8S_IN_CLUSTER=true`
 - Execute a run using K8s job driver, verify Job creation, log streaming, success reporting
 - Test failure cases: image pull failure, timeout, cancellation
-- **Status:** Pending (requires cluster access)
+- **Status:** In progress (Dockerfile + unit tests done, live cluster test pending)
 
 #### M5.2 Verify MinIO data flow end-to-end
 - Deploy MinIO, create bucket and credentials secret

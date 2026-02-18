@@ -44,6 +44,10 @@ type Config struct {
 	K8sInCluster  bool
 	K8sKubeconfig string
 
+	// Driver configuration
+	DriverType       string // "subprocess" or "k8s"
+	K8sImagePullSecrets []string
+
 	// Scheduler configuration
 	MaxParallelism     int
 	DefaultMaxRetries  int
@@ -95,6 +99,10 @@ func Load() *Config {
 		K8sNamespace:  getEnv("K8S_NAMESPACE", "mentatlab"),
 		K8sInCluster:  getBool("K8S_IN_CLUSTER", false),
 		K8sKubeconfig: getEnv("KUBECONFIG", ""),
+
+		// Driver
+		DriverType:       getEnv("ORCH_DRIVER", "subprocess"), // "subprocess" or "k8s"
+		K8sImagePullSecrets: getStringSlice("K8S_IMAGE_PULL_SECRETS", nil),
 
 		// Scheduler
 		MaxParallelism:     getInt("ORCH_MAX_PARALLELISM", 0), // 0 = unlimited
