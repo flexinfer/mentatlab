@@ -318,6 +318,49 @@ Chronological notes while executing the plan (useful for handoffs and debugging)
 - Sources:
   - [S1] Commits: `261a6b1` (image tags), `fa4b9e1` (network policies), `85c0996` (imagePullPolicy), `1f659b0` (nginx volumes)
   - [S2] Pipeline 1148 — all stages green (lint, test, build, e2e, deploy)
+
+## 2026-02-18
+
+### MentatLab docs integration into flexinfer-site - DONE
+
+- What changed in `services/mentatlab`:
+  - Added curated public docs set:
+    - `docs/site/README.md`
+    - `docs/site/getting-started.md`
+    - `docs/site/architecture.md`
+    - `docs/site/api-reference.md`
+    - `docs/site/deployment.md`
+  - Updated `docs/README.md` to split "Public Docs (Site-Ready)" from internal docs.
+
+- What changed in `services/flexinfer-site`:
+  - Added MentatLab project to docs sync pipeline:
+    - `scripts/sync-docs.mjs` (`name: mentatlab`, source `../mentatlab/docs`, target `content/mentatlab-docs`)
+    - `package.json` script: `sync:mentatlab-docs`
+  - Added docs renderer instance:
+    - `lib/project-docs.ts` export `mentatlabDocs`
+  - Added docs routes:
+    - `app/docs/mentatlab/page.tsx`
+    - `app/docs/mentatlab/[...slug]/page.tsx`
+  - Added curated nav:
+    - `content/mentatlab-docs/nav.yaml`
+  - Updated docs hub:
+    - Added MentatLab card in `app/docs/page.tsx`
+  - Updated product/docs linkage:
+    - `data/portfolio-positioning.ts` `docsHref` -> `/docs/mentatlab`
+    - `app/products/mentatlab/page.tsx` docs CTA now internal `<Link>`
+    - `lib/content-links.ts` adds `/docs/mentatlab` relationships
+  - Updated tests:
+    - `__tests__/lib/portfolio-positioning.test.ts`
+    - `__tests__/lib/content-links.test.ts`
+
+- Commands run:
+  - `node scripts/sync-docs.mjs mentatlab`
+  - `pnpm typecheck`
+  - `pnpm test __tests__/lib/content-links.test.ts __tests__/lib/portfolio-positioning.test.ts __tests__/lib/mentatlab-page.test.ts`
+
+- Validation:
+  - Typecheck passed.
+  - Targeted test suites passed (3/3, 10 tests).
   - [S3] `kubectl get pods -n mentatlab` — all pods 1/1 Running
   - [S4] `kubectl get kustomization mentatlab -n flux-system` — `Ready: True`
 

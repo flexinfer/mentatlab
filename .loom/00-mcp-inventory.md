@@ -1,5 +1,31 @@
 # MCP Inventory
 
+## 2026-02-18 Refresh (Docs Integration Task)
+
+### Commands/Calls Run
+
+- `functions.list_mcp_resources`
+- `functions.list_mcp_resource_templates`
+- `functions.read_mcp_resource` on:
+  - `loom://servers`
+  - `loom://health`
+  - `loom://config`
+
+### Snapshot Summary
+
+- Active Loom profile: `full`
+- Server count: `41`
+- Tool count: `379`
+- Health status: all listed servers reported healthy in `loom://health`
+
+### Resources Available from `loom` Server
+
+- `loom://servers` - server catalog and status
+- `loom://tools` - aggregated tool inventory
+- `loom://tools/index` - paginated tool index
+- `loom://health` - per-server health
+- `loom://config` - active profile/config summary
+
 ## Why
 
 Capture the available MCP servers/resources/templates so planning and implementation can use the right tools without guesswork.

@@ -1,6 +1,16 @@
 # MentatLab Documentation
 
-## Canonical Docs
+## Public Docs (Site-Ready)
+
+These docs are curated for rendering in `services/flexinfer-site` under `/docs/mentatlab`.
+
+- [docs/site/README.md](site/README.md)
+- [docs/site/getting-started.md](site/getting-started.md)
+- [docs/site/architecture.md](site/architecture.md)
+- [docs/site/api-reference.md](site/api-reference.md)
+- [docs/site/deployment.md](site/deployment.md)
+
+## Canonical Internal Docs
 
 | Document | Description |
 |----------|-------------|

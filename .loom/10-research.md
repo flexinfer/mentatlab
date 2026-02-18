@@ -11,6 +11,50 @@ MentatLab has accumulated fragmented planning docs, duplicate service implementa
 - Q3: Can the project be built and deployed end-to-end right now?
 - Q4: What is the minimum viable path to a working agent dev/orchestration tool?
 
+## 2026-02-18 Addendum: MentatLab Docs Integration with flexinfer-site
+
+### Problem
+
+MentatLab docs were linked externally from the FlexInfer product surface (`gitlab tree` link), but not integrated as first-class docs in `services/flexinfer-site` docs hub and route system.
+
+### Findings
+
+1. `flexinfer-site` already has a reusable multi-project docs pipeline:
+   - sync script: `scripts/sync-docs.mjs`
+   - generic renderer: `lib/project-docs.ts`
+   - per-project route pattern in `app/docs/<project>` and `app/docs/<project>/[...slug]`
+2. MentatLab source docs are present in `services/mentatlab/docs`, but many files are internal/planning-oriented; a curated site-ready subset was needed.
+3. Existing MentatLab product metadata used an external docs URL:
+   - `data/portfolio-positioning.ts` had `docsHref` pointing to GitLab, not an internal route.
+
+### Solution Chosen
+
+- Add curated site docs in `services/mentatlab/docs/site/`.
+- Extend `flexinfer-site` sync pipeline with a `mentatlab` project.
+- Add `mentatlabDocs` project-docs instance and routes:
+  - `/docs/mentatlab`
+  - `/docs/mentatlab/[...slug]`
+- Update docs hub cards and product/content-link mappings to include internal MentatLab docs.
+
+### Validation
+
+- `pnpm typecheck` passed in `services/flexinfer-site`.
+- MentatLab-related tests passed:
+  - `__tests__/lib/content-links.test.ts`
+  - `__tests__/lib/portfolio-positioning.test.ts`
+  - `__tests__/lib/mentatlab-page.test.ts`
+
+### Sources
+
+- `services/flexinfer-site/scripts/sync-docs.mjs:27`
+- `services/flexinfer-site/lib/project-docs.ts:466`
+- `services/flexinfer-site/app/docs/page.tsx:172`
+- `services/flexinfer-site/data/portfolio-positioning.ts:186`
+- `services/flexinfer-site/app/products/mentatlab/page.tsx:80`
+- `services/flexinfer-site/app/docs/mentatlab/page.tsx:1`
+- `services/flexinfer-site/app/docs/mentatlab/[...slug]/page.tsx:1`
+- `services/mentatlab/docs/site/README.md:1`
+
 ## Constraints
 
 - Dual implementations (Python + Go) create confusion

@@ -13,6 +13,37 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 ---
 
+## 2026-02-18 Slice: Public Docs Integration (`mentatlab` -> `flexinfer-site`)
+
+### Objective
+
+Deliver first-class MentatLab docs inside `services/flexinfer-site` rather than linking users to the external GitLab docs tree.
+
+### Tasks
+
+1. Add curated, public-facing docs source in `services/mentatlab/docs/site/`.
+2. Extend docs sync pipeline in `services/flexinfer-site/scripts/sync-docs.mjs` with `mentatlab`.
+3. Add `sync:mentatlab-docs` package script.
+4. Register `mentatlabDocs` in `lib/project-docs.ts`.
+5. Add docs routes:
+   - `app/docs/mentatlab/page.tsx`
+   - `app/docs/mentatlab/[...slug]/page.tsx`
+6. Add MentatLab docs card in `/docs` hub.
+7. Change MentatLab product/docs links to `/docs/mentatlab`.
+8. Add/update tests for new link relationships.
+
+### Acceptance Criteria
+
+- `pnpm typecheck` passes in `services/flexinfer-site`.
+- MentatLab docs route renders and sidebar nav resolves to synced markdown.
+- `__tests__/lib/content-links.test.ts`, `__tests__/lib/portfolio-positioning.test.ts`, and `__tests__/lib/mentatlab-page.test.ts` pass.
+
+### Execution Notes
+
+- `content/mentatlab-docs/nav.yaml` is preserved by `sync-docs.mjs` (`preserveNavYaml=true`), enabling curated navigation while syncing full source docs.
+
+---
+
 ## Milestones
 
 ### M0: Foundation (Infrastructure Fix)
