@@ -405,12 +405,14 @@ deploy:
       cd k8s
 
       # Update image tags using kustomize
-      echo "Setting image tags to ${CI_COMMIT_SHORT_SHA}..."
+      # Use :latest on main — BuildKit multi-name push does not reliably push SHA tags
+      IMAGE_TAG="latest"
+      echo "Setting image tags to ${IMAGE_TAG}..."
       kustomize edit set image \
-        "registry.harbor.lan/library/mentatlab-orchestrator-go=${REGISTRY}/mentatlab-orchestrator-go:${CI_COMMIT_SHORT_SHA}" \
-        "registry.harbor.lan/library/mentatlab-gateway-go=${REGISTRY}/mentatlab-gateway-go:${CI_COMMIT_SHORT_SHA}" \
-        "registry.harbor.lan/library/mentatlab-frontend=${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}" \
-        "registry.harbor.lan/library/mentatlab-echoagent=${REGISTRY}/mentatlab-echoagent:${CI_COMMIT_SHORT_SHA}"
+        "registry.harbor.lan/library/mentatlab-orchestrator-go=${REGISTRY}/mentatlab-orchestrator-go:${IMAGE_TAG}" \
+        "registry.harbor.lan/library/mentatlab-gateway-go=${REGISTRY}/mentatlab-gateway-go:${IMAGE_TAG}" \
+        "registry.harbor.lan/library/mentatlab-frontend=${REGISTRY}/mentatlab-frontend:${IMAGE_TAG}" \
+        "registry.harbor.lan/library/mentatlab-echoagent=${REGISTRY}/mentatlab-echoagent:${IMAGE_TAG}"
 
       # Apply manifests using server-side apply
       echo "Applying manifests..."
