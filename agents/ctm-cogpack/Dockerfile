@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # CTM-Cogpack Cog-Pak Dockerfile
 FROM python:3.12-slim
 
