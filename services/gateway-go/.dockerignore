@@ -2,8 +2,7 @@
 *_test.go
 testdata/
 
-# Runtime artifacts
-traces/
+# Runtime artifacts (do NOT exclude traces/ — it contains Go source code)
 
 # Build artifacts
 *.exe
