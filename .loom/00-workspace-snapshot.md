@@ -1,6 +1,6 @@
 # Workspace Snapshot
 
-- Generated: 2026-02-16
+- Generated: 2026-02-18T16:34:39-05:00
 - Root: `/Users/cblevins/workspace/services/mentatlab`
 - Git toplevel: `/Users/cblevins/workspace/services/mentatlab`
 - Platform: `macOS-26.3-arm64-arm-64bit`
@@ -8,20 +8,7 @@
 
 ## Git
 ```
-## main
- M services/gateway-go/main.go
- M services/orchestrator-go/internal/api/handlers.go
- M services/orchestrator-go/internal/api/handlers_m5m6.go
- M services/orchestrator-go/internal/api/handlers_test.go
- M services/orchestrator-go/internal/runstore/memory.go
- M services/orchestrator-go/internal/runstore/redis.go
- M services/orchestrator-go/internal/runstore/store.go
- M services/orchestrator-go/internal/scheduler/conditional_test.go
- M services/orchestrator-go/internal/scheduler/cron.go
- M services/orchestrator-go/internal/scheduler/foreach_test.go
- M services/orchestrator-go/internal/scheduler/m5m6_test.go
- M services/orchestrator-go/pkg/types/run.go
-?? docs/roadmap-reconciliation-2026-02-16.md
+## main...origin/main [ahead 1]
 ```
 
 ### Remotes
@@ -38,19 +25,7 @@ origin	https://gitlab.flexinfer.ai/services/mentatlab.git (push)
 
 ### HEAD
 ```
-58a0b9b docs: update loom context for deploy + add M7 plan
-```
-
-### Recent Commits
-```
-58a0b9b docs: update loom context for deploy + add M7 plan
-1f659b0 fix(k8s): add nginx writable volumes to frontend deployment
-85c0996 fix(k8s): use imagePullPolicy Always for :latest tags
-fa4b9e1 fix(k8s): add MinIO network policies, fix bucket-init job
-261a6b1 fix(k8s): use :latest image tags for Flux compatibility
-45f710f feat(m5-m6): run timeouts, retry policies, gates, webhooks, cron, cloning
-c6c0b27 docs: mark M4 complete, update roadmap and worklog
-8581bcb feat(m4): demo mode with example flows, fix mentatctl dev run
+0df31f1 fix(k8s): add ORCH_RUNSTORE=redis and trigger rollout for K8s driver image
 ```
 
 ## Top-Level Layout
@@ -64,15 +39,18 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 - `.pytest_cache/`
 - `.vscode/`
 - `agents/`
+- `archive/`
 - `assets/`
 - `cli/`
 - `docs/`
 - `examples/`
 - `k8s/`
 - `logs/`
+- `observability/`
 - `schemas/`
 - `scripts/`
 - `services/`
+- `tests/`
 
 ### Files
 - `.env.example`
@@ -122,6 +100,14 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 - `.env.example`
 - `.gitignore`
 - `.gitlab-ci.yml`
+- `.loom/00-index.md`
+- `.loom/00-mcp-inventory.md`
+- `.loom/00-workspace-snapshot.md`
+- `.loom/10-research.md`
+- `.loom/20-product-spec.md`
+- `.loom/30-implementation-plan.md`
+- `.loom/40-decisions.md`
+- `.loom/50-worklog.md`
 - `.pdm-python`
 - `.pre-commit-config.yaml`
 - `.sops.yaml`
@@ -138,6 +124,7 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 - `agents/__init__.py`
 - `agents/common/__init__.py`
 - `agents/common/emit.py`
+- `agents/ctm-cogpack/.dockerignore`
 - `agents/ctm-cogpack/Dockerfile`
 - `agents/ctm-cogpack/manifest.yaml`
 - `agents/ctm-cogpack/requirements.txt`
@@ -155,6 +142,7 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 - `agents/ctm-cogpack/ui/remoteEntry.js`
 - `agents/echo/__init__.py`
 - `agents/echo/main.py`
+- `agents/psyche-sim/.dockerignore`
 - `agents/psyche-sim/Dockerfile`
 - `agents/psyche-sim/README.md`
 - `agents/psyche-sim/health.sh`
@@ -164,6 +152,48 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 - `agents/psyche-sim/pyproject.toml`
 - `agents/psyche-sim/src/main.py`
 - `agents/psyche-sim/ui/remoteEntry.js`
+- `archive/gateway-python/.pdm-python`
+- `archive/gateway-python/Dockerfile`
+- `archive/gateway-python/__init__.py`
+- `archive/gateway-python/app/__init__.py`
+- `archive/gateway-python/app/main.py`
+- `archive/gateway-python/app/models.py`
+- `archive/gateway-python/app/router_agents.py`
+- `archive/gateway-python/app/streaming.py`
+- `archive/gateway-python/app/validation.py`
+- `archive/gateway-python/app/websockets.py`
+- `archive/gateway-python/pdm.lock`
+- `archive/gateway-python/pyproject.toml`
+- `archive/gateway-python/tests/__init__.py`
+- `archive/gateway-python/tests/test_routes.py`
+- `archive/orchestrator-python/.dockerignore`
+- `archive/orchestrator-python/.gitignore`
+- `archive/orchestrator-python/Dockerfile`
+- `archive/orchestrator-python/README.md`
+- `archive/orchestrator-python/app/__init__.py`
+- `archive/orchestrator-python/app/context.py`
+- `archive/orchestrator-python/app/data_flow.py`
+- `archive/orchestrator-python/app/main.py`
+- `archive/orchestrator-python/app/manifest_validator.py`
+- `archive/orchestrator-python/app/runstore.py`
+- `archive/orchestrator-python/app/scheduler.py`
+- `archive/orchestrator-python/app/scheduling.py`
+- `archive/orchestrator-python/app/storage.py`
+- `archive/orchestrator-python/app/streaming.py`
+- `archive/orchestrator-python/app/subprocess_driver.py`
+- `archive/orchestrator-python/app/telemetry.py`
+- `archive/orchestrator-python/app/tests/__init__.py`
+- `archive/orchestrator-python/app/tests/mock_scheduling.py`
+- `archive/orchestrator-python/app/tests/test_main.py`
+- `archive/orchestrator-python/app/tests/test_manifest_validation.py`
+- `archive/orchestrator-python/app/tests/test_scheduling.py`
+- `archive/orchestrator-python/package-lock.json`
+- `archive/orchestrator-python/package.json`
+- `archive/orchestrator-python/pdm.lock`
+- `archive/orchestrator-python/pyproject.toml`
+- `archive/orchestrator-python/pytest.ini`
+- `archive/orchestrator-python/requirements.txt`
+- `archive/orchestrator-python/tsconfig.json`
 - `assets/banner.png`
 - `assets/header.svg`
 - `assets/icon.png`
@@ -174,6 +204,10 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 - `cli/mentatctl/main.py`
 - `cli/mentatctl/requirements.txt`
 - `cli/mentatctl/runs_commands.py`
+- `cli/mentatctl/templates/go/Dockerfile`
+- `cli/mentatctl/templates/go/go.mod`
+- `cli/mentatctl/templates/go/manifest.yaml`
+- `cli/mentatctl/templates/go/src/main.go`
 - `cli/mentatctl/templates/nodejs/Dockerfile`
 - `cli/mentatctl/templates/nodejs/manifest.yaml`
 - `cli/mentatctl/templates/nodejs/package.json`
@@ -194,6 +228,19 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 - `docs/agent-sdk.md`
 - `docs/agents.md`
 - `docs/architecture.md`
+- `docs/archive/milestone-specs/mvp-roadmap.md`
+- `docs/archive/milestone-specs/pr-d1-plan.md`
+- `docs/archive/milestone-specs/v1.0_milestone_spec.md`
+- `docs/archive/milestone-specs/v1.0_milestone_summary.md`
+- `docs/archive/milestone-specs/v1.0_pki_implementation_guide.md`
+- `docs/archive/milestone-specs/v1.0_wasm_runtime_implementation_guide.md`
+- `docs/archive/milestone-specs/v1.1_milestone_spec.md`
+- `docs/archive/milestone-specs/v1.1_milestone_summary.md`
+- `docs/archive/milestone-specs/v2.0_milestone_spec.md`
+- `docs/archive/milestone-specs/v2.0_milestone_spec_part2.md`
+- `docs/archive/milestone-specs/v2.0_milestone_summary.md`
+- `docs/archive/milestone-specs/webui_beta_gap_analysis.md`
+- `docs/archive/milestone-specs/webui_rearchitecture_plan.md`
 - `docs/archive/sprint5/beta_milestone_architecture.md`
 - `docs/archive/sprint5/beta_milestone_implementation_plan.md`
 - `docs/archive/sprint5/beta_milestone_risk_assessment.md`
@@ -217,103 +264,34 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 - `docs/local-testing-guide.md`
 - `docs/logs/2025-10-28-phase-1.md`
 - `docs/logs/2025-10-28-phase-2.md`
-- `docs/mvp-roadmap.md`
 - `docs/orchestrator_design.md`
 - `docs/overview.md`
 - `docs/plans/2025-10-28-phase-1-ui-cogpaks.md`
 - `docs/plans/2025-10-28-phase-2-deprecations.md`
 - `docs/plans/2025-10-28-phase-3-runtime-polish.md`
 - `docs/plans/2025-10-28-phase-4-observability-and-scale.md`
-- `docs/pr-d1-plan.md`
 - `docs/pr/PR-D2.md`
 - `docs/pr/demo-orchestrator.md`
 - `docs/references/agents-contract.md`
 - `docs/references/frontend-orchestrator.md`
 - `docs/references/history/README.md`
 - `docs/references/orchestrator-api.md`
+- `docs/roadmap-reconciliation-2026-02-12.md`
+- `docs/roadmap-reconciliation-2026-02-14.md`
+- `docs/roadmap-reconciliation-2026-02-15.md`
+- `docs/roadmap-reconciliation-2026-02-16.md`
+- `docs/roadmap-reconciliation-2026-02-17.md`
 - `docs/status/README.md`
 - `docs/status/anchors.json`
 - `docs/status/project-status.yaml`
 - `docs/ui-mission-control.md`
-- `docs/v1.0_milestone_spec.md`
-- `docs/v1.0_milestone_summary.md`
-- `docs/v1.0_pki_implementation_guide.md`
-- `docs/v1.0_wasm_runtime_implementation_guide.md`
-- `docs/v1.1_milestone_spec.md`
-- `docs/v1.1_milestone_summary.md`
-- `docs/v2.0_milestone_spec.md`
-- `docs/v2.0_milestone_spec_part2.md`
-- `docs/v2.0_milestone_summary.md`
-- `docs/webui_beta_gap_analysis.md`
-- `docs/webui_rearchitecture_plan.md`
 - `dump.rdb`
+- `examples/conditional_routing.json`
+- `examples/data_pipeline.json`
+- `examples/foreach_batch.json`
 - `examples/hello_chat.json`
 - `examples/psyche-simulation/agents/__init__.py`
 - `examples/psyche-simulation/agents/anima_animus.py`
-- `examples/psyche-simulation/agents/base.py`
-- `examples/psyche-simulation/agents/ego.py`
-- `examples/psyche-simulation/agents/persona.py`
-- `examples/psyche-simulation/agents/self_agent.py`
-- `examples/psyche-simulation/agents/shadow.py`
-- `examples/psyche-simulation/analysis/__init__.py`
-- `examples/psyche-simulation/analysis/analytics_export_integration.py`
-- `examples/psyche-simulation/analysis/real_time_analytics.py`
-- `examples/psyche-simulation/analysis/sentiment.py`
-- `examples/psyche-simulation/auth/__init__.py`
-- `examples/psyche-simulation/auth/session_handler.py`
-- `examples/psyche-simulation/auth/user_manager.py`
-- `examples/psyche-simulation/auth_test_results.json`
-- `examples/psyche-simulation/clear_cache_and_restart.py`
-- `examples/psyche-simulation/comprehensive_auth_test.py`
-- `examples/psyche-simulation/config/__init__.py`
-- `examples/psyche-simulation/config/config.py`
-- `examples/psyche-simulation/data/__init__.py`
-- `examples/psyche-simulation/data/redis_integration.py`
-- `examples/psyche-simulation/data/redis_manager.py`
-- `examples/psyche-simulation/data/redis_state_manager.py`
-- `examples/psyche-simulation/deploy.sh`
-- `examples/psyche-simulation/diagnose/diagnose_litellm_issue.py`
-- `examples/psyche-simulation/diagnose/diagnose_nicegui_javascript.py`
-- `examples/psyche-simulation/diagnose/diagnose_realtime_system.py`
-- `examples/psyche-simulation/diagnose/diagnose_streaming_connection.py`
-- `examples/psyche-simulation/diagnose/diagnose_ui_context.py`
-- `examples/psyche-simulation/diagnose/diagnose_ui_context_simple.py`
-- `examples/psyche-simulation/diagnose/diagnose_websocket_realtime.py`
-- `examples/psyche-simulation/docker/.dockerignore`
-- `examples/psyche-simulation/docker/Dockerfile`
-- `examples/psyche-simulation/docker/docker-compose.yml`
-- `examples/psyche-simulation/docker/healthcheck.sh`
-- `examples/psyche-simulation/docs/FIXES_PLAN.md`
-- `examples/psyche-simulation/docs/KUBERNETES_DEPLOYMENT_STATUS.md`
-- `examples/psyche-simulation/docs/LLM_MODEL_RECOMMENDATIONS.md`
-- `examples/psyche-simulation/docs/NiceGUI.md`
-- `examples/psyche-simulation/docs/PLAN.md`
-- `examples/psyche-simulation/docs/REALTIME_VISUALIZATION_ARCHITECTURE.md`
-- `examples/psyche-simulation/docs/STREAMING_UI_MODE.md`
-- `examples/psyche-simulation/docs/litellm-fix-summary.md`
-- `examples/psyche-simulation/docs/litellm_config_comparison.md`
-- `examples/psyche-simulation/docs/nicegui_layout_fix_complete.md`
-- `examples/psyche-simulation/docs/nicegui_layout_fix_summary.md`
-- `examples/psyche-simulation/docs/real_time_ui_fix_summary.md`
-- `examples/psyche-simulation/docs/realtime_streaming_fix_guide.md`
-- `examples/psyche-simulation/docs/realtime_streaming_implementation_complete.md`
-- `examples/psyche-simulation/docs/realtime_ui_diagnosis_report.md`
-- `examples/psyche-simulation/docs/realtime_ui_updates_complete.md`
-- `examples/psyche-simulation/docs/websocket_events_guide.md`
-- `examples/psyche-simulation/docs/websocket_progress_fix_summary.md`
-- `examples/psyche-simulation/docs/websocket_storage_fix_complete.md`
-- `examples/psyche-simulation/examples/cytoscape_integration_demo.py`
-- `examples/psyche-simulation/examples/security_integration_demo.py`
-- `examples/psyche-simulation/examples/websocket_demo.py`
-- `examples/psyche-simulation/final_websocket_fix_results.json`
-- `examples/psyche-simulation/health-check.sh`
-- `examples/psyche-simulation/k8s/README.md`
-- `examples/psyche-simulation/k8s/configmap.yaml`
-- `examples/psyche-simulation/k8s/deployment.yaml`
-- `examples/psyche-simulation/k8s/environments/development.yaml`
-- `examples/psyche-simulation/k8s/environments/production.yaml`
-- `examples/psyche-simulation/k8s/environments/staging.yaml`
-- `examples/psyche-simulation/k8s/hpa.yaml`
 - `…`
 
 ## AGENTS.md Files
@@ -323,17 +301,32 @@ c6c0b27 docs: mark M4 complete, update roadmap and worklog
 
 #### `AGENTS.md`
 ```
-# Agent Working Notes (mentatlab)
+# AGENTS.md
 
-## Scope
+Agent guidance for the `services/mentatlab` repository.
 
-This file applies to the `services/mentatlab` repository.
+> **Note**: `CLAUDE.md` is a symlink to this file. All agents should use `AGENTS.md` as the canonical source.
 
-## Repository Purpose
+## Project Overview
 
-MentatLab - AI agent orchestration platform. Provides a gateway, orchestrator, and frontend for managing AI agents.
+MentatLab is an AI agent orchestration platform with a Mission Control interface for building, monitoring, and executing agent workflows as DAGs. The backend uses Go services (gateway-go, orchestrator-go). Python agents communicate via stdin/stdout NDJSON contract.
 
-## Workspace Structure
+## Architecture
+
+```
+Browser → Gateway → Orchestrator → Agents
+             ↓           ↓
+           Redis ←───────┘
+```
+
+**Core Components:**
+- **Frontend**: React + ReactFlow canvas for visual workflow building (Vite, Zustand, Tailwind)
+- **Gateway**: API proxy + WebSocket hub (`services/gateway-go/`)
+- **Orchestrator**: DAG execution engine with K8s/subprocess/memory modes (`services/orchestrator-go/`)
+- **Redis**: Message broker and state storage
+- **Agents**: Python agents in `agents/` (echo, psyche-sim, ctm-cogpack)
+
+## Workspace Context
 
 This repo is part of the `services/` GitLab group:
 
@@ -346,8 +339,9 @@ gitlab.flexinfer.ai/
 
 ## Deployment (GitOps)
 
-This service has multiple components deployed to Kubernetes. Manifests in this repo:
+GitOps via Flux CD to K3s. Manifests in `k8s/`. Images pushed to `registry.harbor.lan/library/mentatlab-*`.
 
+K8s manifests:
 - `k8s/namespace.yaml` - mentatlab namespace
 - `k8s/gateway.yaml` - API gateway
 - `k8s/orchestrator.yaml` - Agent orchestrator
@@ -357,68 +351,77 @@ This service has multiple components deployed to Kubernetes. Manifests in this r
 - `k8s/echoagent.yaml` - Example echo agent
 - `k8s/ingress.yaml` - Ingress configuration
 
-For GitOps deployment via Flux:
-
-1. Build and push container images
-2. Update image tags in `k8s/*.yaml`
-3. Reference from `platform/gitops/k3s/ai/mentatlab/` or apply directly
-4. Flux will reconcile (or use `k8s/deploy.sh` for direct apply)
-
-Container Images:
-
-- Gateway: `registry.harbor.lan/library/mentatlab-gateway`
-- Orchestrator: `registry.harbor.lan/library/mentatlab-orchestrator`
+Container images:
+- Gateway: `registry.harbor.lan/library/mentatlab-gateway-go`
+- Orchestrator: `registry.harbor.lan/library/mentatlab-orchestrator-go`
 - Frontend: `registry.harbor.lan/library/mentatlab-frontend`
 
-Build:
+## Development Commands
 
+### Full Stack (Docker Compose)
 ```bash
-./build-and-push.sh
+docker-compose up                    # Start all services
+docker-compose -f docker-compose.dev.yml up  # Dev mode with hot reload
+./run-local-dev.sh                   # Full local dev setup with health checks
+./quick-start.sh                     # Lightweight startup
 ```
 
-## Local Development
-
+### Frontend
 ```bash
-# Install dependencies
-pdm install
-
-# Start with docker-compose
-docker-compose up -d
-
-# Or run services individually
-pdm run python -m services.gateway
-pdm run python -m services.orchestrator
+cd services/frontend
+npm install
+npm run dev        # Dev server at http://localhost:5173
+npm test           # Run vitest
+npm run lint       # TypeScript type check
+npm run e2e        # Playwright tests
 ```
 
-## Architecture
+### Go Services
+```bash
+# Gateway (port 8080)
+cd services/gateway-go && go run main.go
 
-```text
-                    ┌─────────────┐
-                    │   Ingress   │
-                    └──────┬──────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-        ┌─────▼─────┐ ┌────▼────┐ ┌─────▼─────┐
-        │  Gateway  │ │Frontend │ │  Agents   │
-        └─────┬─────┘ └─────────┘ └─────▲─────┘
-              │                         │
-        ┌─────▼─────┐                   │
-        │Orchestrator├──────────────────┘
-        └─────┬─────┘
-              │
-        ┌─────▼─────┐
-        │   Redis   │
-        └───────────┘
+# Orchestrator (port 7070)
+cd services/orchestrator-go && go run ./cmd/orchestrator/
+
+# Quick check (lint + test Go services)
+make check
+
+# Testing
+go test -v ./...
+go vet ./...
 ```
 
+### Building & Deploying
+```bash
+./build-and-push.sh                  # Build and push all images
+./build-and-push.sh --skip-push      # Build only, no push
+./k8s/deploy.sh --namespace mentatlab # Deploy to K8s
+```
 
-## CI/CD
+## Service URLs (Local Dev)
 
-GitLab CI is configured in `.gitlab-ci.yml` for automated builds.
+| Service      | URL                    | Health                    |
+|--------------|------------------------|---------------------------|
+| Gateway      | http://localhost:8080  | /health, /healthz         |
+| Orchestrator | http://localhost:7070  | /health, /healthz         |
+| Frontend     | http://localhost:5173  | /healthz (nginx)          |
+| Redis        | localhost:6379         | -                         |
 
-## Planning
-- See `ROADMAP.md` for project status and plans.
+## Key Directories
+
+- `services/frontend/src/components/mission-control/` - Mission Control UI (canvas, panels, overlays)
+- `services/orchestrator-go/internal/` - Go orchestrator packages:
+  - `api/` - HTTP handlers and routing
+  - `registry/` - Agent registry (memory/Redis)
+  - `flowstore/` - Flow persistence (memory/Redis)
+  - `runstore/` - Run state storage
+  - `scheduler/` - DAG execution scheduler
+  - `k8s/` - Kubernetes job driver
+- `services/gateway-go/` - Go gateway with:
+  - `hub/` - WebSocket hub with stream filtering
+  - `middleware/` - Auth, rate limiting, security headers
+…
 ```
 
 ## Notes
