@@ -223,11 +223,15 @@ func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
 		runTimeout = rctx.planTimeout
 	}
 
+	// Detach from the caller (HTTP request) context so the run survives
+	// after the response is sent.  Propagate the OTel span for tracing.
+	detached := context.WithoutCancel(ctx)
+
 	// Create timeout context if configured
-	runCtx := ctx
+	runCtx := detached
 	var cancelTimeout context.CancelFunc
 	if runTimeout > 0 {
-		runCtx, cancelTimeout = context.WithTimeout(ctx, runTimeout)
+		runCtx, cancelTimeout = context.WithTimeout(detached, runTimeout)
 	}
 
 	// Start the run loop in a goroutine
