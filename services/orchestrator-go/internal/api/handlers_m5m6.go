@@ -18,6 +18,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
@@ -201,6 +202,15 @@ func (h *Handlers) TriggerWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if result := validator.ValidatePlanGraph(plan); !result.Valid {
+		msgs := make([]string, len(result.Errors))
+		for i, e := range result.Errors {
+			msgs[i] = e.Message
+		}
+		h.respondError(w, r, http.StatusBadRequest, strings.Join(msgs, "; "), nil)
+		return
+	}
+
 	runID, err := h.store.CreateRun(ctx, flow.Name+" (webhook)", plan, getOwnerFromRequest(r))
 	if err != nil {
 		h.respondError(w, r, http.StatusInternalServerError, "failed to create run", err)
@@ -313,6 +323,15 @@ func (h *Handlers) RunFlow(w http.ResponseWriter, r *http.Request) {
 	plan, err := flowGraphToPlan(flow.Graph)
 	if err != nil {
 		h.respondError(w, r, http.StatusInternalServerError, "failed to convert flow to plan", err)
+		return
+	}
+
+	if result := validator.ValidatePlanGraph(plan); !result.Valid {
+		msgs := make([]string, len(result.Errors))
+		for i, e := range result.Errors {
+			msgs[i] = e.Message
+		}
+		h.respondError(w, r, http.StatusBadRequest, strings.Join(msgs, "; "), nil)
 		return
 	}
 

@@ -144,6 +144,18 @@ func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate plan graph structure (cycles, dangling edges, duplicate IDs)
+	if req.Plan != nil {
+		if result := validator.ValidatePlanGraph(req.Plan); !result.Valid {
+			msgs := make([]string, len(result.Errors))
+			for i, e := range result.Errors {
+				msgs[i] = e.Message
+			}
+			h.respondError(w, r, http.StatusBadRequest, strings.Join(msgs, "; "), nil)
+			return
+		}
+	}
+
 	owner := getOwnerFromRequest(r)
 	runID, err := h.store.CreateRun(ctx, req.Name, req.Plan, owner)
 	if err != nil {
