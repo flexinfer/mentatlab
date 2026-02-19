@@ -49,9 +49,10 @@ spec:
           env:
             - name: PORT
               value: "5173"
-            # For reference; the image is typically built with the public Gateway URL
+            # Browser-accessible gateway URL — uses the ingress hostname so
+            # API calls to /api/* and WebSocket at /ws/* resolve correctly.
             - name: VITE_GATEWAY_BASE_URL
-              value: "http://192.168.50.244:8080"
+              value: "https://mentatlab.flexinfer.ai"
           resources:
             requests:
               cpu: 100m

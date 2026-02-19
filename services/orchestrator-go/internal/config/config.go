@@ -22,9 +22,10 @@ type Config struct {
 	RedisDB       int
 
 	// RunStore configuration
-	RunStoreType string // "memory" or "redis"
-	RunStoreTTL  time.Duration
-	EventMaxLen  int64
+	RunStoreType         string // "memory" or "redis"
+	RunStoreTTL          time.Duration
+	EventMaxLen          int64
+	AllowMemoryFallback  bool // Allow fallback to memory store if Redis is unreachable
 
 	// OIDC configuration
 	OIDCIssuer       string
@@ -78,9 +79,10 @@ func Load() *Config {
 		RedisDB:       getInt("REDIS_DB", 0),
 
 		// RunStore
-		RunStoreType: getEnv("ORCH_RUNSTORE", "memory"), // "memory" or "redis"
-		RunStoreTTL:  getDuration("RUNSTORE_TTL", 7*24*time.Hour), // 7 days
-		EventMaxLen:  getInt64("EVENT_MAX_LEN", 5000),
+		RunStoreType:        getEnv("ORCH_RUNSTORE", "memory"), // "memory" or "redis"
+		RunStoreTTL:         getDuration("RUNSTORE_TTL", 7*24*time.Hour), // 7 days
+		EventMaxLen:         getInt64("EVENT_MAX_LEN", 5000),
+		AllowMemoryFallback: getBool("ORCH_ALLOW_MEMORY_FALLBACK", false),
 
 		// OIDC
 		OIDCIssuer:       getEnv("OIDC_ISSUER", ""),

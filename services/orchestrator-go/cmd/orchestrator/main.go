@@ -83,7 +83,11 @@ func main() {
 		}
 		redisStore, err := runstore.NewRedisStore(redisCfg)
 		if err != nil {
-			logger.Error("failed to connect to Redis, falling back to memory store", "error", err)
+			if !cfg.AllowMemoryFallback {
+				logger.Error("failed to connect to Redis and ORCH_ALLOW_MEMORY_FALLBACK is not set", "error", err)
+				os.Exit(1)
+			}
+			logger.Warn("failed to connect to Redis, falling back to memory store (ORCH_ALLOW_MEMORY_FALLBACK=true)", "error", err)
 			storeCfg := &runstore.Config{
 				EventMaxLen: cfg.EventMaxLen,
 				TTLSeconds:  int64(cfg.RunStoreTTL.Seconds()),

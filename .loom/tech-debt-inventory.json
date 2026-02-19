@@ -1,0 +1,180 @@
+{
+  "items": [
+    {
+      "id": "DEBT-001",
+      "title": "Monolithic handlers.go (1,216 lines) in orchestrator API layer",
+      "component": "orchestrator-go/api",
+      "evidence": "services/orchestrator-go/internal/api/handlers.go is 1,216 lines combining all HTTP handlers. Violates SRP, makes code review and testing harder.",
+      "impact": 3,
+      "risk_reduction": 2,
+      "drag_reduction": 4,
+      "effort": 3,
+      "acceptance_criteria": "Split handlers.go into domain-grouped files (runs_handlers.go, agents_handlers.go, flows_handlers.go, schedule_handlers.go, webhook_handlers.go). Each file <300 lines. All existing tests pass."
+    },
+    {
+      "id": "DEBT-002",
+      "title": "Zero test coverage for auth, driver, dataflow, config packages",
+      "component": "orchestrator-go",
+      "evidence": "auth/ (3 files, 0 tests), driver/ (4 files, 0 tests), dataflow/ (2 files, 0 tests), config/ (1 file, 0 tests). These are critical security and execution paths.",
+      "impact": 5,
+      "risk_reduction": 5,
+      "drag_reduction": 3,
+      "effort": 3,
+      "acceptance_criteria": "Add unit tests for: API key store CRUD + validation, OIDC middleware, subprocess driver exec/cancel, K8s driver job creation/status, S3 dataflow upload/download, config loading from env. Coverage >60% per package."
+    },
+    {
+      "id": "DEBT-003",
+      "title": "Silent Redis-to-memory fallback loses data on restart",
+      "component": "orchestrator-go/main",
+      "evidence": "cmd/orchestrator/main.go:85-86 — Redis connection failure silently degrades to in-memory store. Operator may not notice runs/state lost on pod restart.",
+      "impact": 4,
+      "risk_reduction": 5,
+      "drag_reduction": 2,
+      "effort": 1.5,
+      "acceptance_criteria": "When ORCH_RUNSTORE=redis, fail startup if Redis unreachable (exit 1). Add --allow-memory-fallback flag for dev. Emit critical-level log + metric on fallback."
+    },
+    {
+      "id": "DEBT-004",
+      "title": "457 'any' type usages in frontend codebase",
+      "component": "frontend",
+      "evidence": "457 occurrences of 'any' type across frontend src/. Key areas: api-integration.ts (5 functions), streaming.ts event payloads, stores/layout/index.ts action creators, graph.ts enum typing.",
+      "impact": 3,
+      "risk_reduction": 3,
+      "drag_reduction": 3,
+      "effort": 4,
+      "acceptance_criteria": "Reduce 'any' count below 50. Add discriminated union types for SSE events. Type API response types. Enable strict noImplicitAny in tsconfig."
+    },
+    {
+      "id": "DEBT-005",
+      "title": "Frontend test coverage at ~20% (38/186 files tested)",
+      "component": "frontend",
+      "evidence": "38 test files for 186 source files. Untested: canvas components, layout management, overlay system, service integrations, most hooks.",
+      "impact": 4,
+      "risk_reduction": 4,
+      "drag_reduction": 3,
+      "effort": 4,
+      "acceptance_criteria": "Reach 60% statement coverage. Priority test targets: MissionControlLayout, NetworkPanel, ConsolePanel, API service layer, streaming store."
+    },
+    {
+      "id": "DEBT-006",
+      "title": "K8s manifests use :latest tags in production",
+      "component": "k8s",
+      "evidence": "k8s/kustomization.yaml:21-31 sets newTag: latest for all 4 images. imagePullPolicy: Always mitigates but introduces drift risk if Flux applies without CI override.",
+      "impact": 3,
+      "risk_reduction": 4,
+      "drag_reduction": 2,
+      "effort": 2,
+      "acceptance_criteria": "CI pins image tags to git SHA or semver. Kustomization.yaml uses placeholder tags overridden by CI. imagePullPolicy: IfNotPresent for tagged images."
+    },
+    {
+      "id": "DEBT-007",
+      "title": "Hardcoded IP in frontend K8s manifest",
+      "component": "k8s/frontend",
+      "evidence": "k8s/frontend.yaml:54 — VITE_GATEWAY_BASE_URL set to http://192.168.50.244:8080. Breaks portability across environments.",
+      "impact": 3,
+      "risk_reduction": 3,
+      "drag_reduction": 2,
+      "effort": 1.5,
+      "acceptance_criteria": "Replace hardcoded IP with service DNS or ingress-derived URL. Use ConfigMap or kustomize overlay per environment."
+    },
+    {
+      "id": "DEBT-008",
+      "title": "Monolithic scheduler.go (1,028 lines) mixes DAG execution, retry, gate logic",
+      "component": "orchestrator-go/scheduler",
+      "evidence": "services/orchestrator-go/internal/scheduler/scheduler.go is 1,028 lines. DAG walk, retry backoff, gate approval, and event emission all in one file.",
+      "impact": 3,
+      "risk_reduction": 2,
+      "drag_reduction": 4,
+      "effort": 3,
+      "acceptance_criteria": "Extract retry logic to retry.go, gate logic to gate.go, event emission to events.go. scheduler.go under 400 lines. All scheduler tests pass."
+    },
+    {
+      "id": "DEBT-009",
+      "title": "Gateway auth middleware tightly coupled to Cloudflare Access",
+      "component": "gateway-go/middleware",
+      "evidence": "middleware/auth.go (391 lines) — Cloudflare-specific JWT validation and service token logic mixed with generic auth interface. No abstraction for alternative providers.",
+      "impact": 2,
+      "risk_reduction": 3,
+      "drag_reduction": 3,
+      "effort": 3,
+      "acceptance_criteria": "Extract AuthProvider interface. Implement CloudflareAuthProvider and NoopAuthProvider. Gateway selects provider via config. Tests mock provider."
+    },
+    {
+      "id": "DEBT-010",
+      "title": "Gateway test coverage at ~25% (4/16 Go files)",
+      "component": "gateway-go",
+      "evidence": "4 test files for 16 Go source files. Untested: metrics/, traces/, tracing/ packages, WebSocket hub edge cases.",
+      "impact": 3,
+      "risk_reduction": 3,
+      "drag_reduction": 2,
+      "effort": 2,
+      "acceptance_criteria": "Add tests for: hub client registration/deregistration, stream filtering, trace proxy handler, metrics endpoint. Coverage >50%."
+    },
+    {
+      "id": "DEBT-011",
+      "title": "Redis data store uses emptyDir (ephemeral) in K8s",
+      "component": "k8s/redis",
+      "evidence": "k8s/redis.yaml uses emptyDir: {} for data volume. Redis data lost on pod restart. Run state and API keys not persisted.",
+      "impact": 4,
+      "risk_reduction": 4,
+      "drag_reduction": 1.5,
+      "effort": 2,
+      "acceptance_criteria": "Add PVC with storageClass: longhorn for Redis data. Configure Redis appendonly yes. Verify data survives pod restart."
+    },
+    {
+      "id": "DEBT-012",
+      "title": "Large frontend components (7 files >380 lines) resist review and testing",
+      "component": "frontend/components",
+      "evidence": "NetworkPanel.tsx (777 lines), MissionControlLayout.tsx (529 lines), LineageOverlay.tsx (430 lines), PolicyOverlay.tsx (409 lines), StreamingCanvas.tsx (392 lines), NodePalette.tsx (387 lines), ConsolePanel.tsx (383 lines).",
+      "impact": 2,
+      "risk_reduction": 2,
+      "drag_reduction": 4,
+      "effort": 4,
+      "acceptance_criteria": "Split each into <250-line sub-components. NetworkPanel: extract AgentStatusCard, MetricsGrid. MissionControlLayout: extract PanelContainer, ToolbarSection."
+    },
+    {
+      "id": "DEBT-013",
+      "title": "MinIO credentials marked optional: true in K8s manifest",
+      "component": "k8s/minio",
+      "evidence": "k8s/minio.yaml:74-83 — secretKeyRef with optional: true. MinIO starts with blank credentials if secret missing, creating security risk.",
+      "impact": 3,
+      "risk_reduction": 4,
+      "drag_reduction": 1.5,
+      "effort": 1.5,
+      "acceptance_criteria": "Remove optional: true from minio-credentials secretKeyRef. Add SealedSecret or SOPS-encrypted secret to repo. MinIO pod fails to start if credentials missing."
+    },
+    {
+      "id": "DEBT-014",
+      "title": "Frontend state management uses legacy re-exports and dual API surface",
+      "component": "frontend/stores",
+      "evidence": "stores/index.ts:122-129 has legacy re-exports (useCanvasStore as useReactFlowStore). Lines 48-64 maintain dual StreamSession vs LegacyStreamSession API.",
+      "impact": 2,
+      "risk_reduction": 1.5,
+      "drag_reduction": 3,
+      "effort": 2,
+      "acceptance_criteria": "Remove legacy re-exports. Migrate all consumers to canonical store imports. Remove LegacyStreamSession type and adapter code."
+    },
+    {
+      "id": "DEBT-015",
+      "title": "No circuit breaker for Redis/K8s API calls in orchestrator",
+      "component": "orchestrator-go",
+      "evidence": "Redis operations in runstore/redis.go and K8s API calls in driver/k8s.go have no circuit breaker. Cascading failures possible when backends degrade.",
+      "impact": 3,
+      "risk_reduction": 4,
+      "drag_reduction": 1.5,
+      "effort": 3,
+      "acceptance_criteria": "Add circuit breaker (e.g., sony/gobreaker) to Redis client and K8s client. Configure open/half-open thresholds. Expose circuit state as Prometheus metric."
+    },
+    {
+      "id": "DEBT-016",
+      "title": "Docker Compose dev config lacks health checks and resource limits",
+      "component": "docker-compose",
+      "evidence": "docker-compose.dev.yml has no healthcheck blocks on services, no resource limits. Dev services can consume unlimited resources and fail silently.",
+      "impact": 1.5,
+      "risk_reduction": 1.5,
+      "drag_reduction": 2,
+      "effort": 1.5,
+      "acceptance_criteria": "Add healthcheck to gateway, orchestrator, redis, frontend in docker-compose.dev.yml. Add deploy.resources.limits for dev parity."
+    }
+  ]
+}
