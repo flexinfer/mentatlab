@@ -331,6 +331,10 @@ func (s *Scheduler) executeBodyNode(ctx context.Context, rctx *runContext, spec 
 		env[k] = v
 	}
 	env["ITERATION_INDEX"] = fmt.Sprintf("%d", iterIndex)
+	// Pass image to driver so K8s driver can use it for the Job container.
+	if spec.Image != "" {
+		env["AGENT_IMAGE"] = spec.Image
+	}
 
 	// Add iteration env as JSON-encoded strings for complex values
 	for k, v := range iterEnv {

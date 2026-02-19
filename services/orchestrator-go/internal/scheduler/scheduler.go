@@ -539,6 +539,10 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 			env[k] = v
 		}
 		env["ATTEMPT"] = fmt.Sprintf("%d", attempts+1)
+		// Pass image to driver so K8s driver can use it for the Job container.
+		if spec.Image != "" {
+			env["AGENT_IMAGE"] = spec.Image
+		}
 
 		// Calculate timeout
 		timeout := 0.0
