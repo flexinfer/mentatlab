@@ -31,7 +31,7 @@ spec:
   template:
     metadata:
       annotations:
-        mentatlab.io/restart-trigger: "m5.1-redis-url-deploy-2026-02-18"
+        mentatlab.io/restart-trigger: "m5.1-scheduler-fix-2026-02-19"
       labels:
         app: orchestrator
         component: backend
