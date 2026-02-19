@@ -44,6 +44,8 @@ export interface SubscribeOptions {
   baseUrl?: string;
   // Heartbeat timeout in ms (default 45000)
   heartbeatMs?: number;
+  // Maximum reconnection attempts before giving up (default 20; 0 = unlimited)
+  maxReconnectAttempts?: number;
   // Transport preference:
   //  - 'auto' (default): prefer native EventSource
   //  - 'native': force native EventSource
@@ -67,6 +69,7 @@ export function subscribeRunEvents(
     onError,
     baseUrl,
     heartbeatMs = 45_000,
+    maxReconnectAttempts = 20,
     transport = 'auto',
   } = options;
 
@@ -135,6 +138,16 @@ export function subscribeRunEvents(
 
   function attemptReconnect(): void {
     if (stopped) return;
+
+    if (maxReconnectAttempts > 0 && reconnectAttempt >= maxReconnectAttempts) {
+      if (onError) {
+        try {
+          onError(new Error(`SSE: max reconnect attempts reached (${maxReconnectAttempts})`));
+        } catch {}
+      }
+      stopped = true;
+      return;
+    }
 
     const delay = backoff[Math.min(reconnectAttempt, backoff.length - 1)];
     reconnectAttempt++;

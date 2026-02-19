@@ -3,9 +3,12 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/flexinfer/mentatlab/services/gateway-go/metrics"
 	"github.com/flexinfer/mentatlab/services/gateway-go/middleware"
@@ -54,6 +57,10 @@ type Hub struct {
 	// Auth validator for WebSocket connections
 	authValidator AuthValidator
 
+	// Configurable ping/pong timing
+	pongWait   time.Duration
+	pingPeriod time.Duration
+
 	// Stop channel
 	stopCh chan struct{}
 }
@@ -69,6 +76,8 @@ type HubConfig struct {
 	Logger         *slog.Logger
 	AllowedOrigins []string      // Allowed WebSocket origins (empty allows all - not recommended)
 	AuthValidator  AuthValidator // Optional: validates WebSocket connections
+	PongWait       time.Duration // Time allowed to read the next pong (default 60s)
+	PingPeriod     time.Duration // Send pings at this interval; must be < PongWait (default 90% of PongWait)
 }
 
 // NewHub creates a new Hub with the given configuration.
@@ -96,6 +105,15 @@ func NewHubWithConfig(cfg *HubConfig) *Hub {
 		allowedOrigins[origin] = true
 	}
 
+	pongWait := cfg.PongWait
+	if pongWait == 0 {
+		pongWait = 60 * time.Second
+	}
+	pingPeriod := cfg.PingPeriod
+	if pingPeriod == 0 {
+		pingPeriod = (pongWait * 9) / 10
+	}
+
 	return &Hub{
 		clients:        make(map[string]map[*Client]bool),
 		globalClients:  make(map[*Client]bool),
@@ -106,6 +124,8 @@ func NewHubWithConfig(cfg *HubConfig) *Hub {
 		logger:         logger,
 		allowedOrigins: allowedOrigins,
 		authValidator:  cfg.AuthValidator,
+		pongWait:       pongWait,
+		pingPeriod:     pingPeriod,
 		stopCh:         make(chan struct{}),
 	}
 }
@@ -239,28 +259,73 @@ func (h *Hub) sendToClient(client *Client, message []byte, msgType string) {
 	}
 }
 
+// redisChannels are the pub/sub channels the hub subscribes to.
+var redisChannels = []string{
+	"stream:events",
+	"orchestrator_ui_events",
+	"mentatlab_streaming_events",
+}
+
 // subscribeToRedis subscribes to Redis pub/sub channels for events.
+// On disconnection, it retries with exponential backoff (1s → 30s cap).
 func (h *Hub) subscribeToRedis() {
+	var attempt int
+	for {
+		select {
+		case <-h.stopCh:
+			return
+		default:
+		}
+
+		if attempt > 0 {
+			delay := redisBackoff(attempt)
+			h.logger.Warn("reconnecting to Redis pub/sub",
+				slog.Int("attempt", attempt),
+				slog.Duration("delay", delay),
+			)
+			select {
+			case <-time.After(delay):
+			case <-h.stopCh:
+				return
+			}
+		}
+
+		err := h.runRedisSubscription()
+		if err != nil {
+			h.logger.Error("Redis subscription failed", slog.String("error", err.Error()))
+			attempt++
+			continue
+		}
+
+		// runRedisSubscription only returns nil on hub stop
+		return
+	}
+}
+
+// redisBackoff returns the delay for a reconnection attempt (1s, 2s, 4s, … capped at 30s).
+func redisBackoff(attempt int) time.Duration {
+	const maxDelay = 30 * time.Second
+	delay := time.Duration(math.Pow(2, float64(attempt-1))) * time.Second
+	if delay > maxDelay {
+		delay = maxDelay
+	}
+	return delay
+}
+
+// runRedisSubscription performs one subscribe-and-read cycle.
+// Returns nil only when stopCh is closed. Returns an error on any Redis failure.
+func (h *Hub) runRedisSubscription() error {
 	ctx := context.Background()
 
-	// Subscribe to multiple channels for different event types
-	channels := []string{
-		"stream:events",
-		"orchestrator_ui_events",
-		"mentatlab_streaming_events",
-	}
-
-	pubsub := h.redisClient.Subscribe(ctx, channels...)
+	pubsub := h.redisClient.Subscribe(ctx, redisChannels...)
 	defer pubsub.Close()
 
 	// Wait for subscription confirmation
-	_, err := pubsub.Receive(ctx)
-	if err != nil {
-		h.logger.Error("failed to subscribe to Redis", slog.String("error", err.Error()))
-		return
+	if _, err := pubsub.Receive(ctx); err != nil {
+		return err
 	}
 
-	h.logger.Info("subscribed to Redis channels", slog.Any("channels", channels))
+	h.logger.Info("subscribed to Redis channels", slog.Any("channels", redisChannels))
 
 	ch := pubsub.Channel()
 
@@ -268,8 +333,7 @@ func (h *Hub) subscribeToRedis() {
 		select {
 		case msg, ok := <-ch:
 			if !ok {
-				h.logger.Warn("Redis channel closed")
-				return
+				return fmt.Errorf("Redis channel closed unexpectedly")
 			}
 
 			// Parse message to extract stream_id
@@ -289,7 +353,7 @@ func (h *Hub) subscribeToRedis() {
 			}
 
 		case <-h.stopCh:
-			return
+			return nil
 		}
 	}
 }
