@@ -26,16 +26,22 @@
 - [x] Execute M7: Multi-User & API Maturity
 - [x] Execute M8: Frontend Quality (47 test files, 673 tests, 49% coverage)
 - [x] Execute M9: Observability & Tracing UI (span enrichment → trace query → waterfall UI)
+- [ ] M10: Live Validation & Stabilization (K8s job driver e2e, MinIO artifacts, gate/webhook live tests)
+- [ ] M11: Loom / MCP Integration (MCP-tool-as-agent, MentatLab-as-MCP-server, agent context bridge)
+- [ ] M12: Agent SDK & Runtime Maturity (structured errors, progress events, TypeScript SDK, checkpoints)
+- [ ] M13: Security & Authorization Hardening (scopes, audit logging, agent sandboxing)
+- [ ] M14: Frontend UX & Performance (artifact browser, console virtualization, large DAG perf)
+- [ ] M15: E2E Testing & CI Hardening (smoke tests, Playwright suite, load regression gate)
 
-## Key Findings (2026-02-18)
+## Key Findings (2026-02-19)
 
 1. **M0-M9 Complete** — Go-first backend, CI/CD, core loop, workflow features, hardening, dev experience, multi-user, API maturity, frontend quality, observability & tracing
-2. **M5-M6 Backend Complete** — Timeouts, retry policies, gates, webhooks, cron, cloning all implemented with tests
-3. **Deployed to K3s** — All pods Running, Flux Ready, MinIO bucket created, M5-M6 endpoints verified
-4. **Deploy lessons** — Flux overrides CI kustomize edits; need `images` transformer. `:latest` + `IfNotPresent` = stale. NetworkPolicies must explicitly allow MinIO traffic.
-5. **M7 implemented** — User identity propagation, API key auth, cursor pagination, webhook callbacks, load testing baseline
-6. **M8 implemented** — 47 test files, 673 tests, 49.11% statement coverage (target 40%+), jest→vitest migration, all pre-existing specs fixed
-7. **M9 implemented** — Deep OTel span coverage (scheduler + all API handlers), run↔trace correlation, Tempo in docker-compose, gateway trace proxy, frontend TracePanel waterfall
+2. **Deployed to K3s** — All pods Running, Flux Ready, MinIO bucket created, M5-M6 endpoints verified
+3. **Live validation pending** — K8s job driver e2e, MinIO artifact flow, gate/webhook live tests (M10)
+4. **Loom integration planned** — MCP-tool-as-agent adapter, MentatLab-as-MCP-server, agent context bridge, workflow bidirectional conversion (M11)
+5. **Agent SDK gaps** — No structured errors, no progress events, no TypeScript SDK, no state persistence (M12)
+6. **Auth is coarse-grained** — Any valid token accesses any endpoint; needs scope-based authz, audit logging (M13)
+7. **Frontend feature flags disabled** — S3_STORAGE, AUTO_CONNECT, CONSOLE_VIRTUALIZATION need enabling with backend support (M14)
 
 ## M1 Progress — Complete
 
