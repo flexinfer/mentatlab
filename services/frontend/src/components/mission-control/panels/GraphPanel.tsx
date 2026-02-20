@@ -33,7 +33,7 @@ import NodeCard, { type NodeCardData } from './graph/NodeCard';
 import { useRunGraph, type RunStatus } from './graph/useRunGraph';
 import Badge from '@/components/ui/Badge';
 import { PanelShell } from '@/components/ui/PanelShell';
-import useStore from '../../../store';
+import { useCanvasStore } from '@/stores';
 import { orchestratorService } from '../../../services/api/orchestratorService';
 import { useToast } from '../../../contexts/ToastContext';
 import ConditionalNode from '@/nodes/ConditionalNode';
@@ -83,7 +83,7 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
   } = useRunGraph(runId || null);
 
   // Context menu state from store
-  const openContextMenu = useStore((s) => s.openContextMenu);
+  const openContextMenu = useCanvasStore((s) => s.openContextMenu);
   const toast = useToast();
 
   const reactFlowRef = React.useRef<any>(null);

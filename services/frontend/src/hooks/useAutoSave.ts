@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useFlowStore } from '../store/index';
+import { useFlowStore } from '@/stores';
 import { FlowService, Flow, CreateFlowRequest, getFlowService } from '../services/api/flowService';
 import { httpClient } from '../services/api/httpClient';
 

@@ -69,7 +69,7 @@ vi.mock('@/stores', () => ({
     const state = { undo: vi.fn(), redo: vi.fn(), canUndo: () => false, canRedo: () => false };
     return selector ? selector(state) : state;
   },
-  useReactFlowStore: (selector?: any) => {
+  useCanvasStore: (selector?: any) => {
     const state = {
       copySelected: vi.fn().mockReturnValue(0),
       pasteClipboard: vi.fn().mockReturnValue(0),

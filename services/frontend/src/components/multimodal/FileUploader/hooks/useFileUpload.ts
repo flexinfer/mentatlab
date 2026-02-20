@@ -20,7 +20,7 @@ import { getMediaService } from '../../../../services/api/mediaService';
 import { httpClient } from '../../../../services/api/httpClient';
 import { websocketClient } from '../../../../services/api/websocketClient';
 import { UploadOptions, UploadProgress, FileUploadState } from '../FileUploader.types';
-import useMediaStore from '../../../../store';
+import { useMediaStore } from '@/stores';
 
 const MB = 1024 * 1024;
 

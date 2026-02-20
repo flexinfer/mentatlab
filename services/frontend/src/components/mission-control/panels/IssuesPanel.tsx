@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Flow } from '../../../types/graph';
 import { linter, type LintIssue } from '../../../services/mission-control/services';
-import useStore from '../../../store';
+import { useCanvasStore } from '@/stores';
 import { useToast } from '../../../contexts/ToastContext';
 
 type IssuesPanelProps = {
@@ -15,10 +15,10 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
   const toast = useToast();
 
   // Get store state and actions for applying fixes
-  const nodes = useStore((s) => s.nodes);
-  const edges = useStore((s) => s.edges);
-  const setNodes = useStore((s) => s.setNodes);
-  const setEdges = useStore((s) => s.setEdges);
+  const nodes = useCanvasStore((s) => s.nodes);
+  const edges = useCanvasStore((s) => s.edges);
+  const setNodes = useCanvasStore((s) => s.setNodes);
+  const setEdges = useCanvasStore((s) => s.setEdges);
 
   const runLint = React.useCallback(() => {
     setStatus('running');

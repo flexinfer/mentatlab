@@ -15,7 +15,7 @@ import {
 import 'reactflow/dist/style.css';
 import { ReactFlowProvider } from 'reactflow';
 
-import { useStreamingStore } from '../../../store/index';
+import { useStreamingStore } from '@/stores';
 import { StreamConnectionState } from '../../../types/streaming';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { FeatureFlags } from '../../../config/features';

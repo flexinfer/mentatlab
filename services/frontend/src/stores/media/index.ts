@@ -1,100 +1,17 @@
 /**
- * Store Index - Re-exports for backwards compatibility
+ * Media Store - Upload queue, media cache, and processing state
  *
- * @deprecated Import from '@/stores' instead.
- * This file re-exports from the new consolidated stores for migration purposes.
- *
- * Migration guide:
- *   OLD: import { useFlowStore } from '../store/index';
- *   NEW: import { useFlowStore } from '@/stores';
+ * Manages file uploads, media references, and cache eviction.
  */
-
-// Re-export all stores from new location
-export {
-  // Canvas (replaces useReactFlowStore and default useStore)
-  useCanvasStore,
-  useCanvasStore as useReactFlowStore,
-  selectNodes,
-  selectEdges,
-  selectSelectedNodeId,
-  selectSelectedNodes,
-  selectNodeById,
-  type CanvasState,
-
-  // Streaming
-  useStreamingStore,
-  selectActiveSession,
-  selectSessionById,
-  selectSessionMessages,
-  selectActiveStream,
-  selectConnectionStatus,
-  type StreamingState,
-  type StreamSession,
-  type DataPoint,
-  type ConsoleMessage,
-  type LegacyStream,
-
-  // Flow
-  useFlowStore,
-  selectFlows,
-  selectActiveFlowId,
-  selectActiveFlow,
-  selectFlowById,
-  selectCanUndo,
-  selectCanRedo,
-  type FlowState,
-  type Flow,
-  type FlowNode,
-  type FlowEdge,
-
-  // Layout (replaces usePanelLayoutStore)
-  useLayoutStore,
-  useLayoutStore as usePanelLayoutStore,
-  selectPanel,
-  selectVisiblePanels,
-  selectBottomPanels,
-  selectDarkMode,
-  selectMainView,
-  selectLayoutDimensions,
-  type LayoutState,
-  type PanelId,
-  type PanelConfig,
-  type MainViewMode,
-
-  // Sync
-  useSyncStore,
-  selectIsLeader,
-  selectTabId,
-  selectIsConnected,
-  selectActiveTabCount,
-  initializeSync,
-  type SyncState,
-  type SyncMessage,
-  type SyncMessageType,
-  type TabInfo,
-
-  // Utilities
-  resetAllStores,
-  getStoreSnapshot,
-} from '../stores';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Legacy Media Store (kept for backwards compatibility)
-// TODO: Move to new stores/media/index.ts
-// ─────────────────────────────────────────────────────────────────────────────
 
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
-import { enableMapSet } from 'immer';
 import { v4 as uuidv4 } from 'uuid';
-import type { MediaReference } from '../types/media';
-import type { FileUploadState, UploadProgress } from '../components/multimodal/FileUploader/FileUploader.types';
+import type { MediaReference } from '../../types/media';
+import type { FileUploadState, UploadProgress } from '../../components/multimodal/FileUploader/FileUploader.types';
 
-// Enable Map/Set support
-try { enableMapSet(); } catch { /* already enabled */ }
-
-interface MediaState {
+export interface MediaState {
   mediaItems: Map<string, MediaReference>;
   uploadQueue: FileUploadState[];
   activeUploads: Map<string, unknown>;
@@ -243,6 +160,3 @@ export const useMediaStore = create<MediaState>()(
     { name: 'media-store' }
   )
 );
-
-// Export MediaState type for backwards compatibility
-export type { MediaState };

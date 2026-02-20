@@ -29,7 +29,7 @@ import {
   StreamConnectionState // Added StreamConnectionState import
 } from '../types/streaming';
 import { MediaType, MediaChunk, MediaReference } from '../types/media';
-import { useStreamingStore, type StreamingState } from '../store/index'; // Use the Map-based streaming store with exported StreamingState
+import { useStreamingStore, type StreamingState } from '@/stores';
 import { StreamMessageHandler, ConnectionStateHandler } from '../types/streaming'; // Import from types/streaming
 // ADD: Feature flags and Mission Control flight recorder
 import { FeatureFlags, isCloudEventsEnabled, isStreamWorkerEnabled, isSimFallbackEnabled, isAutoRecordEnabled } from '../config/features';

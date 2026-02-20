@@ -1,5 +1,5 @@
 import React from 'react';
-import { useStreamingStore } from '../../store/index';
+import { useStreamingStore } from '@/stores';
 import { StreamConnectionState } from '../../types/streaming';
 
 interface ConnectionStatusBannerProps {

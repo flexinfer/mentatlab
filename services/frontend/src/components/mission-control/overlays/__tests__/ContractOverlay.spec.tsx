@@ -19,9 +19,8 @@ vi.mock('../../../../config/features', () => ({
 }));
 
 // Mock the Zustand store hook used by the overlay
-vi.mock('../../../../store', () => ({
-  __esModule: true,
-  default: (selector: (s: any) => any) => {
+vi.mock('@/stores', () => ({
+  useCanvasStore: (selector: (s: any) => any) => {
     return selector({
       nodes: storeState.nodes,
       edges: storeState.edges,

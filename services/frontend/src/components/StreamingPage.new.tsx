@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { StreamingCanvas } from './StreamingCanvas';
 import { StreamingControls } from './StreamingControls';
 import { StreamingConsole } from './StreamingConsole';
-import { useStreamingStore } from '../store/streamingStore';
+import { useStreamingStore } from '@/stores';
 import { streamingService } from '../services/streamingService.new';
 
 export const StreamingPage: React.FC = () => {

@@ -1,4 +1,5 @@
-import { useStreamingStore } from '../store/streamingStore';
+import { useStreamingStore } from '@/stores';
+import { StreamConnectionState } from '@/types/streaming';
 
 export class StreamingService {
   private ws: WebSocket | null = null;
@@ -35,7 +36,7 @@ export class StreamingService {
         console.log('[StreamingService] WebSocket connected successfully');
         this.reconnectAttempts = 0;
         this.startPing();
-        useStreamingStore.getState().setConnectionStatus('connected');
+        useStreamingStore.getState().setConnectionStatus(StreamConnectionState.CONNECTED);
       };
 
       this.ws.onmessage = (event) => {
@@ -50,18 +51,18 @@ export class StreamingService {
 
       this.ws.onerror = (error) => {
         console.error('[StreamingService] WebSocket error:', error);
-        useStreamingStore.getState().setConnectionStatus('error');
+        useStreamingStore.getState().setConnectionStatus(StreamConnectionState.ERROR);
       };
 
       this.ws.onclose = (event) => {
         console.log('[StreamingService] WebSocket disconnected. Code:', event.code, 'Reason:', event.reason);
         this.stopPing();
-        useStreamingStore.getState().setConnectionStatus('disconnected');
+        useStreamingStore.getState().setConnectionStatus(StreamConnectionState.DISCONNECTED);
         this.attemptReconnect();
       };
     } catch (error) {
       console.error('[StreamingService] Failed to create WebSocket:', error);
-      useStreamingStore.getState().setConnectionStatus('error');
+      useStreamingStore.getState().setConnectionStatus(StreamConnectionState.ERROR);
     }
   }
 
@@ -91,7 +92,7 @@ export class StreamingService {
   private attemptReconnect() {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      useStreamingStore.getState().setConnectionStatus('connecting');
+      useStreamingStore.getState().setConnectionStatus(StreamConnectionState.CONNECTING);
       setTimeout(() => {
         this.establishConnection();
       }, this.reconnectDelay * this.reconnectAttempts);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, ChangeEvent } from 'react'; // Explicitly import ChangeEvent
 import DOMPurify from 'dompurify';
-import useStore from '../store'; // Import the Zustand store
+import { useCanvasStore } from '@/stores';
 // import { Label } from '@/components/ui/label'; // Commented out as Shadcn/ui components not found
 // import { Input } from '@/components/ui/input'; // Commented out as Shadcn/ui components not found
 
@@ -58,9 +58,9 @@ const ConfigurationPanel: React.FC = (): React.JSX.Element => { // Explicitly de
   const [formData, setFormData] = useState<{ [key: string]: any }>({});
   const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
 
-  const selectedNodeId = useStore((state) => state.selectedNodeId);
-  const nodes = useStore((state) => state.nodes);
-  const updateNodeConfig = useStore((state) => state.updateNodeConfig);
+  const selectedNodeId = useCanvasStore((state) => state.selectedNodeId);
+  const nodes = useCanvasStore((state) => state.nodes);
+  const updateNodeConfig = useCanvasStore((state) => state.updateNodeConfig);
 
   const selectedNode = selectedNodeId
     ? nodes.find((node) => node.id === selectedNodeId)

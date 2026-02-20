@@ -1,5 +1,5 @@
 import React from 'react';
-import useStore from '../../../store';
+import { useCanvasStore } from '@/stores';
 import {
   isPinMediaType,
   isPinStreamType,
@@ -63,9 +63,9 @@ export default function ContractOverlay() {
   // Enrich canvas nodes with agent schema data (inputs/outputs pin types)
   useAgentSchemas();
 
-  const nodes = useStore((s) => s.nodes);
-  const edges = useStore((s) => s.edges);
-  const setEdges = useStore((s) => s.setEdges);
+  const nodes = useCanvasStore((s) => s.nodes);
+  const edges = useCanvasStore((s) => s.edges);
+  const setEdges = useCanvasStore((s) => s.setEdges);
   const toast = useToast();
 
   // Local dismissed set (ephemeral)

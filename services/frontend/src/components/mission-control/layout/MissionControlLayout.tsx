@@ -18,7 +18,7 @@ import { LeftSidebar } from './LeftSidebar';
 import { BottomDock } from './BottomDock';
 
 // Stores
-import { useLayoutStore, useFlowStore, useReactFlowStore } from '@/stores';
+import { useLayoutStore, useFlowStore, useCanvasStore } from '@/stores';
 import { useToast } from '@/contexts/ToastContext';
 
 // UI components
@@ -103,7 +103,7 @@ function MissionControlInner() {
     nudgeSelected,
     contextMenu,
     closeContextMenu,
-  } = useReactFlowStore();
+  } = useCanvasStore();
 
   const toast = useToast();
 

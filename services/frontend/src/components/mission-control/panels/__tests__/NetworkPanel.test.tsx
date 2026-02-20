@@ -8,7 +8,7 @@ const { mockConnectionStatus } = vi.hoisted(() => ({
 }));
 
 // Mock the streaming store
-vi.mock('@/store/index', () => ({
+vi.mock('@/stores', () => ({
   useStreamingStore: (selector: (s: any) => any) =>
     selector({ connectionStatus: mockConnectionStatus.current }),
 }));
