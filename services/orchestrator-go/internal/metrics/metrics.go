@@ -132,6 +132,16 @@ var (
 		[]string{"status"},
 	)
 
+	// RunStoreFallbackTotal counts Redis-to-memory fallback events.
+	RunStoreFallbackTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: "mentatlab",
+			Subsystem: "orchestrator",
+			Name:      "runstore_fallback_total",
+			Help:      "Total number of Redis-to-memory store fallback events",
+		},
+	)
+
 	// RunStoreOperations counts runstore operations.
 	RunStoreOperations = promauto.NewCounterVec(
 		prometheus.CounterOpts{

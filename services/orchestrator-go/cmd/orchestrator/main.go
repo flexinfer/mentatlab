@@ -20,6 +20,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
@@ -87,6 +88,7 @@ func main() {
 				logger.Error("failed to connect to Redis and ORCH_ALLOW_MEMORY_FALLBACK is not set", "error", err)
 				os.Exit(1)
 			}
+			metrics.RunStoreFallbackTotal.Inc()
 			logger.Warn("failed to connect to Redis, falling back to memory store (ORCH_ALLOW_MEMORY_FALLBACK=true)", "error", err)
 			storeCfg := &runstore.Config{
 				EventMaxLen: cfg.EventMaxLen,
