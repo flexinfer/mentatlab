@@ -17,6 +17,7 @@ import { useCanvasStore } from '@/stores/canvas';
 import { flightRecorder } from '@/services/mission-control/services';
 import { orchestratorService } from '@/services/api/orchestratorService';
 import { useFlowLoader } from '@/hooks/useFlowLoader';
+import { useStreamingTransport } from '@/hooks/useStreamingTransport';
 import type { PlanNode, PlanEdge, RunPlan } from '@/types/orchestrator';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,6 +102,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const { connect: connectLiveTransport } = useStreamingTransport();
 
   const startDemoRun = useCallback(() => {
     const id = `demo-${Date.now()}`;
@@ -202,12 +204,12 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
 
   const startLiveConnection = useCallback(async () => {
     try {
-      const mod = await import('@/services/api/streamingService');
-      await mod.default.connect();
+      const runId = activeRunId || 'default-stream-id';
+      await connectLiveTransport(runId);
     } catch (e) {
       console.error('[Workspace] Live connect failed', e);
     }
-  }, []);
+  }, [activeRunId, connectLiveTransport]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // CogPak UI

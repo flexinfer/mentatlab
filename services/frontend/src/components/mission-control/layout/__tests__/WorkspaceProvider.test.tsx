@@ -19,6 +19,10 @@ const mockOrchestratorService = vi.hoisted(() => ({
 }));
 
 const mockSetMainView = vi.hoisted(() => vi.fn());
+const mockCreateSession = vi.hoisted(() => vi.fn());
+const mockCloseSession = vi.hoisted(() => vi.fn());
+const mockAddSessionMessage = vi.hoisted(() => vi.fn());
+const mockSetConnectionStatus = vi.hoisted(() => vi.fn());
 
 vi.mock('@/config/features', () => ({
   FeatureFlags: {
@@ -41,6 +45,17 @@ vi.mock('@/stores', () => ({
   useLayoutStore: () => ({
     setMainView: mockSetMainView,
   }),
+  useStreamingStore: (selector?: (s: any) => any) => {
+    const state = {
+      connectionStatus: 'disconnected',
+      activeSessionId: null,
+      createSession: mockCreateSession,
+      closeSession: mockCloseSession,
+      addSessionMessage: mockAddSessionMessage,
+      setConnectionStatus: mockSetConnectionStatus,
+    };
+    return typeof selector === 'function' ? selector(state) : state;
+  },
 }));
 
 vi.mock('@/stores/canvas', () => ({

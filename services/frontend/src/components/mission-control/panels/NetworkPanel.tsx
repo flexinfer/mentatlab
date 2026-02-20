@@ -16,6 +16,7 @@ import 'reactflow/dist/style.css';
 import { ReactFlowProvider } from 'reactflow';
 
 import { useStreamingStore } from '@/stores';
+import { useWorkspace } from '@/components/mission-control/layout/WorkspaceProvider';
 import { StreamConnectionState } from '../../../types/streaming';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { FeatureFlags } from '../../../config/features';
@@ -171,6 +172,8 @@ function useThroughputMeter(windowMs = 5000) {
 }
 
 export default function NetworkPanel({ runId }: Props) {
+  const { startLiveConnection } = useWorkspace();
+
   // Streaming connection status
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
   const cs = String(connectionStatus);
@@ -606,23 +609,13 @@ export default function NetworkPanel({ runId }: Props) {
     [setEdges]
   );
 
-  const connectLive = React.useCallback(async () => {
-    try {
-      // Mirrors MissionControlLayout dynamic import convention
-      const mod = await import('../../../services/api/streamingService');
-      await (mod as any).default.connect();
-    } catch (e) {
-      console.error('[NetworkPanel] Live connect failed', e);
-    }
-  }, []);
-
   const empty = nodes.length === 0;
 
   // Auto-attempt live connection only when explicitly enabled
   React.useEffect(() => {
     if (!FeatureFlags.AUTO_CONNECT) return;
     (async () => {
-      try { await connectLive(); } catch {}
+      try { await startLiveConnection(); } catch {}
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -693,7 +686,7 @@ export default function NetworkPanel({ runId }: Props) {
           {cs !== 'connected' && FeatureFlags.CONNECT_WS && (
             <button
               className="h-6 px-2 rounded border border-white/10 bg-white/5 hover:bg-white/10 text-[11px] disabled:opacity-60 transition-colors"
-              onClick={connectLive}
+              onClick={startLiveConnection}
               disabled={liveDisabled}
               title={liveDisabled ? 'Already connected/connecting' : 'Connect live stream'}
             >
