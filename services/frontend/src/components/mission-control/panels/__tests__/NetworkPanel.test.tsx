@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 
 // Hoisted mocks
@@ -7,10 +7,20 @@ const { mockConnectionStatus } = vi.hoisted(() => ({
   mockConnectionStatus: { current: 'disconnected' as string },
 }));
 
+const { mockStartLiveConnection } = vi.hoisted(() => ({
+  mockStartLiveConnection: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock the streaming store
 vi.mock('@/stores', () => ({
   useStreamingStore: (selector: (s: any) => any) =>
     selector({ connectionStatus: mockConnectionStatus.current }),
+}));
+
+vi.mock('@/components/mission-control/layout/WorkspaceProvider', () => ({
+  useWorkspace: () => ({
+    startLiveConnection: mockStartLiveConnection,
+  }),
 }));
 
 // Mock flightRecorder and services
@@ -189,6 +199,15 @@ describe('NetworkPanel', () => {
     mockConnectionStatus.current = 'disconnected';
     render(<NetworkPanel runId={null} />);
     expect(screen.getByText(/Connect Live/)).toBeTruthy();
+  });
+
+  test('Connect Live button calls workspace startLiveConnection', () => {
+    mockConnectionStatus.current = 'disconnected';
+    render(<NetworkPanel runId={null} />);
+
+    fireEvent.click(screen.getByText(/Connect Live/));
+
+    expect(mockStartLiveConnection).toHaveBeenCalledTimes(1);
   });
 
   test('Connect Live button is disabled when connecting', () => {
