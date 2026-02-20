@@ -183,4 +183,16 @@ var (
 			Buckets:   []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
 		},
 	)
+
+	// CircuitBreakerState tracks circuit breaker state per backend.
+	// Values: 0=closed, 1=half-open, 2=open
+	CircuitBreakerState = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "mentatlab",
+			Subsystem: "orchestrator",
+			Name:      "circuit_breaker_state",
+			Help:      "Circuit breaker state (0=closed, 1=half-open, 2=open)",
+		},
+		[]string{"backend"},
+	)
 )

@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
@@ -28,6 +30,9 @@ type RedisStore struct {
 	// Subscriber management
 	subsMu sync.RWMutex
 	subs   map[string]map[chan *types.Event]struct{} // runID -> set of channels
+
+	// Circuit breaker for Redis calls
+	breaker *gobreaker.TwoStepCircuitBreaker
 }
 
 // RedisConfig holds Redis connection configuration.
@@ -117,12 +122,38 @@ func NewRedisStore(cfg *RedisConfig) (*RedisStore, error) {
 		prefix = "runs"
 	}
 
+	cb := gobreaker.NewTwoStepCircuitBreaker(gobreaker.Settings{
+		Name:        "redis",
+		MaxRequests: 1,
+		Timeout:     30 * time.Second,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= 5
+		},
+		OnStateChange: func(name string, from, to gobreaker.State) {
+			metrics.CircuitBreakerState.WithLabelValues(name).Set(float64(to))
+		},
+	})
+
 	return &RedisStore{
-		client: client,
-		prefix: prefix,
-		ttl:    cfg.TTL,
-		subs:   make(map[string]map[chan *types.Event]struct{}),
+		client:  client,
+		prefix:  prefix,
+		ttl:     cfg.TTL,
+		subs:    make(map[string]map[chan *types.Event]struct{}),
+		breaker: cb,
 	}, nil
+}
+
+// breakerGuard checks the circuit breaker and returns a done callback.
+// If the breaker is nil (e.g. in tests), it returns a no-op callback.
+func (s *RedisStore) breakerGuard() (func(bool), error) {
+	if s.breaker == nil {
+		return func(bool) {}, nil
+	}
+	done, err := s.breaker.Allow()
+	if err != nil {
+		return nil, fmt.Errorf("redis circuit breaker open: %w", err)
+	}
+	return done, nil
 }
 
 // Key helpers
@@ -150,7 +181,13 @@ func (s *RedisStore) setTTL(ctx context.Context, runID string) error {
 }
 
 // CreateRun creates a new run record.
-func (s *RedisStore) CreateRun(ctx context.Context, name string, plan *types.Plan, owner string) (string, error) {
+func (s *RedisStore) CreateRun(ctx context.Context, name string, plan *types.Plan, owner string) (_ string, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return "", cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	runID := generateRunID()
 	now := time.Now().UTC()
 
@@ -217,7 +254,13 @@ func (s *RedisStore) CreateRun(ctx context.Context, name string, plan *types.Pla
 }
 
 // GetRunMeta returns lightweight run metadata.
-func (s *RedisStore) GetRunMeta(ctx context.Context, runID string) (*types.RunMeta, error) {
+func (s *RedisStore) GetRunMeta(ctx context.Context, runID string) (_ *types.RunMeta, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	meta, err := s.client.HGetAll(ctx, s.keyMeta(runID)).Result()
 	if err != nil {
 		return nil, fmt.Errorf("get run meta: %w", err)
@@ -259,7 +302,13 @@ func (s *RedisStore) GetRunMeta(ctx context.Context, runID string) (*types.RunMe
 }
 
 // GetRun returns the full run including plan.
-func (s *RedisStore) GetRun(ctx context.Context, runID string) (*types.Run, error) {
+func (s *RedisStore) GetRun(ctx context.Context, runID string) (_ *types.Run, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	// Get meta and plan in parallel
 	pipe := s.client.Pipeline()
 	metaCmd := pipe.HGetAll(ctx, s.keyMeta(runID))
@@ -318,7 +367,13 @@ func (s *RedisStore) GetRun(ctx context.Context, runID string) (*types.Run, erro
 }
 
 // ListRuns returns all run IDs.
-func (s *RedisStore) ListRuns(ctx context.Context) ([]string, error) {
+func (s *RedisStore) ListRuns(ctx context.Context) (_ []string, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	pattern := fmt.Sprintf("%s:*:meta", s.prefix)
 	var runIDs []string
 	var cursor uint64
@@ -372,7 +427,13 @@ func (s *RedisStore) ListRunsWithOptions(ctx context.Context, opts *ListRunsOpti
 }
 
 // ListRunsPaged returns a paginated list of run metadata using cursor-based pagination.
-func (s *RedisStore) ListRunsPaged(ctx context.Context, opts *PageOptions) (*PagedResult, error) {
+func (s *RedisStore) ListRunsPaged(ctx context.Context, opts *PageOptions) (_ *PagedResult, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	if opts == nil {
 		opts = &PageOptions{}
 	}
@@ -447,7 +508,13 @@ func (s *RedisStore) ListRunsPaged(ctx context.Context, opts *PageOptions) (*Pag
 }
 
 // SetRunWebhook stores webhook callback details for a run.
-func (s *RedisStore) SetRunWebhook(ctx context.Context, runID, webhookURL, webhookSecret string) error {
+func (s *RedisStore) SetRunWebhook(ctx context.Context, runID, webhookURL, webhookSecret string) (retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	fields := map[string]interface{}{
 		"webhookURL":    webhookURL,
 		"webhookSecret": webhookSecret,
@@ -459,7 +526,13 @@ func (s *RedisStore) SetRunWebhook(ctx context.Context, runID, webhookURL, webho
 }
 
 // SetRunTraceID stores the OpenTelemetry trace ID on the run metadata.
-func (s *RedisStore) SetRunTraceID(ctx context.Context, runID, traceID string) error {
+func (s *RedisStore) SetRunTraceID(ctx context.Context, runID, traceID string) (retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	if err := s.client.HSet(ctx, s.keyMeta(runID), "traceID", traceID).Err(); err != nil {
 		return fmt.Errorf("set trace id: %w", err)
 	}
@@ -467,7 +540,13 @@ func (s *RedisStore) SetRunTraceID(ctx context.Context, runID, traceID string) e
 }
 
 // UpdateRunStatus updates the run's status and optional timestamps.
-func (s *RedisStore) UpdateRunStatus(ctx context.Context, runID string, status types.RunStatus, startedAt, finishedAt *string) error {
+func (s *RedisStore) UpdateRunStatus(ctx context.Context, runID string, status types.RunStatus, startedAt, finishedAt *string) (retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	fields := map[string]interface{}{
 		"status":    string(status),
 		"updatedAt": time.Now().UTC().Format(time.RFC3339),
@@ -490,7 +569,13 @@ func (s *RedisStore) UpdateRunStatus(ctx context.Context, runID string, status t
 }
 
 // CancelRun marks the run as cancelled.
-func (s *RedisStore) CancelRun(ctx context.Context, runID string) error {
+func (s *RedisStore) CancelRun(ctx context.Context, runID string) (retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	// Check if run exists
 	exists, err := s.client.Exists(ctx, s.keyMeta(runID)).Result()
 	if err != nil {
@@ -514,7 +599,13 @@ func (s *RedisStore) CancelRun(ctx context.Context, runID string) error {
 }
 
 // UpdateNodeState updates a node's state.
-func (s *RedisStore) UpdateNodeState(ctx context.Context, runID, nodeID string, state *types.NodeState) error {
+func (s *RedisStore) UpdateNodeState(ctx context.Context, runID, nodeID string, state *types.NodeState) (retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	// Get current nodes state
 	nodesJSON, err := s.client.HGet(ctx, s.keyNodes(runID), "json").Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
@@ -540,7 +631,13 @@ func (s *RedisStore) UpdateNodeState(ctx context.Context, runID, nodeID string, 
 }
 
 // GetNodeState retrieves a node's state.
-func (s *RedisStore) GetNodeState(ctx context.Context, runID, nodeID string) (*types.NodeState, error) {
+func (s *RedisStore) GetNodeState(ctx context.Context, runID, nodeID string) (_ *types.NodeState, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	nodesJSON, err := s.client.HGet(ctx, s.keyNodes(runID), "json").Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -563,7 +660,13 @@ func (s *RedisStore) GetNodeState(ctx context.Context, runID, nodeID string) (*t
 }
 
 // SetNodeOutputs stores a node's output values for expression evaluation.
-func (s *RedisStore) SetNodeOutputs(ctx context.Context, runID, nodeID string, outputs map[string]interface{}) error {
+func (s *RedisStore) SetNodeOutputs(ctx context.Context, runID, nodeID string, outputs map[string]interface{}) (retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	outputsJSON, err := json.Marshal(outputs)
 	if err != nil {
 		return fmt.Errorf("marshal outputs: %w", err)
@@ -580,7 +683,13 @@ func (s *RedisStore) SetNodeOutputs(ctx context.Context, runID, nodeID string, o
 }
 
 // GetNodeOutputs retrieves a node's stored output values.
-func (s *RedisStore) GetNodeOutputs(ctx context.Context, runID, nodeID string) (map[string]interface{}, error) {
+func (s *RedisStore) GetNodeOutputs(ctx context.Context, runID, nodeID string) (_ map[string]interface{}, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	outputsJSON, err := s.client.HGet(ctx, s.keyOutputs(runID), nodeID).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -598,7 +707,13 @@ func (s *RedisStore) GetNodeOutputs(ctx context.Context, runID, nodeID string) (
 }
 
 // AppendEvent adds an event to the run's stream.
-func (s *RedisStore) AppendEvent(ctx context.Context, runID string, input *types.EventInput) (*types.Event, error) {
+func (s *RedisStore) AppendEvent(ctx context.Context, runID string, input *types.EventInput) (_ *types.Event, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	// Increment sequence atomically
 	seq, err := s.client.Incr(ctx, s.keySeq(runID)).Result()
 	if err != nil {
@@ -648,7 +763,13 @@ func (s *RedisStore) AppendEvent(ctx context.Context, runID string, input *types
 }
 
 // GetEventsSince returns events after the given event ID.
-func (s *RedisStore) GetEventsSince(ctx context.Context, runID string, lastEventID string) ([]*types.Event, error) {
+func (s *RedisStore) GetEventsSince(ctx context.Context, runID string, lastEventID string) (_ []*types.Event, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	// Use XRANGE to get all events
 	entries, err := s.client.XRange(ctx, s.keyEvents(runID), "-", "+").Result()
 	if err != nil {
@@ -803,7 +924,13 @@ func (s *RedisStore) notifySubscribers(runID string, event *types.Event) {
 }
 
 // IsCancelled checks if the run has been cancelled.
-func (s *RedisStore) IsCancelled(ctx context.Context, runID string) (bool, error) {
+func (s *RedisStore) IsCancelled(ctx context.Context, runID string) (_ bool, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return false, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	val, err := s.client.HGet(ctx, s.keyMeta(runID), "cancelled").Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -815,7 +942,13 @@ func (s *RedisStore) IsCancelled(ctx context.Context, runID string) (bool, error
 }
 
 // AdapterInfo returns diagnostic information.
-func (s *RedisStore) AdapterInfo(ctx context.Context) (map[string]interface{}, error) {
+func (s *RedisStore) AdapterInfo(ctx context.Context) (_ map[string]interface{}, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
 	// Ping test
 	pingStart := time.Now()
 	if err := s.client.Ping(ctx).Err(); err != nil {
