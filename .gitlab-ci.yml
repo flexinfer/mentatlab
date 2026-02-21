@@ -404,8 +404,10 @@ deploy:
       echo "=== Deploying MentatLab to ${NAMESPACE} ==="
       cd k8s
 
-      # Update image tags using kustomize — pin to commit SHA for traceability
-      IMAGE_TAG="${CI_COMMIT_SHORT_SHA}"
+      # Use :latest tag — BuildKit multi-name push does not reliably push
+      # SHA-tagged manifests (see issue #50). Commit SHA is recorded via
+      # kubectl annotation for traceability instead.
+      IMAGE_TAG="latest"
       echo "Setting image tags to ${IMAGE_TAG}..."
       kustomize edit set image \
         "registry.harbor.lan/library/mentatlab-orchestrator-go=${REGISTRY}/mentatlab-orchestrator-go:${IMAGE_TAG}" \
@@ -416,6 +418,14 @@ deploy:
       # Apply manifests using server-side apply
       echo "Applying manifests..."
       kustomize build . | kubectl apply --server-side --force-conflicts -f -
+
+      # Annotate deployments with the source commit for traceability
+      for dep in orchestrator gateway frontend; do
+        kubectl annotate deployment/${dep} -n ${NAMESPACE} \
+          "mentatlab.io/deployed-commit=${CI_COMMIT_SHORT_SHA}" \
+          "mentatlab.io/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --overwrite || true
+      done
 
       # Wait for rollouts
       echo "Waiting for deployments to roll out..."
