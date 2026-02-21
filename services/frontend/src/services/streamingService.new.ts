@@ -1,5 +1,6 @@
 import { useStreamingStore } from '@/stores';
 import { StreamConnectionState } from '@/types/streaming';
+import { getGatewayWsUrl } from '@/config/orchestrator';
 
 export class StreamingService {
   private ws: WebSocket | null = null;
@@ -26,7 +27,7 @@ export class StreamingService {
       return;
     }
 
-    const wsUrl = `ws://localhost:8000/ws/streams/${this.streamId}`;
+    const wsUrl = `${getGatewayWsUrl()}/streams/${this.streamId}`;
     console.log('[StreamingService] Establishing WebSocket connection to:', wsUrl);
     
     try {
