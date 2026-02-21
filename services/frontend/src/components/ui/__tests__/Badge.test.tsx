@@ -8,8 +8,8 @@ describe('Badge', () => {
     render(<Badge>Default</Badge>);
     const badge = screen.getByText('Default');
     expect(badge).toBeInTheDocument();
-    expect(badge.className).toContain('bg-white/5');
-    expect(badge.className).toContain('text-gray-300');
+    expect(badge.className).toContain('bg-muted/50');
+    expect(badge.className).toContain('text-muted-foreground');
   });
 
   it('renders info variant with correct classes', () => {

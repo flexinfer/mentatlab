@@ -195,12 +195,12 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
   const totalMessages = sessionEntries.reduce((acc, [, s]) => acc + s.messages.length, 0);
 
   return (
-    <div className="glass-panel p-4 rounded-xl">
+    <div className="rounded-md border bg-card/80 backdrop-blur p-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-primary neon-text">Live Streaming Visualization</h3>
+        <h3 className="text-lg font-semibold text-primary">Live Streaming Visualization</h3>
         <div className="flex items-center space-x-2">
           <div
-            className={`w-3 h-3 rounded-full ${isStreaming ? 'bg-primary shadow-[0_0_10px_#00f0ff]' : 'bg-gray-600'}`}
+            className={`w-3 h-3 rounded-full ${isStreaming ? 'bg-emerald-400' : 'bg-gray-500'}`}
           />
           <span className="text-sm text-muted-foreground">{isStreaming ? 'Live' : 'Offline'}</span>
         </div>
