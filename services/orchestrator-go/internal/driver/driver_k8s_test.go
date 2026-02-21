@@ -4,9 +4,16 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
+	batchv1 "k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 )
 
 // --- K8sDriver.processLogLine tests ---
@@ -391,5 +398,252 @@ func TestSubprocessDriver_NonexistentCommand(t *testing.T) {
 	)
 	if err == nil {
 		t.Error("expected error for nonexistent command")
+	}
+}
+
+// --- K8sDriver tests with fake clientset ---
+
+func TestK8sDriver_HealthCheck_FakeClient(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	d := &K8sDriver{
+		client:  testClient,
+		emitter: &mockEmitter{},
+	}
+	if err := d.HealthCheck(context.Background()); err != nil {
+		t.Fatalf("HealthCheck: %v", err)
+	}
+}
+
+func TestK8sDriver_RunNode_CreateJobFailed(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	fakeCS.PrependReactor("create", "jobs", func(action ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("simulated create failure")
+	})
+
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	code, err := d.RunNode(context.Background(), "run-test-1234", "node1",
+		[]string{"echo", "hello"},
+		map[string]string{"AGENT_IMAGE": "python:3.12-slim"},
+		0,
+	)
+	if err == nil {
+		t.Fatal("expected error for create job failure")
+	}
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+
+	events := emitter.getEvents()
+	foundFailed := false
+	for _, e := range events {
+		if e.EventType == "node_status" {
+			if status, ok := e.Data["status"].(string); ok && status == "failed" {
+				if reason, ok := e.Data["reason"].(string); ok && reason == "create_job_failed" {
+					foundFailed = true
+				}
+			}
+		}
+	}
+	if !foundFailed {
+		t.Error("expected failed status event with reason create_job_failed")
+	}
+}
+
+func TestK8sDriver_RunNode_ContextTimeout(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	code, err := d.RunNode(ctx, "run-test-1234", "node1",
+		[]string{"echo", "hello"},
+		map[string]string{"AGENT_IMAGE": "python:3.12-slim"},
+		0,
+	)
+	if code != 130 {
+		t.Errorf("exit code: got %d, want 130", code)
+	}
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+
+	events := emitter.getEvents()
+	foundCancelled := false
+	for _, e := range events {
+		if e.EventType == "node_status" {
+			if status, ok := e.Data["status"].(string); ok && status == "failed" {
+				if reason, ok := e.Data["reason"].(string); ok && reason == "cancelled" {
+					foundCancelled = true
+				}
+			}
+		}
+	}
+	if !foundCancelled {
+		t.Error("expected failed status event with reason cancelled")
+	}
+}
+
+func TestK8sDriver_NewK8sDriver_BadKubeconfig(t *testing.T) {
+	_, err := NewK8sDriver(&mockEmitter{}, &K8sDriverConfig{
+		K8sConfig: &k8s.Config{
+			InCluster:  false,
+			Kubeconfig: "/nonexistent/path/kubeconfig",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for nonexistent kubeconfig")
+	}
+}
+
+func TestK8sDriver_RunNode_JobSucceeds(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	var code int
+	var runErr error
+	done := make(chan struct{})
+	go func() {
+		code, runErr = d.RunNode(context.Background(), "run-test-1234", "node1",
+			[]string{"echo", "hello"},
+			map[string]string{"AGENT_IMAGE": "python:3.12-slim"},
+			0,
+		)
+		close(done)
+	}()
+
+	// Wait for the Job to be created, then mark it as succeeded
+	time.Sleep(100 * time.Millisecond)
+	jobs, err := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(jobs.Items) == 0 {
+		t.Fatalf("Job not created: %v (items=%d)", err, len(jobs.Items))
+	}
+	job := jobs.Items[0].DeepCopy()
+	job.Status.Succeeded = 1
+	job.Status.Conditions = append(job.Status.Conditions, batchv1.JobCondition{
+		Type:   batchv1.JobComplete,
+		Status: "True",
+	})
+	_, err = fakeCS.BatchV1().Jobs("test-ns").UpdateStatus(context.Background(), job, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunNode timed out")
+	}
+
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0", code)
+	}
+	if runErr != nil {
+		t.Errorf("unexpected error: %v", runErr)
+	}
+
+	events := emitter.getEvents()
+	foundSucceeded := false
+	for _, e := range events {
+		if e.EventType == "node_status" {
+			if status, ok := e.Data["status"].(string); ok && status == "succeeded" {
+				foundSucceeded = true
+			}
+		}
+	}
+	if !foundSucceeded {
+		t.Error("expected succeeded status event")
+	}
+}
+
+func TestK8sDriver_RunNode_JobFails(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	var code int
+	done := make(chan struct{})
+	go func() {
+		code, _ = d.RunNode(context.Background(), "run-test-5678", "node2",
+			[]string{"exit", "1"},
+			map[string]string{"AGENT_IMAGE": "python:3.12-slim"},
+			0,
+		)
+		close(done)
+	}()
+
+	// Wait for the Job to be created, then mark it as failed
+	time.Sleep(100 * time.Millisecond)
+	jobs, err := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(jobs.Items) == 0 {
+		t.Fatalf("Job not created: %v (items=%d)", err, len(jobs.Items))
+	}
+	job := jobs.Items[0].DeepCopy()
+	job.Status.Failed = 1
+	job.Status.Conditions = append(job.Status.Conditions, batchv1.JobCondition{
+		Type:   batchv1.JobFailed,
+		Status: "True",
+	})
+	_, err = fakeCS.BatchV1().Jobs("test-ns").UpdateStatus(context.Background(), job, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunNode timed out")
+	}
+
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+
+	events := emitter.getEvents()
+	foundFailed := false
+	for _, e := range events {
+		if e.EventType == "node_status" {
+			if status, ok := e.Data["status"].(string); ok && status == "failed" {
+				if exitCode, ok := e.Data["exitCode"]; ok && exitCode == 1 {
+					foundFailed = true
+				}
+			}
+		}
+	}
+	if !foundFailed {
+		t.Error("expected failed status event with exitCode 1")
 	}
 }

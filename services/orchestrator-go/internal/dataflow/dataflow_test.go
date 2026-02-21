@@ -2,8 +2,13 @@ package dataflow
 
 import (
 	"context"
+	"encoding/xml"
+	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -251,5 +256,363 @@ func TestS3Backend_ExtractKey(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("extractKey(%q): got %q, want %q", tt.uri, got, tt.want)
 		}
+	}
+}
+
+// --- Additional MemoryBackend tests not in dataflow_service_test.go ---
+
+func TestMemoryBackend_ListAllPrefix(t *testing.T) {
+	backend := NewMemoryBackend()
+	ctx := context.Background()
+
+	backend.Put(ctx, "a/1.txt", strings.NewReader("1"), "text/plain")
+	backend.Put(ctx, "b/2.txt", strings.NewReader("2"), "text/plain")
+	backend.Put(ctx, "a/3.txt", strings.NewReader("3"), "text/plain")
+
+	// Empty prefix should match all
+	refs, err := backend.List(ctx, "")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(refs) != 3 {
+		t.Errorf("count: got %d, want 3", len(refs))
+	}
+}
+
+func TestMemoryBackend_PutEmptyContent(t *testing.T) {
+	backend := NewMemoryBackend()
+	ctx := context.Background()
+
+	ref, err := backend.Put(ctx, "empty.txt", strings.NewReader(""), "text/plain")
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if ref.Size != 0 {
+		t.Errorf("Size: got %d, want 0", ref.Size)
+	}
+
+	reader, err := backend.Get(ctx, ref)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	defer reader.Close()
+	data, _ := io.ReadAll(reader)
+	if len(data) != 0 {
+		t.Errorf("content length: got %d, want 0", len(data))
+	}
+}
+
+// --- Service method coverage: presign errors on memory backend ---
+
+func TestService_GetDownloadURL_MemoryBackend(t *testing.T) {
+	svc, _ := New(&Config{Type: "memory"})
+	ctx := context.Background()
+
+	ref, _ := svc.StoreArtifact(ctx, "run1", "node1", "file.txt", strings.NewReader("data"), "text/plain")
+
+	_, err := svc.GetDownloadURL(ctx, ref, time.Hour)
+	if err == nil {
+		t.Fatal("expected error for presigned URL on memory backend")
+	}
+	if !strings.Contains(err.Error(), "not supported") {
+		t.Errorf("error: got %q, want to contain 'not supported'", err.Error())
+	}
+}
+
+func TestService_GetUploadURL_MemoryBackend(t *testing.T) {
+	svc, _ := New(&Config{Type: "memory"})
+	ctx := context.Background()
+
+	_, err := svc.GetUploadURL(ctx, "run1", "node1", "upload.bin", "application/octet-stream", time.Hour)
+	if err == nil {
+		t.Fatal("expected error for presigned URL on memory backend")
+	}
+}
+
+func TestS3Backend_ExtractKey_NoBucketSlash(t *testing.T) {
+	b := &S3Backend{bucket: "test-bucket"}
+
+	// URI with bucket but no trailing slash
+	got := b.extractKey("s3://test-bucket")
+	if got != "test-bucket" {
+		t.Errorf("extractKey (no path): got %q, want %q", got, "test-bucket")
+	}
+}
+
+// --- Mock S3 HTTP server for S3Backend integration tests ---
+
+// mockS3Store is an in-memory object store for the mock S3 HTTP server.
+type mockS3Store struct {
+	mu      sync.Mutex
+	objects map[string]mockS3Object
+}
+
+type mockS3Object struct {
+	data        []byte
+	contentType string
+	lastMod     time.Time
+}
+
+// setupMockS3 creates a mock S3 HTTP server and returns an S3Backend pointed at it.
+func setupMockS3(t *testing.T, pathPrefix string) *S3Backend {
+	t.Helper()
+	store := &mockS3Store{objects: make(map[string]mockS3Object)}
+	bucket := "test-bucket"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bucketPrefix := "/" + bucket
+		if !strings.HasPrefix(r.URL.Path, bucketPrefix) {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		key := strings.TrimPrefix(r.URL.Path, bucketPrefix)
+		key = strings.TrimPrefix(key, "/")
+
+		switch r.Method {
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			ct := r.Header.Get("Content-Type")
+			if ct == "" {
+				ct = "application/octet-stream"
+			}
+			store.mu.Lock()
+			store.objects[key] = mockS3Object{
+				data:        body,
+				contentType: ct,
+				lastMod:     time.Now().UTC(),
+			}
+			store.mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+
+		case http.MethodGet:
+			if r.URL.Query().Get("list-type") == "2" {
+				prefix := r.URL.Query().Get("prefix")
+				type xmlContent struct {
+					Key          string `xml:"Key"`
+					Size         int64  `xml:"Size"`
+					LastModified string `xml:"LastModified"`
+				}
+				type xmlListResult struct {
+					XMLName     xml.Name     `xml:"ListBucketResult"`
+					Name        string       `xml:"Name"`
+					Prefix      string       `xml:"Prefix"`
+					KeyCount    int          `xml:"KeyCount"`
+					MaxKeys     int          `xml:"MaxKeys"`
+					IsTruncated bool         `xml:"IsTruncated"`
+					Contents    []xmlContent `xml:"Contents"`
+				}
+				result := xmlListResult{
+					Name:        bucket,
+					Prefix:      prefix,
+					MaxKeys:     1000,
+					IsTruncated: false,
+				}
+				store.mu.Lock()
+				for k, obj := range store.objects {
+					if strings.HasPrefix(k, prefix) {
+						result.Contents = append(result.Contents, xmlContent{
+							Key:          k,
+							Size:         int64(len(obj.data)),
+							LastModified: obj.lastMod.Format(time.RFC3339),
+						})
+					}
+				}
+				result.KeyCount = len(result.Contents)
+				store.mu.Unlock()
+				w.Header().Set("Content-Type", "application/xml")
+				xml.NewEncoder(w).Encode(result)
+				return
+			}
+			store.mu.Lock()
+			obj, ok := store.objects[key]
+			store.mu.Unlock()
+			if !ok {
+				w.Header().Set("Content-Type", "application/xml")
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprint(w, `<Error><Code>NoSuchKey</Code><Message>Not found</Message></Error>`)
+				return
+			}
+			w.Header().Set("Content-Type", obj.contentType)
+			w.Write(obj.data)
+
+		case http.MethodDelete:
+			store.mu.Lock()
+			delete(store.objects, key)
+			store.mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+
+		case http.MethodHead:
+			store.mu.Lock()
+			_, ok := store.objects[key]
+			store.mu.Unlock()
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	endpoint := strings.TrimPrefix(srv.URL, "http://")
+	backend, err := NewS3Backend(&S3Config{
+		Endpoint:       endpoint,
+		Bucket:         bucket,
+		Region:         "us-east-1",
+		AccessKeyID:    "test-key",
+		SecretAccessKey: "test-secret",
+		UseSSL:         false,
+		PathPrefix:     pathPrefix,
+	})
+	if err != nil {
+		t.Fatalf("NewS3Backend: %v", err)
+	}
+	return backend
+}
+
+func TestS3Backend_PutAndGet(t *testing.T) {
+	backend := setupMockS3(t, "")
+	ctx := context.Background()
+
+	content := "hello s3 world"
+	ref, err := backend.Put(ctx, "test/file.txt", strings.NewReader(content), "text/plain")
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if ref.ContentType != "text/plain" {
+		t.Errorf("ContentType: got %q, want %q", ref.ContentType, "text/plain")
+	}
+	if ref.Size != int64(len(content)) {
+		t.Errorf("Size: got %d, want %d", ref.Size, len(content))
+	}
+	if ref.Checksum == "" {
+		t.Error("Checksum: expected non-empty")
+	}
+
+	reader, err := backend.Get(ctx, ref)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	defer reader.Close()
+	data, _ := io.ReadAll(reader)
+	if string(data) != content {
+		t.Errorf("Get content: got %q, want %q", string(data), content)
+	}
+}
+
+func TestS3Backend_PutDefaultContentType(t *testing.T) {
+	backend := setupMockS3(t, "")
+	ctx := context.Background()
+
+	ref, err := backend.Put(ctx, "test/binary.dat", strings.NewReader("data"), "")
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if ref.ContentType != "application/octet-stream" {
+		t.Errorf("ContentType: got %q, want %q", ref.ContentType, "application/octet-stream")
+	}
+}
+
+func TestS3Backend_GetNotFound_MockServer(t *testing.T) {
+	backend := setupMockS3(t, "")
+	ctx := context.Background()
+
+	_, err := backend.Get(ctx, &ArtifactRef{URI: "s3://test-bucket/nonexistent"})
+	if err == nil {
+		t.Fatal("expected error for nonexistent key")
+	}
+}
+
+func TestS3Backend_DeleteObject(t *testing.T) {
+	backend := setupMockS3(t, "")
+	ctx := context.Background()
+
+	ref, _ := backend.Put(ctx, "test/del.txt", strings.NewReader("delete me"), "text/plain")
+	err := backend.Delete(ctx, ref)
+	if err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	_, err = backend.Get(ctx, ref)
+	if err == nil {
+		t.Error("expected error after delete")
+	}
+}
+
+func TestS3Backend_ListObjects(t *testing.T) {
+	backend := setupMockS3(t, "")
+	ctx := context.Background()
+
+	backend.Put(ctx, "runs/r1/a.txt", strings.NewReader("a"), "text/plain")
+	backend.Put(ctx, "runs/r1/b.txt", strings.NewReader("b"), "text/plain")
+	backend.Put(ctx, "runs/r2/c.txt", strings.NewReader("c"), "text/plain")
+
+	refs, err := backend.List(ctx, "runs/r1/")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(refs) != 2 {
+		t.Errorf("List count: got %d, want 2", len(refs))
+	}
+	for _, ref := range refs {
+		if !strings.HasPrefix(ref.URI, "s3://test-bucket/runs/r1/") {
+			t.Errorf("URI: got %q, expected s3://test-bucket/runs/r1/ prefix", ref.URI)
+		}
+	}
+}
+
+func TestS3Backend_PresignGetURL(t *testing.T) {
+	backend := setupMockS3(t, "")
+	ctx := context.Background()
+
+	ref := &ArtifactRef{URI: "s3://test-bucket/test/file.txt"}
+	url, err := backend.PresignGet(ctx, ref, time.Hour)
+	if err != nil {
+		t.Fatalf("PresignGet: %v", err)
+	}
+	if url == "" {
+		t.Error("expected non-empty presigned URL")
+	}
+}
+
+func TestS3Backend_PresignPutURL(t *testing.T) {
+	backend := setupMockS3(t, "")
+	ctx := context.Background()
+
+	url, err := backend.PresignPut(ctx, "test/upload.bin", "application/octet-stream", time.Hour)
+	if err != nil {
+		t.Fatalf("PresignPut: %v", err)
+	}
+	if url == "" {
+		t.Error("expected non-empty presigned URL")
+	}
+}
+
+func TestS3Backend_PresignPutDefaultContentType(t *testing.T) {
+	backend := setupMockS3(t, "")
+	ctx := context.Background()
+
+	url, err := backend.PresignPut(ctx, "test/upload.bin", "", time.Hour)
+	if err != nil {
+		t.Fatalf("PresignPut: %v", err)
+	}
+	if url == "" {
+		t.Error("expected non-empty presigned URL")
+	}
+}
+
+func TestS3Backend_PutWithPathPrefix(t *testing.T) {
+	backend := setupMockS3(t, "artifacts")
+	ctx := context.Background()
+
+	ref, err := backend.Put(ctx, "test/file.txt", strings.NewReader("data"), "text/plain")
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if !strings.Contains(ref.URI, "artifacts/test/file.txt") {
+		t.Errorf("URI: got %q, expected to contain 'artifacts/test/file.txt'", ref.URI)
 	}
 }
