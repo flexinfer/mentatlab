@@ -76,3 +76,20 @@ export function getGatewayBaseUrl(): string {
 }
 
 export const GATEWAY_BASE_URL = getGatewayBaseUrl();
+
+/**
+ * Derive WebSocket URL from the gateway base URL.
+ * http(s)://host:port → ws(s)://host:port/ws
+ */
+export function getGatewayWsUrl(): string {
+  const base = getGatewayBaseUrl();
+  return base.replace(/^http/, 'ws') + '/ws';
+}
+
+/**
+ * Derive SSE URL from the gateway base URL.
+ * http(s)://host:port → http(s)://host:port/ws/sse
+ */
+export function getGatewaySseUrl(): string {
+  return getGatewayBaseUrl() + '/ws/sse';
+}

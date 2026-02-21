@@ -4,6 +4,7 @@
  */
 
 import { FeatureFlags } from '../../config/features';
+import { getGatewayWsUrl } from '@/config/orchestrator';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
@@ -457,7 +458,7 @@ export class WebSocketClient {
 
 // Export singleton instance for convenience
 export const websocketClient = new WebSocketClient({
-  url: import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws',
+  url: (import.meta.env.VITE_WS_URL as string) || getGatewayWsUrl(),
   debug: import.meta.env.DEV
 });
 
