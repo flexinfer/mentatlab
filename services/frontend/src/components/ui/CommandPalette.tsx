@@ -151,7 +151,7 @@ export function CommandPalette({
 
       {/* Palette */}
       <div
-        className="relative w-full max-w-lg bg-card border border-border rounded-xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200"
+        className="relative w-full max-w-lg bg-card border border-border rounded-md shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Input */}

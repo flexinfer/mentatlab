@@ -13,7 +13,7 @@ describe('Card', () => {
     render(<Card className="my-card">Content</Card>);
     const card = screen.getByText('Content').closest('div');
     expect(card?.className).toContain('my-card');
-    expect(card?.className).toContain('rounded-xl');
+    expect(card?.className).toContain('rounded-md');
   });
 
   it('forwards ref', () => {

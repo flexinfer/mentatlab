@@ -35,7 +35,7 @@ export function ConnectionStatusBanner({
       className={`
         fixed top-20 left-1/2 -translate-x-1/2 z-[200]
         flex items-center gap-3 px-4 py-2.5
-        rounded-xl border shadow-lg backdrop-blur-md
+        rounded-md border shadow-lg backdrop-blur
         animate-in slide-in-from-top-2 duration-300
         ${statusConfig.bgClass}
       `}

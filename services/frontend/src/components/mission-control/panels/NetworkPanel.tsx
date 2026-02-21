@@ -98,7 +98,7 @@ function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean
       <div className="mt-0.5 text-[10px] text-muted-foreground flex items-center justify-between font-mono">
         <span>execs: {data.execs ?? 0}</span>
         {(data.throughput ?? 0) > 0 && (
-          <span className="text-primary neon-text" title="Messages per second">
+          <span className="text-primary" title="Messages per second">
             {data.throughput?.toFixed(1)}/s
           </span>
         )}

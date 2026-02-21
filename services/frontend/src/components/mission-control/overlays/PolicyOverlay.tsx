@@ -90,7 +90,7 @@ export default function PolicyOverlay({ runId, onClose }: PolicyOverlayProps) {
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50" onClick={onClose}>
       <div
-        className="w-full max-w-6xl max-h-[85vh] bg-card rounded-lg shadow-2xl border overflow-hidden flex flex-col"
+        className="w-full max-w-6xl max-h-[85vh] bg-card rounded-md shadow-lg border overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

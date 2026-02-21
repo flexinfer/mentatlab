@@ -46,46 +46,46 @@
     --radius: 0.375rem;
   }
 
-  /* Dark Mode - Cyberpunk / Sci-Fi Theme */
+  /* Dark Mode - Restrained Operator Theme */
   .dark {
-    /* Base Backgrounds - Deep Void */
-    --background: 240 20% 4%;      /* #08080c */
-    --foreground: 180 100% 90%;    /* Pale Cyan Text */
+    /* Base Backgrounds - Deep slate (not void-black) */
+    --background: 230 18% 7%;
+    --foreground: 210 20% 88%;     /* Neutral light gray */
 
-    /* Surface / Cards - Glassmorphic */
-    --card: 240 20% 6%;            /* Slightly lighter void */
-    --card-foreground: 180 100% 90%;
+    /* Surface / Cards */
+    --card: 230 18% 9%;
+    --card-foreground: 210 20% 88%;
 
     /* Popovers */
-    --popover: 240 25% 8%;
-    --popover-foreground: 180 100% 90%;
+    --popover: 230 18% 10%;
+    --popover-foreground: 210 20% 88%;
 
-    /* Primary - Neon Cyan */
-    --primary: 190 100% 50%;       /* #00F0FF */
-    --primary-foreground: 240 20% 4%;
+    /* Primary - Teal (readable, not neon) */
+    --primary: 186 60% 50%;
+    --primary-foreground: 230 18% 7%;
 
-    /* Secondary - Electric Purple */
-    --secondary: 280 100% 60%;     /* #A020F0 */
-    --secondary-foreground: 210 40% 98%;
+    /* Secondary - Muted slate-purple */
+    --secondary: 260 30% 50%;
+    --secondary-foreground: 210 20% 95%;
 
-    /* Muted - Tech Gray */
-    --muted: 240 10% 15%;
-    --muted-foreground: 240 10% 60%;
+    /* Muted - Slate gray */
+    --muted: 230 12% 16%;
+    --muted-foreground: 220 10% 55%;
 
-    /* Accent - Hot Pink/Magenta */
-    --accent: 320 100% 55%;        /* #FF1493 */
-    --accent-foreground: 210 40% 98%;
+    /* Accent - Soft indigo */
+    --accent: 250 50% 60%;
+    --accent-foreground: 210 20% 95%;
 
-    /* Destructive - Alarm Red */
-    --destructive: 0 100% 50%;
-    --destructive-foreground: 210 40% 98%;
+    /* Destructive - Signal red */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 20% 95%;
 
     /* Borders & Inputs */
-    --border: 240 20% 20%;
-    --input: 240 20% 20%;
+    --border: 230 15% 20%;
+    --input: 230 15% 20%;
 
     /* Focus Rings */
-    --ring: 190 100% 50%;          /* Match Primary */
+    --ring: 186 60% 50%;
   }
 }
 
@@ -115,10 +115,10 @@
   .dark body,
   body.dark,
   .dark {
-    /* Subtle grid background - dark mode (neon cyan) */
+    /* Faint grid background - dark mode (neutral) */
     background-image:
-      linear-gradient(to right, rgba(0, 240, 255, 0.03) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+      linear-gradient(to right, rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
     background-size: 40px 40px;
   }
 }
@@ -128,36 +128,36 @@
   .glass {
     @apply bg-background/60 backdrop-blur-md border border-white/10;
   }
-  
+
   .glass-panel {
     @apply bg-card/40 backdrop-blur-xl border border-white/5 shadow-xl;
   }
-  
+
   .neon-text {
-    text-shadow: 0 0 5px hsl(var(--primary)), 0 0 10px hsl(var(--primary));
+    text-shadow: 0 0 4px hsl(var(--primary) / 0.4);
   }
-  
+
   .neon-border {
-    box-shadow: 0 0 5px hsl(var(--primary)), inset 0 0 5px hsl(var(--primary));
+    box-shadow: 0 0 4px hsl(var(--primary) / 0.3);
   }
 }
 
-/* React Flow Overrides for Sci-Fi Look */
+/* React Flow Overrides */
 .react-flow__node {
-  @apply !bg-card/80 !backdrop-blur-md !border !border-primary/30 !rounded-md;
+  @apply !bg-card/80 !backdrop-blur-md !border !border-primary/20 !rounded-md;
   color: hsl(var(--foreground)) !important;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
 }
 
 .react-flow__handle {
   @apply !bg-primary !w-3 !h-3 !border-2 !border-background;
-  box-shadow: 0 0 8px hsl(var(--primary));
+  box-shadow: 0 0 4px hsl(var(--primary) / 0.4);
 }
 
 .react-flow__edge-path {
   stroke: hsl(var(--primary)) !important;
   stroke-width: 2 !important;
-  filter: drop-shadow(0 0 3px hsl(var(--primary)));
+  filter: drop-shadow(0 0 2px hsl(var(--primary) / 0.3));
 }
 
 .react-flow__controls {

@@ -76,8 +76,8 @@ export default {
           to: { transform: "translateY(0)", opacity: "1" },
         },
         "glow": {
-          "0%, 100%": { boxShadow: "0 0 5px hsl(var(--primary) / 0.5)" },
-          "50%": { boxShadow: "0 0 20px hsl(var(--primary) / 0.8)" },
+          "0%, 100%": { boxShadow: "0 0 3px hsl(var(--primary) / 0.25)" },
+          "50%": { boxShadow: "0 0 8px hsl(var(--primary) / 0.4)" },
         },
       },
       animation: {
