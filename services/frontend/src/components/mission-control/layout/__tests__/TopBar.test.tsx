@@ -26,6 +26,10 @@ const mockWorkspace = vi.hoisted(() => ({
 
 vi.mock('@/stores', () => ({
   useLayoutStore: () => mockLayoutStore,
+  useStreamingStore: (selector?: (s: Record<string, unknown>) => unknown) => {
+    const state = { connectionStatus: 'disconnected' };
+    return typeof selector === 'function' ? selector(state) : state;
+  },
 }));
 
 vi.mock('../WorkspaceProvider', () => ({
@@ -34,10 +38,6 @@ vi.mock('../WorkspaceProvider', () => ({
 
 vi.mock('@/components/ui/SaveStatusIndicator', () => ({
   SaveStatusIndicator: () => <div data-testid="save-status">SaveStatus</div>,
-}));
-
-vi.mock('@/components/ui/ConnectionStatusBanner', () => ({
-  ConnectionStatusBanner: () => <div data-testid="connection-status">ConnectionStatus</div>,
 }));
 
 vi.mock('@/components/ui/button', () => ({
@@ -179,9 +179,10 @@ describe('TopBar', () => {
     expect(screen.getByTestId('save-status')).toBeInTheDocument();
   });
 
-  it('renders ConnectionStatusBanner', () => {
+  it('renders connection status indicator', () => {
     render(<TopBar />);
-    expect(screen.getByTestId('connection-status')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-indicator')).toBeInTheDocument();
+    expect(screen.getByText('Disconnected')).toBeInTheDocument();
   });
 
   it('applies custom className', () => {
