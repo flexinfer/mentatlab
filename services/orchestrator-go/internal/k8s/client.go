@@ -21,7 +21,7 @@ import (
 
 // Client wraps the Kubernetes clientset with orchestrator-specific methods.
 type Client struct {
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 	namespace string
 	breaker   *gobreaker.TwoStepCircuitBreaker
 }
@@ -124,8 +124,13 @@ func (c *Client) Namespace() string {
 }
 
 // Clientset returns the underlying clientset for advanced operations.
-func (c *Client) Clientset() *kubernetes.Clientset {
+func (c *Client) Clientset() kubernetes.Interface {
 	return c.clientset
+}
+
+// NewClientForTesting creates a Client from a kubernetes.Interface for testing.
+func NewClientForTesting(cs kubernetes.Interface, namespace string) *Client {
+	return &Client{clientset: cs, namespace: namespace}
 }
 
 // CreateJob creates a new Job in the configured namespace.

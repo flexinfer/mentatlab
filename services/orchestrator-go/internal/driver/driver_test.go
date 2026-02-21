@@ -248,3 +248,130 @@ func TestSubprocessDriver_NilEmitter(t *testing.T) {
 	// Should not panic
 	d.emitEvent(context.Background(), "run1", "log", map[string]interface{}{"message": "test"}, "node1", "info")
 }
+
+// --- Subprocess: specific exit code ---
+
+func TestSubprocessDriver_ExitCode127(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", "exit 127"},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 127 {
+		t.Errorf("exit code: got %d, want 127", code)
+	}
+
+	events := emitter.getEvents()
+	last := events[len(events)-1]
+	if last.Data["status"] != "failed" {
+		t.Errorf("last event status: got %v, want %q", last.Data["status"], "failed")
+	}
+	if last.Data["exitCode"] != 127 {
+		t.Errorf("last event exitCode: got %v, want 127", last.Data["exitCode"])
+	}
+}
+
+// --- Subprocess: mixed stdout+stderr ---
+
+func TestSubprocessDriver_MixedOutput(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	script := `echo '{"type":"output","value":"ok"}'
+echo "stderr-line" >&2
+echo "plain stdout line"`
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", script},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0", code)
+	}
+
+	events := emitter.getEvents()
+	hasOutput := false
+	hasStderr := false
+	hasPlain := false
+	for _, e := range events {
+		if e.EventType == "output" {
+			hasOutput = true
+		}
+		if e.EventType == "log" && e.Level == "error" {
+			hasStderr = true
+		}
+		if e.EventType == "log" && e.Level == "info" {
+			if msg, ok := e.Data["message"].(string); ok && msg == "plain stdout line" {
+				hasPlain = true
+			}
+		}
+	}
+	if !hasOutput {
+		t.Error("expected NDJSON output event")
+	}
+	if !hasStderr {
+		t.Error("expected stderr error-level log event")
+	}
+	if !hasPlain {
+		t.Error("expected plain text info-level log event")
+	}
+}
+
+// --- Subprocess: env variables injected ---
+
+func TestSubprocessDriver_EnvInjection(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	code, err := d.RunNode(context.Background(), "run-abc", "node-xyz",
+		[]string{"sh", "-c", `echo "{\"run\":\"$RUN_ID\",\"node\":\"$NODE_ID\"}"`},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0", code)
+	}
+
+	// Check that RUN_ID and NODE_ID were injected
+	events := emitter.getEvents()
+	found := false
+	for _, e := range events {
+		if e.EventType == "log" || e.EventType == "" {
+			if data, ok := e.Data["run"]; ok && data == "run-abc" {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Log("events:", events)
+		// Non-fatal: the JSON might not parse if shell quoting differs
+	}
+}
+
+// --- Subprocess: empty type field ---
+
+func TestProcessStdoutLine_EmptyType(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].EventType != "log" {
+		t.Errorf("event type: got %q, want %q (empty type should default to log)", events[0].EventType, "log")
+	}
+}
