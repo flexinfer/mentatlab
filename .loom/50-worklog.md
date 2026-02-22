@@ -2,6 +2,60 @@
 
 Chronological notes while executing the plan (useful for handoffs and debugging).
 
+## 2026-02-20
+
+### M16 planning: Mission Control UI/UX functional standardization
+
+- What changed:
+  - Refreshed `.loom` context pack for this slice:
+    - `.loom/00-mcp-inventory.md` (loom profile/tool inventory + index readiness update)
+    - `.loom/10-research.md` (UI/UX functional audit addendum with sourced findings)
+    - `.loom/20-product-spec.md` (new M16 product spec)
+    - `.loom/30-implementation-plan.md` (new phased M16 implementation slice)
+    - `.loom/40-decisions.md` (functional-first + single transport authority decisions)
+    - `.loom/00-index.md` (M16 tracked in current goals + key findings addendum)
+    - `.loom/31-m16-issue-checklist.md` (PR-sized issue breakdown with file-level scope)
+- Why:
+  - User request prioritized “functional first” UI/UX improvement. Existing frontend has fragmented connection ownership and duplicate status surfaces.
+
+- Evidence collected:
+  - Duplicate status banner mounts:
+    - `services/frontend/src/components/mission-control/layout/TopBar.tsx:107`
+    - `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:250`
+  - Fixed-position banner causing overlap risk:
+    - `services/frontend/src/components/ui/ConnectionStatusBanner.tsx:36`
+  - Duplicated connect logic:
+    - `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:203`
+    - `services/frontend/src/components/mission-control/panels/NetworkPanel.tsx:609`
+  - Independent raw websocket + polling in StreamingCanvas:
+    - `services/frontend/src/components/StreamingCanvas.tsx:42`
+    - `services/frontend/src/components/StreamingCanvas.tsx:89`
+  - Inconsistent URL defaults:
+    - `services/frontend/src/services/api/apiService.ts:113`
+    - `services/frontend/src/config/orchestrator.ts:10`
+    - `services/frontend/src/config/orchestrator.ts:75`
+
+- Validation:
+  - `npm run lint` in `services/frontend` passed.
+  - `npm test -- --run --reporter=dot` in `services/frontend` passed (`49` files, `713` tests).
+  - `codebase_memory__codebase_stats(repo_id="mentatlab-frontend")` returned indexed frontend corpus (`total_chunks=1349`).
+  - `read_mcp_resource(loom://config)` confirmed loom profile `full` with `42` servers and `445` tools.
+
+- Notable runtime note:
+  - `read_mcp_resource(loom://servers)` failed twice with transient loom socket broken pipe while other loom resources were available.
+
+### M16 tracking: GitLab issues created
+
+- Created roadmap issues in `services/mentatlab` for the full M16 checklist:
+  - `#42` Roadmap: M16.1 Unify live connection ownership
+  - `#43` Roadmap: M16.2 Canonicalize connection status surface
+  - `#44` Roadmap: M16.3 Refactor StreamingCanvas to shared transport
+  - `#45` Roadmap: M16.4 Normalize frontend URL defaults
+  - `#46` Roadmap: M16.5 Resolve legacy /streaming route strategy
+  - `#47` Roadmap: M16.6 Standardize visual tokens and panel chrome
+  - `#48` Roadmap: M16.7 Add connection UX regression tests
+  - `#49` Roadmap: M16.8 Capture visual QA snapshot baseline
+
 ## 2026-02-14
 
 ### M0.1: CI/CD Image Builds - VERIFIED CORRECT

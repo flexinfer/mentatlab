@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class SchedulingService:
     """Real Kubernetes scheduling service for MentatLab agents."""
-    
+
     def __init__(self):
         """Initialize the Kubernetes client."""
         self.namespace = os.getenv("MENTATLAB_NAMESPACE", "mentatlab")
@@ -26,12 +26,12 @@ class SchedulingService:
         self.core_v1_api = None
         self.data_flow_service = get_data_flow_service()
         self._initialized = False
-    
+
     def _ensure_initialized(self):
         """Lazy initialization of Kubernetes clients."""
         if self._initialized:
             return
-        
+
         try:
             # Try to load in-cluster config first (for production)
             config.load_incluster_config()
@@ -44,16 +44,16 @@ class SchedulingService:
             except config.ConfigException as e:
                 logger.error(f"Failed to load Kubernetes configuration: {e}")
                 raise
-        
+
         # Initialize API clients
         self.k8s_client = client.ApiClient()
         self.apps_v1_api = client.AppsV1Api()
         self.batch_v1_api = client.BatchV1Api()
         self.core_v1_api = client.CoreV1Api()
-        
+
         logger.info(f"SchedulingService initialized for namespace: {self.namespace}")
         self._initialized = True
-    
+
     def scheduleWorkflow(self, workflow_id: str, cron_schedule: str) -> str:
         """
         Schedule a workflow (maintains backward compatibility).
@@ -61,11 +61,11 @@ class SchedulingService:
         """
         self._ensure_initialized()
         logger.info(f"Scheduling workflow {workflow_id} with cron schedule: {cron_schedule}")
-        
+
         # For backward compatibility, create a simple job
         # In a real implementation, this would parse the workflow and create multiple resources
         job_id = f"workflow-{workflow_id}-{uuid.uuid4().hex[:8]}"
-        
+
         try:
             # Create a simple job for the workflow
             job_spec = self._create_workflow_job_spec(workflow_id, job_id)
@@ -78,46 +78,46 @@ class SchedulingService:
         except ApiException as e:
             logger.error(f"Failed to create workflow job: {e}")
             raise
-    
+
     def scheduleAgent(self, agent_manifest: Dict[str, Any], inputs: Dict[str, Any], execution_id: Optional[str] = None, skip_validation: bool = False) -> str:
         """
         Schedule an individual agent based on its manifest.
-        
+
         Args:
             agent_manifest: The agent's manifest containing configuration
             inputs: Input data for the agent
             execution_id: Optional execution ID for tracking
             skip_validation: Skip manifest validation (for internal use)
-            
+
         Returns:
             Resource ID (job ID or deployment name)
-            
+
         Raises:
             ValueError: If manifest validation fails in strict mode
             ApiException: If Kubernetes operations fail
         """
         self._ensure_initialized()
         agent_id = agent_manifest.get("id", "unknown-agent")
-        
+
         # Validate agent manifest before scheduling (unless explicitly skipped)
         if not skip_validation:
             validation_result = validate_agent_manifest(agent_manifest)
-            
+
             if not validation_result.is_valid:
                 error_msg = f"Agent manifest validation failed for {agent_id}: {'; '.join(validation_result.errors)}"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
-            
+
             if validation_result.warnings:
                 logger.warning(f"Agent manifest validation warnings for {agent_id}: {'; '.join(validation_result.warnings)}")
-        
+
         # Process multimodal inputs and create storage references
         processed_inputs, created_references = self.data_flow_service.process_agent_inputs(
             agent_manifest, inputs
         )
-        
+
         is_long_running = agent_manifest.get("longRunning", False)
-        
+
         # Sanitize k8s resource name (RFC 1123 label)
         def _sanitize_name(val: str, default: str) -> str:
             v = (val or default).lower()
@@ -146,9 +146,9 @@ class SchedulingService:
         raw_exec = execution_id if execution_id else uuid.uuid4().hex[:8]
         resource_id = _sanitize_name(f"{agent_id}-{raw_exec}", f"{agent_id}-{uuid.uuid4().hex[:8]}")
         label_resource_id = _label_value(resource_id, resource_id)
-        
+
         logger.info(f"Scheduling agent {agent_id} (longRunning={is_long_running}) as {resource_id}")
-        
+
         try:
             if is_long_running:
                 return self._create_deployment(agent_manifest, processed_inputs, resource_id, created_references, label_resource_id)
@@ -160,7 +160,7 @@ class SchedulingService:
             if created_references:
                 self.data_flow_service.cleanup_references(created_references)
             raise
-    
+
     def getJobStatus(self, job_id: str) -> Dict[str, Any]:
         """Get the status of a scheduled job or deployment."""
         self._ensure_initialized()
@@ -183,7 +183,7 @@ class SchedulingService:
         except ApiException as e:
             logger.error(f"Failed to get status for {job_id}: {e}")
             return {"status": "error", "message": str(e)}
-    
+
     def cleanupJob(self, job_id: str) -> bool:
         """Clean up a completed or failed job."""
         self._ensure_initialized()
@@ -191,7 +191,7 @@ class SchedulingService:
             # Try to delete as Job first
             try:
                 self.batch_v1_api.delete_namespaced_job(
-                    name=job_id, 
+                    name=job_id,
                     namespace=self.namespace,
                     propagation_policy="Background"
                 )
@@ -202,7 +202,7 @@ class SchedulingService:
                     # Try to delete as Deployment
                     try:
                         self.apps_v1_api.delete_namespaced_deployment(
-                            name=job_id, 
+                            name=job_id,
                             namespace=self.namespace,
                             propagation_policy="Background"
                         )
@@ -217,20 +217,20 @@ class SchedulingService:
         except ApiException as e:
             logger.error(f"Failed to cleanup {job_id}: {e}")
             return False
-    
+
     def _create_job(self, agent_manifest: Dict[str, Any], inputs: Dict[str, Any], job_id: str, references: Optional[List[StorageReference]] = None, label_job_id: Optional[str] = None) -> str:
         """Create a Kubernetes Job for a short-lived agent."""
         agent_id = agent_manifest.get("id", "unknown-agent")
         image = agent_manifest.get("image", "alpine:latest")
         resources = agent_manifest.get("resources", {})
         env_vars = agent_manifest.get("env", [])
-        
+
         # Parse resource requirements
         resource_requests = self._parse_resource_requirements(resources, agent_manifest)
-        
+
         # Create environment variables
         env_list = self._create_env_vars(env_vars, inputs)
-        
+
         # Create Job specification
         if not label_job_id:
             label_job_id = job_id[:63]
@@ -276,29 +276,29 @@ class SchedulingService:
                 backoff_limit=3
             )
         )
-        
+
         # Create the Job
         self.batch_v1_api.create_namespaced_job(
             namespace=self.namespace,
             body=job_spec
         )
-        
+
         logger.info(f"Created Kubernetes Job: {job_id} for agent {agent_id}")
         return job_id
-    
+
     def _create_deployment(self, agent_manifest: Dict[str, Any], inputs: Dict[str, Any], deployment_name: str, references: Optional[List[StorageReference]] = None, label_deploy_name: Optional[str] = None) -> str:
         """Create a Kubernetes Deployment for a long-running agent."""
         agent_id = agent_manifest.get("id", "unknown-agent")
         image = agent_manifest.get("image", "alpine:latest")
         resources = agent_manifest.get("resources", {})
         env_vars = agent_manifest.get("env", [])
-        
+
         # Parse resource requirements
         resource_requests = self._parse_resource_requirements(resources, agent_manifest)
-        
+
         # Create environment variables
         env_list = self._create_env_vars(env_vars, inputs)
-        
+
         # Create Deployment specification
         if not label_deploy_name:
             label_deploy_name = deployment_name[:63]
@@ -350,16 +350,16 @@ class SchedulingService:
                 )
             )
         )
-        
+
         # Create the Deployment
         self.apps_v1_api.create_namespaced_deployment(
             namespace=self.namespace,
             body=deployment_spec
         )
-        
+
         logger.info(f"Created Kubernetes Deployment: {deployment_name} for agent {agent_id}")
         return deployment_name
-    
+
     def _create_workflow_job_spec(self, workflow_id: str, job_id: str) -> client.V1Job:
         """Create a basic job spec for workflow scheduling (backward compatibility)."""
         return client.V1Job(
@@ -400,11 +400,11 @@ class SchedulingService:
                 backoff_limit=3
             )
         )
-    
+
     def _parse_resource_requirements(self, resources: Dict[str, Any], agent_manifest: Dict[str, Any] = None) -> Dict[str, Dict[str, str]]:
         """Parse resource requirements from agent manifest, with multimodal considerations."""
         result = {"requests": {}, "limits": {}}
-        
+
         # Check if agent uses multimodal types for enhanced resource allocation
         has_multimodal = False
         if agent_manifest:
@@ -412,12 +412,12 @@ class SchedulingService:
             output_types = {pin.get("type", "string") for pin in agent_manifest.get("outputs", [])}
             all_types = input_types | output_types
             has_multimodal = bool(all_types & {"audio", "image", "video", "stream"})
-        
+
         # Handle GPU requirements
         if resources.get("gpu", False):
             result["requests"]["nvidia.com/gpu"] = "1"
             result["limits"]["nvidia.com/gpu"] = "1"
-        
+
         # Handle CPU and memory (if specified in manifest)
         if "cpu" in resources:
             result["requests"]["cpu"] = str(resources["cpu"])
@@ -430,7 +430,7 @@ class SchedulingService:
             else:
                 result["requests"]["cpu"] = "100m"
                 result["limits"]["cpu"] = "500m"
-        
+
         if "memory" in resources:
             result["requests"]["memory"] = str(resources["memory"])
             result["limits"]["memory"] = str(resources["memory"])
@@ -442,31 +442,31 @@ class SchedulingService:
             else:
                 result["requests"]["memory"] = "128Mi"
                 result["limits"]["memory"] = "512Mi"
-        
+
         return result
-    
+
     def _create_env_vars(self, env_vars: List[str], inputs: Dict[str, Any]) -> List[client.V1EnvVar]:
         """Create environment variables for the container."""
         env_list = []
-        
+
         # Add environment variables from manifest
         for env_var in env_vars:
             if "=" in env_var:
                 key, value = env_var.split("=", 1)
                 env_list.append(client.V1EnvVar(name=key, value=value))
-        
+
         # Add inputs as environment variables
         for key, value in inputs.items():
             env_name = f"INPUT_{key.upper()}"
             env_list.append(client.V1EnvVar(name=env_name, value=str(value)))
-        
+
         return env_list
-    
+
     def _parse_job_status(self, job: client.V1Job) -> Dict[str, Any]:
         """Parse Kubernetes Job status into a standardized format."""
         status = job.status
         conditions = status.conditions or []
-        
+
         if status.succeeded:
             return {
                 "status": "succeeded",
@@ -501,7 +501,7 @@ class SchedulingService:
                 "failed": 0,
                 "conditions": [{"type": c.type, "reason": c.reason, "message": c.message} for c in conditions]
             }
-    
+
     def _parse_deployment_status(self, deployment: client.V1Deployment) -> Dict[str, Any]:
         """Parse Kubernetes Deployment status into a standardized format."""
         status = deployment.status

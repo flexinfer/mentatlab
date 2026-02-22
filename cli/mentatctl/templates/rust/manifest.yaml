@@ -1,6 +1,6 @@
-id: {{AGENT_ID}}
-version: {{VERSION}}
-image: {{AGENT_ID}}:{{VERSION}}
+id: "{{AGENT_ID}}"
+version: "{{VERSION}}"
+image: "{{AGENT_ID}}:{{VERSION}}"
 runtime: rust1.70
 description: "{{DESCRIPTION}}"
 inputs:

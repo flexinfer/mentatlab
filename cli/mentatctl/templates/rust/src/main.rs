@@ -35,17 +35,17 @@ struct ErrorResponse {
 /// Process the agent request
 fn process_request(input_data: InputData) -> OutputData {
     let start_time = Instant::now();
-    
+
     // Extract input text
     let input_text = input_data.text.unwrap_or_default();
-    
+
     // TODO: Implement your agent logic here
     // This is a basic template - replace with your actual processing
     let result = format!("Processed: {}", input_text);
-    
+
     // Calculate processing time
     let processing_time = start_time.elapsed().as_secs_f64();
-    
+
     // Return response with mentat_meta for metrics collection
     OutputData {
         result: result.clone(),
@@ -75,7 +75,7 @@ fn main() -> io::Result<()> {
     // Read JSON input from stdin
     let mut input_buffer = String::new();
     io::stdin().read_to_string(&mut input_buffer)?;
-    
+
     if input_buffer.trim().is_empty() {
         let error_response = create_error_response("No input received from stdin".to_string());
         let json_output = serde_json::to_string(&error_response).unwrap();
@@ -83,7 +83,7 @@ fn main() -> io::Result<()> {
         io::stdout().flush()?;
         std::process::exit(1);
     }
-    
+
     // Parse JSON input
     let input_data: InputData = match serde_json::from_str(&input_buffer.trim()) {
         Ok(data) => {
@@ -99,10 +99,10 @@ fn main() -> io::Result<()> {
             std::process::exit(1);
         }
     };
-    
+
     // Process the request
     let output_data = process_request(input_data);
-    
+
     // Write JSON output to stdout
     match serde_json::to_string(&output_data) {
         Ok(json_output) => {
@@ -119,6 +119,6 @@ fn main() -> io::Result<()> {
             std::process::exit(1);
         }
     }
-    
+
     Ok(())
 }

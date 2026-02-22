@@ -34,14 +34,14 @@ def test_create_flow_k8s(tmp_path, monkeypatch):
     # The test expects functionality that hasn't been implemented yet
     import pytest
     pytest.skip("SchedulingService not implemented in router_flows.py")
-    
+
     # Original test code kept for reference:
     # from services.gateway.app.router_flows import SchedulingService as SvcCls
-    # 
+    #
     # class DummySched:
     #     def scheduleWorkflow(self, workflow_id, cron_schedule):
     #         return f"job_{workflow_id}_{cron_schedule or 'none'}"
-    # 
+    #
     # monkeypatch.setattr(SvcCls, 'scheduleWorkflow', DummySched().scheduleWorkflow)
     # flow = client.get("/flows/hello_chat").json()
     # resp = client.post("/flows?mode=k8s&cron=0+*+*+*+*", json=flow)

@@ -151,14 +151,14 @@ class DataExporter:
             self.analytics_dashboard = analytics_dashboard or get_analytics_dashboard()
         except:
             self.analytics_dashboard = None
-            
+
         try:
             self.performance_monitor = performance_monitor or get_performance_monitor()
         except:
             self.performance_monitor = None
-            
+
         self.redis_manager = redis_manager
-        
+
         try:
             self.websocket_manager = websocket_manager or get_event_manager()
         except:
@@ -193,7 +193,7 @@ class DataExporter:
     ) -> ExportRequest:
         """Create a new export request with validation."""
         export_id = f"export_{int(time.time() * 1000)}"
-        
+
         return ExportRequest(
             export_id=export_id,
             format=format,
@@ -205,22 +205,22 @@ class DataExporter:
     async def export_data_async(self, request: ExportRequest) -> ExportResult:
         """
         Asynchronously export data with progress tracking.
-        
+
         Args:
             request: Export request configuration
-            
+
         Returns:
             ExportResult with operation details
         """
         start_time = time.time()
-        
+
         # Initialize result
         result = ExportResult(
             export_id=request.export_id,
             status=ExportStatus.PENDING,
             format=request.format
         )
-        
+
         with self.lock:
             self.active_exports[request.export_id] = result
 
@@ -236,7 +236,7 @@ class DataExporter:
             # Collect data
             logger.info(f"Starting data collection for export {request.export_id}")
             raw_data = await self._collect_data(request)
-            
+
             if not raw_data:
                 raise ValueError("No data found matching the specified criteria")
 
@@ -246,7 +246,7 @@ class DataExporter:
             # Generate export file
             logger.info(f"Generating {request.format.value} export for {result.records_exported} records")
             file_path = await self._generate_export_file(request, raw_data)
-            
+
             self._notify_export_progress(result, 80)
 
             # Apply compression if requested
@@ -289,10 +289,10 @@ class DataExporter:
     def export_data(self, request: ExportRequest) -> ExportResult:
         """
         Synchronous wrapper for data export.
-        
+
         Args:
             request: Export request configuration
-            
+
         Returns:
             ExportResult with operation details
         """
@@ -301,7 +301,7 @@ class DataExporter:
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-        
+
         return loop.run_until_complete(self.export_data_async(request))
 
     async def _validate_request(self, request: ExportRequest) -> bool:
@@ -319,10 +319,10 @@ class DataExporter:
 
             # Validate data types
             valid_data_types = [
-                "analytics", "conversations", "performance", 
+                "analytics", "conversations", "performance",
                 "agents", "network", "system", "all"
             ]
-            
+
             if not all(dt in valid_data_types for dt in request.data_types):
                 logger.error(f"Invalid data types: {request.data_types}")
                 return False
@@ -342,7 +342,7 @@ class DataExporter:
     async def _collect_data(self, request: ExportRequest) -> List[Dict[str, Any]]:
         """Collect data based on request parameters."""
         collected_data = []
-        
+
         try:
             for data_type in request.data_types:
                 if data_type == "all":
@@ -388,7 +388,7 @@ class DataExporter:
         try:
             # Get comprehensive analytics summary
             summary = self.analytics_dashboard.get_analytics_summary()
-            
+
             # Get detailed analysis for each type
             detailed_data = []
             for analysis_type in AnalysisType:
@@ -424,11 +424,11 @@ class DataExporter:
             # Get performance metrics
             start_time = request.start_time.timestamp() if request.start_time else None
             end_time = request.end_time.timestamp() if request.end_time else None
-            
+
             # Export metrics as JSON and parse
             metrics_json = self.performance_monitor.export_metrics_json(start_time, end_time)
             metrics_data = json.loads(metrics_json)
-            
+
             # Convert to list format
             performance_data = []
             for metric_name, metric_values in metrics_data.get("metrics", {}).items():
@@ -459,7 +459,7 @@ class DataExporter:
             # Fallback to analytics dashboard conversation data
             if self.analytics_dashboard and hasattr(self.analytics_dashboard, 'psychological_analyzer'):
                 analyzer = self.analytics_dashboard.psychological_analyzer
-                
+
                 # Get conversation history
                 for entry in analyzer.conversation_history:
                     conversation_data.append({
@@ -477,7 +477,7 @@ class DataExporter:
         """Collect system status and health data."""
         try:
             system_data = []
-            
+
             # Get performance snapshot
             if self.performance_monitor:
                 snapshot = self.performance_monitor.get_performance_snapshot()
@@ -513,7 +513,7 @@ class DataExporter:
             if "start_time" in filters or "end_time" in filters:
                 start_ts = filters.get("start_time", 0)
                 end_ts = filters.get("end_time", float('inf'))
-                
+
                 if isinstance(start_ts, datetime):
                     start_ts = start_ts.timestamp()
                 if isinstance(end_ts, datetime):
@@ -529,7 +529,7 @@ class DataExporter:
                 agent_types = filters["agent_types"]
                 filtered_data = [
                     item for item in filtered_data
-                    if item.get("agent_type") in agent_types or 
+                    if item.get("agent_type") in agent_types or
                        item.get("from_agent") in agent_types
                 ]
 
@@ -551,10 +551,10 @@ class DataExporter:
         """Generate the export file in the requested format."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = request.filename or f"psyche_export_{timestamp}"
-        
+
         # Add format extension
         file_path = self.output_dir / f"{filename}.{request.format.value}"
-        
+
         try:
             if request.format == ExportFormat.CSV:
                 await self._generate_csv(file_path, data, request)
@@ -636,7 +636,7 @@ class DataExporter:
         Data Types: {', '.join(request.data_types)}<br/>
         Records: {len(data)}<br/>
         """
-        
+
         metadata_para = Paragraph(metadata_text, styles['Normal'])
         story.append(metadata_para)
         story.append(Spacer(1, 12))
@@ -707,7 +707,7 @@ class DataExporter:
                         # Flatten and convert to DataFrame
                         flattened_items = [self._flatten_dict(item) for item in items]
                         df = pd.DataFrame(flattened_items)
-                        
+
                         # Ensure sheet name is valid
                         sheet_name = data_type[:31]  # Excel sheet name limit
                         df.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -773,19 +773,19 @@ class DataExporter:
                 flattened_items = [self._flatten_dict(item) for item in items[:100]]  # Limit for HTML
                 if flattened_items:
                     columns = list(flattened_items[0].keys())
-                    
+
                     html_content += "<table><thead><tr>"
                     for col in columns:
                         html_content += f"<th>{col}</th>"
                     html_content += "</tr></thead><tbody>"
-                    
+
                     for item in flattened_items:
                         html_content += "<tr>"
                         for col in columns:
                             value = str(item.get(col, ''))[:100]  # Truncate long values
                             html_content += f"<td>{value}</td>"
                         html_content += "</tr>"
-                    
+
                     html_content += "</tbody></table>"
 
             html_content += "</div>"
@@ -864,7 +864,7 @@ class DataExporter:
 
         # Flatten all items
         flattened_items = [self._flatten_dict(item) for item in items[:max_rows]]
-        
+
         if not flattened_items:
             return []
 
@@ -872,12 +872,12 @@ class DataExporter:
         all_columns = set()
         for item in flattened_items:
             all_columns.update(item.keys())
-        
+
         columns = sorted(list(all_columns))
-        
+
         # Create table data
         table_data = [columns]  # Header row
-        
+
         for item in flattened_items:
             row = []
             for col in columns:
@@ -887,7 +887,7 @@ class DataExporter:
                     value = value[:47] + "..."
                 row.append(value)
             table_data.append(row)
-        
+
         return table_data
 
     async def _apply_compression(self, file_path: Path, compression: CompressionType) -> Path:
@@ -895,25 +895,25 @@ class DataExporter:
         try:
             if compression == CompressionType.GZIP:
                 compressed_path = file_path.with_suffix(file_path.suffix + '.gz')
-                
+
                 with open(file_path, 'rb') as f_in:
                     with gzip.open(compressed_path, 'wb', compresslevel=self.compression_level) as f_out:
                         f_out.writelines(f_in)
-                
+
                 # Remove original file
                 file_path.unlink()
                 return compressed_path
-                
+
             elif compression == CompressionType.ZIP:
                 compressed_path = file_path.with_suffix('.zip')
-                
+
                 with zipfile.ZipFile(compressed_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=self.compression_level) as zf:
                     zf.write(file_path, file_path.name)
-                
+
                 # Remove original file
                 file_path.unlink()
                 return compressed_path
-                
+
             return file_path
 
         except Exception as e:
@@ -932,7 +932,7 @@ class DataExporter:
                     "records_exported": result.records_exported,
                     "error_message": result.error_message
                 }
-                
+
                 # Emit WebSocket event
                 event = self.websocket_manager.create_system_status(
                     status="healthy",
@@ -956,12 +956,12 @@ class DataExporter:
             # Check active exports
             if export_id in self.active_exports:
                 return self.active_exports[export_id]
-            
+
             # Check history
             for result in self.export_history:
                 if result.export_id == export_id:
                     return result
-        
+
         return None
 
     def list_exports(self, limit: int = 50) -> List[ExportResult]:
@@ -969,7 +969,7 @@ class DataExporter:
         with self.lock:
             # Combine active and historical exports
             all_exports = list(self.active_exports.values()) + self.export_history
-            
+
             # Sort by creation time and limit
             sorted_exports = sorted(all_exports, key=lambda x: x.export_id, reverse=True)
             return sorted_exports[:limit]
@@ -987,7 +987,7 @@ class DataExporter:
         """Clean up old export files and history."""
         try:
             cutoff_time = time.time() - (max_age_days * 24 * 3600)
-            
+
             # Clean up files
             for file_path in self.output_dir.glob("*"):
                 if file_path.is_file() and file_path.stat().st_mtime < cutoff_time:
@@ -1013,12 +1013,12 @@ class DataExporter:
             total_exports = len(self.export_history) + len(self.active_exports)
             completed_exports = len([r for r in self.export_history if r.status == ExportStatus.COMPLETED])
             failed_exports = len([r for r in self.export_history if r.status == ExportStatus.FAILED])
-            
+
             total_size = sum(
-                r.file_size for r in self.export_history 
+                r.file_size for r in self.export_history
                 if r.file_size and r.status == ExportStatus.COMPLETED
             )
-            
+
             return {
                 "total_exports": total_exports,
                 "active_exports": len(self.active_exports),
@@ -1032,15 +1032,15 @@ class DataExporter:
     def shutdown(self):
         """Shutdown the data exporter and cleanup resources."""
         logger.info("Shutting down data exporter...")
-        
+
         # Cancel active exports
         with self.lock:
             for export_id in list(self.active_exports.keys()):
                 self.cancel_export(export_id)
-        
+
         # Shutdown executor
         self.executor.shutdown(wait=True)
-        
+
         logger.info("Data exporter shutdown complete")
 
 
@@ -1055,11 +1055,11 @@ def get_data_exporter(
 ) -> DataExporter:
     """Get or create the global data exporter instance."""
     global _global_exporter
-    
+
     with _exporter_lock:
         if _global_exporter is None:
             _global_exporter = DataExporter(output_dir=output_dir, **kwargs)
-    
+
     return _global_exporter
 
 
@@ -1099,17 +1099,17 @@ def export_all_data(
 # Example usage and testing
 if __name__ == "__main__":
     import asyncio
-    
+
     # Set up logging
     logging.basicConfig(level=logging.INFO)
-    
+
     async def test_data_exporter():
         """Test the data exporter with sample data."""
         print("Testing data exporter...")
-        
+
         # Create exporter
         exporter = DataExporter(output_dir="./test_exports")
-        
+
         # Test JSON export
         request = exporter.create_export_request(
             format=ExportFormat.JSON,
@@ -1117,25 +1117,25 @@ if __name__ == "__main__":
             filters={"agent_types": ["ego", "shadow"]},
             include_metadata=True
         )
-        
+
         result = await exporter.export_data_async(request)
-        
+
         print(f"Export result: {result}")
         print(f"Export statistics: {exporter.get_export_statistics()}")
-        
+
         # Test CSV export
         csv_request = exporter.create_export_request(
             format=ExportFormat.CSV,
             data_types=["system"],
             compression=CompressionType.GZIP
         )
-        
+
         csv_result = await exporter.export_data_async(csv_request)
         print(f"CSV export result: {csv_result}")
-        
+
         # Cleanup
         exporter.shutdown()
         print("Data exporter test completed")
-    
+
     # Run test
     asyncio.run(test_data_exporter())

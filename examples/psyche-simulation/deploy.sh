@@ -164,30 +164,30 @@ FULL_IMAGE_NAME="${REGISTRY_URL}/${IMAGE_NAME}:${BUILD_VERSION}"
 # Validation functions
 check_prerequisites() {
     log_info "Checking prerequisites..."
-    
+
     local missing_tools=()
-    
+
     # Check required tools
     command -v kubectl >/dev/null 2>&1 || missing_tools+=("kubectl")
     command -v docker >/dev/null 2>&1 || missing_tools+=("docker")
-    
+
     if [ ${#missing_tools[@]} -ne 0 ]; then
         log_error "Missing required tools: ${missing_tools[*]}"
         exit 1
     fi
-    
+
     # Check Kubernetes connection
     if ! kubectl cluster-info >/dev/null 2>&1; then
         log_error "Cannot connect to Kubernetes cluster"
         exit 1
     fi
-    
+
     # Check Docker daemon
     if ! docker info >/dev/null 2>&1; then
         log_error "Cannot connect to Docker daemon"
         exit 1
     fi
-    
+
     log_success "Prerequisites check passed"
 }
 
@@ -197,14 +197,14 @@ build_image() {
         log_info "Skipping Docker build"
         return 0
     fi
-    
+
     log_info "Building Docker image: $FULL_IMAGE_NAME"
-    
+
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY RUN] Would build: docker build -t $FULL_IMAGE_NAME $DOCKER_DIR"
         return 0
     fi
-    
+
     docker build \
         --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
         --build-arg BUILD_VERSION="$BUILD_VERSION" \
@@ -212,7 +212,7 @@ build_image() {
         -t "$FULL_IMAGE_NAME" \
         -f "$DOCKER_DIR/Dockerfile" \
         "$SCRIPT_DIR"
-    
+
     log_success "Docker image built successfully"
 }
 
@@ -222,14 +222,14 @@ push_image() {
         log_info "Skipping Docker push"
         return 0
     fi
-    
+
     log_info "Pushing Docker image: $FULL_IMAGE_NAME"
-    
+
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY RUN] Would push: docker push $FULL_IMAGE_NAME"
         return 0
     fi
-    
+
     docker push "$FULL_IMAGE_NAME"
     log_success "Docker image pushed successfully"
 }
@@ -237,7 +237,7 @@ push_image() {
 # Apply Kubernetes manifests
 apply_manifests() {
     log_info "Applying Kubernetes manifests to namespace: $NAMESPACE"
-    
+
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY RUN] Would apply manifests:"
         for manifest in "$K8S_DIR"/*.yaml; do
@@ -245,10 +245,10 @@ apply_manifests() {
         done
         return 0
     fi
-    
+
     # Create namespace if it doesn't exist
     kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-    
+
     # Apply manifests in order
     local manifests=(
         "namespace.yaml"
@@ -260,12 +260,12 @@ apply_manifests() {
         "ingress.yaml"
         "hpa.yaml"
     )
-    
+
     for manifest in "${manifests[@]}"; do
         local manifest_path="$K8S_DIR/$manifest"
         if [ -f "$manifest_path" ]; then
             log_info "Applying $manifest..."
-            
+
             # Replace placeholders in manifest
             sed -e "s|{{IMAGE_NAME}}|$FULL_IMAGE_NAME|g" \
                 -e "s|{{BUILD_VERSION}}|$BUILD_VERSION|g" \
@@ -280,53 +280,53 @@ apply_manifests() {
             log_warning "Manifest not found: $manifest"
         fi
     done
-    
+
     log_success "Kubernetes manifests applied successfully"
 }
 
 # Wait for deployment
 wait_for_deployment() {
     log_info "Waiting for deployment to be ready..."
-    
+
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY RUN] Would wait for deployment rollout"
         return 0
     fi
-    
+
     # Wait for Redis deployment
     kubectl rollout status deployment/redis -n "$NAMESPACE" --timeout=300s
-    
+
     # Wait for main application deployment
     kubectl rollout status deployment/psyche-simulation -n "$NAMESPACE" --timeout=600s
-    
+
     log_success "Deployment is ready"
 }
 
 # Health check
 perform_health_check() {
     log_info "Performing health check..."
-    
+
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY RUN] Would perform health check"
         return 0
     fi
-    
+
     # Get service endpoint
     local service_ip
     service_ip=$(kubectl get service psyche-simulation-service -n "$NAMESPACE" -o jsonpath='{.spec.clusterIP}')
-    
+
     if [ -z "$service_ip" ]; then
         log_error "Could not get service IP"
         return 1
     fi
-    
+
     # Perform health check using kubectl port-forward
     log_info "Testing health endpoint..."
     kubectl port-forward service/psyche-simulation-service 18080:80 -n "$NAMESPACE" &
     local port_forward_pid=$!
-    
+
     sleep 5
-    
+
     if curl -f -s http://localhost:18080/health/live >/dev/null 2>&1; then
         log_success "Health check passed"
         kill $port_forward_pid 2>/dev/null || true
@@ -343,26 +343,26 @@ cleanup_deployment() {
     if [ "$CLEANUP" != true ]; then
         return 0
     fi
-    
+
     log_info "Cleaning up existing deployment..."
-    
+
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY RUN] Would cleanup existing deployment"
         return 0
     fi
-    
+
     # Delete deployments
     kubectl delete deployment psyche-simulation redis -n "$NAMESPACE" --ignore-not-found=true
-    
+
     # Delete services
     kubectl delete service psyche-simulation-service psyche-simulation-headless psyche-simulation-nodeport psyche-simulation-lb redis-service redis-headless -n "$NAMESPACE" --ignore-not-found=true
-    
+
     # Delete HPA
     kubectl delete hpa psyche-simulation-hpa redis-hpa -n "$NAMESPACE" --ignore-not-found=true
-    
+
     # Delete ingress
     kubectl delete ingress psyche-simulation-ingress psyche-simulation-internal-ingress psyche-simulation-dev-ingress -n "$NAMESPACE" --ignore-not-found=true
-    
+
     log_success "Cleanup completed"
 }
 
@@ -371,7 +371,7 @@ confirm_deployment() {
     if [ "$FORCE" = true ] || [ "$DRY_RUN" = true ]; then
         return 0
     fi
-    
+
     echo
     log_info "Deployment Summary:"
     echo "  Environment:  $ENVIRONMENT"
@@ -380,7 +380,7 @@ confirm_deployment() {
     echo "  Replicas:     $REPLICAS"
     echo "  Resources:    ${RESOURCES_REQUESTS_CPU}/${RESOURCES_LIMITS_CPU} CPU, ${RESOURCES_REQUESTS_MEMORY}/${RESOURCES_LIMITS_MEMORY} Memory"
     echo
-    
+
     read -p "Continue with deployment? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -395,7 +395,7 @@ main() {
     log_info "Environment: $ENVIRONMENT"
     log_info "Namespace: $NAMESPACE"
     log_info "Image: $FULL_IMAGE_NAME"
-    
+
     check_prerequisites
     confirm_deployment
     cleanup_deployment
@@ -404,9 +404,9 @@ main() {
     apply_manifests
     wait_for_deployment
     perform_health_check
-    
+
     log_success "Deployment completed successfully!"
-    
+
     # Show useful information
     echo
     log_info "Useful commands:"

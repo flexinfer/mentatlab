@@ -5,13 +5,13 @@ This introduces the core concepts, shows how to scaffold a new agent (aka Cog‑
 
 __Note__: For detailed feature roadmap and upcoming milestone planning, see Section 9 below.
 
-MentatLab agents are **self‑contained, container‑runnable micro‑services** that expose a well‑defined interface to the canvas.  
+MentatLab agents are **self‑contained, container‑runnable micro‑services** that expose a well‑defined interface to the canvas.
 Each agent is packaged as a **Cog‑Pak**—a directory (or tarball/OCI image) containing:
 
-* `manifest.yaml` – declarative contract (inputs, outputs, image, UI module)  
-* `Dockerfile` – how to build the runtime image  
-* `src/` – the actual code (Python, JS, Rust… your choice)  
-* optional `ui/` – a micro‑frontend bundle if the node needs a custom React panel  
+* `manifest.yaml` – declarative contract (inputs, outputs, image, UI module)
+* `Dockerfile` – how to build the runtime image
+* `src/` – the actual code (Python, JS, Rust… your choice)
+* optional `ui/` – a micro‑frontend bundle if the node needs a custom React panel
 
 The MentatLab engine translates edges on the canvas into **Kubernetes Jobs** (or Deployments for long‑running modes) and streams logs, traces, and token metrics back to the UI.
 

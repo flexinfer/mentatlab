@@ -126,33 +126,33 @@ metadata:
 data:
   redis.conf: |
     # Redis configuration for Psyche Simulation
-    
+
     # Network
     bind 0.0.0.0
     port 6379
-    
+
     # Memory management
     maxmemory 256mb
     maxmemory-policy allkeys-lru
-    
+
     # Persistence
     save 900 1
     save 300 10
     save 60 10000
-    
+
     # Logging
     loglevel notice
-    
+
     # Security
     protected-mode yes
-    
+
     # Performance
     tcp-keepalive 300
     timeout 0
-    
+
     # Pub/Sub
     notify-keyspace-events Ex
-    
+
     # Client connections
     maxclients 1000
 ---

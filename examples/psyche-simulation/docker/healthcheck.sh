@@ -27,7 +27,7 @@ retry() {
     local retries=$1
     local cmd="$2"
     local count=0
-    
+
     while [ $count -lt $retries ]; do
         if eval "$cmd"; then
             return 0
@@ -44,19 +44,19 @@ retry() {
 # Main health check function
 health_check() {
     log "Starting health check..."
-    
+
     # Check if curl is available
     if ! command -v curl &> /dev/null; then
         log "${RED}ERROR: curl is not available${NC}"
         return 1
     fi
-    
+
     # Perform HTTP health check
     local http_check="curl -f -s --max-time $TIMEOUT $HEALTH_URL"
-    
+
     if retry $MAX_RETRIES "$http_check"; then
         log "${GREEN}✓ HTTP health check passed${NC}"
-        
+
         # Parse response if possible
         response=$(curl -s --max-time $TIMEOUT $HEALTH_URL 2>/dev/null || echo "")
         if [ -n "$response" ]; then
@@ -66,7 +66,7 @@ health_check() {
                 log "Health status: $status"
             fi
         fi
-        
+
         return 0
     else
         log "${RED}✗ HTTP health check failed after $MAX_RETRIES attempts${NC}"
@@ -102,22 +102,22 @@ port_check() {
 # Main execution
 main() {
     local exit_code=0
-    
+
     # Core health check (required)
     if ! health_check; then
         exit_code=1
     fi
-    
+
     # Additional checks (optional, don't fail on these)
     process_check || true
     port_check || true
-    
+
     if [ $exit_code -eq 0 ]; then
         log "${GREEN}All health checks passed${NC}"
     else
         log "${RED}Health check failed${NC}"
     fi
-    
+
     exit $exit_code
 }
 

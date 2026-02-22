@@ -52,7 +52,7 @@ def main():
     print("=== LiteLLM/Ollama Integration Diagnostic Report ===")
     print(f"Generated at: {datetime.now().isoformat()}")
     print()
-    
+
     print("DIAGNOSIS SUMMARY:")
     print("-" * 50)
     print("✓ Ollama pod 'ollama-7900xtx' is running")
@@ -62,7 +62,7 @@ def main():
     print("✗ API endpoint includes '/v1' which Ollama doesn't support")
     print("✗ Using 'openai' model type instead of 'ollama'")
     print()
-    
+
     print("ROOT CAUSE:")
     print("-" * 50)
     print("The LiteLLM configuration is treating Ollama as an OpenAI-compatible")
@@ -78,34 +78,34 @@ def main():
     print("  - custom_llm_provider: ollama")
     print("  - api_base: http://ollama-cluster.ai.svc.cluster.local:11434")
     print()
-    
+
     print("CONFIGURATION CHANGES NEEDED:")
     print("-" * 50)
     current = yaml.safe_load(current_config)
     fixed = yaml.safe_load(fixed_config)
-    
+
     print("1. Change model format:")
     print(f"   FROM: {current['model_list'][0]['litellm_params']['model']}")
     print(f"   TO:   {fixed['model_list'][0]['litellm_params']['model']}")
     print()
-    
+
     print("2. Remove '/v1' from API base:")
     print(f"   FROM: {current['model_list'][0]['litellm_params']['api_base']}")
     print(f"   TO:   {fixed['model_list'][0]['litellm_params']['api_base']}")
     print()
-    
+
     print("3. Change model type:")
     print(f"   FROM: model_type: {current['model_list'][0]['litellm_params'].get('model_type', 'N/A')}")
     print(f"   TO:   custom_llm_provider: {fixed['model_list'][0]['litellm_params'].get('custom_llm_provider', 'N/A')}")
     print()
-    
+
     print("VALIDATION STEPS:")
     print("-" * 50)
     print("1. The model exists on Ollama: deepseek-r1:8b ✓")
     print("2. The service is accessible: ollama-cluster.ai.svc.cluster.local ✓")
     print("3. The configuration format matches Ollama requirements: ✗ (needs fix)")
     print()
-    
+
     print("READY TO APPLY FIX:")
     print("-" * 50)
     print("The diagnosis is complete. The fix involves updating the LiteLLM")

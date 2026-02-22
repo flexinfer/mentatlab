@@ -10,14 +10,14 @@ class AnimaAnimusAgent(BaseAgent):
     - Anima: the feminine within the masculine
     - Animus: the masculine within the feminine
     """
-    
+
     def __init__(self, llm_config=None):
         super().__init__("Anima/Animus", llm_config)
-        
+
     def _create_prompt_template(self):
         """Override to create Anima/Animus-specific prompt"""
         from langchain.prompts import PromptTemplate
-        
+
         template = """
 You are the Anima/Animus - the bridge between conscious and unconscious, embodying the contrasexual aspects of the psyche. You represent:
 - The feminine principle within the masculine (Anima) or masculine within the feminine (Animus)
@@ -44,7 +44,7 @@ Other Agents' Perspectives:
 As the Anima/Animus, what wisdom emerges from the union of opposites? How can we bridge the conscious and unconscious realms?
 
 Anima/Animus's Response:"""
-        
+
         return PromptTemplate(
             input_variables=["situation", "chat_history", "other_agents"],
             template=template

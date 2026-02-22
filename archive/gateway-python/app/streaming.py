@@ -108,7 +108,7 @@ def derive_event_type(payload: dict, default_type: str) -> str:
 class StreamEventType(str, Enum):
     """Stream event types for protocol specification."""
     STREAM_START = "stream_start"
-    STREAM_DATA = "stream_data" 
+    STREAM_DATA = "stream_data"
     STREAM_END = "stream_end"
     STREAM_ERROR = "stream_error"
     HEARTBEAT = "heartbeat"
@@ -147,7 +147,7 @@ class StreamSession(BaseModel):
 
 class StreamingConnectionManager:
     """Enhanced connection manager for streaming with multimodal support."""
-    
+
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
         self.stream_sessions: Dict[str, StreamSession] = {}
@@ -156,7 +156,7 @@ class StreamingConnectionManager:
         self.message_buffers: Dict[str, List[StreamMessage]] = {}
         self.redis_client: Optional[redis.Redis] = None
         self._heartbeat_task: Optional[asyncio.Task] = None
-        
+
     async def initialize(self):
         """Initialize Redis connection and start background tasks."""
         # If REDIS_URL is not configured, skip Redis initialization (local-dev)
@@ -166,7 +166,7 @@ class StreamingConnectionManager:
             # Start heartbeat task even when Redis is disabled
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
             return
-        
+
         try:
             # Create Redis connection pool for better concurrency handling
             self.redis_client = redis.from_url(
@@ -178,30 +178,30 @@ class StreamingConnectionManager:
             )
             await self.redis_client.ping()
             logger.info("StreamingConnectionManager initialized with Redis")
-            
+
             # Start heartbeat task
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-            
+
         except Exception as e:
             logger.warning(f"Redis connection failed, running without persistence: {e}")
             # Continue without Redis - use in-memory only
             self.redis_client = None
-    
+
     async def shutdown(self):
         """Cleanup resources on shutdown."""
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
-            
+
         if self.redis_client:
             await self.redis_client.close()
-        
+
         # Close all active connections
         for connection in self.active_connections.values():
             try:
                 await connection.close(code=1000, reason="Server shutdown")
             except Exception:
                 pass
-    
+
     async def connect_websocket(self, websocket: WebSocket, connection_id: Optional[str] = None) -> str:
         """Connect a WebSocket client and return connection ID."""
         # Check for subprotocol support
@@ -210,16 +210,16 @@ class StreamingConnectionManager:
             await websocket.accept(subprotocol="mentatlab.streaming.v1")
         else:
             await websocket.accept()
-        
+
         if not connection_id:
             connection_id = f"ws_{uuid.uuid4().hex[:8]}"
-        
+
         self.active_connections[connection_id] = websocket
         self.connection_streams[connection_id] = set()
-        
+
         logger.info(f"WebSocket connected: {connection_id}")
         return connection_id
-    
+
     async def disconnect_websocket(self, connection_id: str):
         """Disconnect a WebSocket client and cleanup subscriptions."""
         if connection_id in self.active_connections:
@@ -228,15 +228,15 @@ class StreamingConnectionManager:
                 for stream_id in self.connection_streams[connection_id].copy():
                     await self.unsubscribe_from_stream(connection_id, stream_id)
                 del self.connection_streams[connection_id]
-            
+
             # Remove connection
             del self.active_connections[connection_id]
             logger.info(f"WebSocket disconnected: {connection_id}")
-    
+
     async def create_stream_session(self, agent_id: str, pin_name: str) -> StreamSession:
         """Create a new streaming session."""
         stream_id = f"stream_{uuid.uuid4().hex}"
-        
+
         session = StreamSession(
             stream_id=stream_id,
             agent_id=agent_id,
@@ -245,11 +245,11 @@ class StreamingConnectionManager:
             created_at=datetime.now(timezone.utc).isoformat(),
             last_activity=datetime.now(timezone.utc).isoformat()
         )
-        
+
         self.stream_sessions[stream_id] = session
         self.stream_subscriptions[stream_id] = set()
         self.message_buffers[stream_id] = []
-        
+
         # Store in Redis for persistence (if available)
         if self.redis_client:
             try:
@@ -260,26 +260,26 @@ class StreamingConnectionManager:
                 )
             except Exception as e:
                 logger.warning(f"Failed to persist stream session to Redis: {e}")
-        
+
         logger.info(f"Created stream session: {stream_id} for agent {agent_id}")
         return session
-    
+
     async def subscribe_to_stream(self, connection_id: str, stream_id: str) -> bool:
         """Subscribe a connection to a stream."""
         if connection_id not in self.active_connections:
             return False
-        
+
         if stream_id not in self.stream_sessions:
             return False
-        
+
         # Add subscription
         self.stream_subscriptions[stream_id].add(connection_id)
         self.connection_streams[connection_id].add(stream_id)
-        
+
         # Update subscriber count
         session = self.stream_sessions[stream_id]
         session.subscriber_count = len(self.stream_subscriptions[stream_id])
-        
+
         # Send buffered messages to new subscriber
         if stream_id in self.message_buffers:
             websocket = self.active_connections[connection_id]
@@ -294,44 +294,44 @@ class StreamingConnectionManager:
                         await websocket.send_text(message.model_dump_json())
                 except Exception as e:
                     logger.error(f"Failed to send buffered message: {e}")
-        
+
         logger.info(f"Connection {connection_id} subscribed to stream {stream_id}")
         return True
-    
+
     async def unsubscribe_from_stream(self, connection_id: str, stream_id: str):
         """Unsubscribe a connection from a stream."""
         if stream_id in self.stream_subscriptions:
             self.stream_subscriptions[stream_id].discard(connection_id)
-            
+
             # Update subscriber count
             if stream_id in self.stream_sessions:
                 session = self.stream_sessions[stream_id]
                 session.subscriber_count = len(self.stream_subscriptions[stream_id])
-        
+
         if connection_id in self.connection_streams:
             self.connection_streams[connection_id].discard(stream_id)
-        
+
         logger.info(f"Connection {connection_id} unsubscribed from stream {stream_id}")
-    
+
     async def broadcast_to_stream(self, stream_id: str, message: StreamMessage):
         """Broadcast a message to all subscribers of a stream."""
         if stream_id not in self.stream_subscriptions:
             logger.warning(f"Attempted to broadcast to non-existent stream: {stream_id}")
             return
-        
+
         # Update session activity
         if stream_id in self.stream_sessions:
             session = self.stream_sessions[stream_id]
             session.last_activity = datetime.now(timezone.utc).isoformat()
             session.message_count += 1
-        
+
         # Buffer message (with size limit)
         if stream_id in self.message_buffers:
             buffer = self.message_buffers[stream_id]
             buffer.append(message)
             if len(buffer) > MAX_BUFFER_SIZE:
                 buffer.pop(0)  # Remove oldest message
-        
+
         # Send to all subscribers
         if CE_ENABLED:
             payload_obj = message.model_dump()
@@ -341,7 +341,7 @@ class StreamingConnectionManager:
         else:
             message_json_to_send = message.model_dump_json()
         failed_connections = []
-        
+
         for connection_id in self.stream_subscriptions[stream_id]:
             if connection_id in self.active_connections:
                 websocket = self.active_connections[connection_id]
@@ -350,17 +350,17 @@ class StreamingConnectionManager:
                 except Exception as e:
                     logger.error(f"Failed to send message to {connection_id}: {e}")
                     failed_connections.append(connection_id)
-        
+
         # Clean up failed connections
         for connection_id in failed_connections:
             await self.disconnect_websocket(connection_id)
-    
+
     async def end_stream(self, stream_id: str):
         """End a streaming session."""
         if stream_id in self.stream_sessions:
             session = self.stream_sessions[stream_id]
             session.status = StreamStatus.COMPLETED
-            
+
             # Send end message to all subscribers
             end_message = StreamMessage(
                 type=StreamEventType.STREAM_END,
@@ -369,49 +369,49 @@ class StreamingConnectionManager:
                 agent_id=session.agent_id,
                 stream_id=stream_id
             )
-            
+
             await self.broadcast_to_stream(stream_id, end_message)
-            
+
             # Clean up after a delay to allow final message delivery
             asyncio.create_task(self._cleanup_stream_delayed(stream_id, delay=5.0))
-    
+
     async def _cleanup_stream_delayed(self, stream_id: str, delay: float):
         """Clean up stream resources after a delay."""
         await asyncio.sleep(delay)
-        
+
         # Remove from local storage
         self.stream_sessions.pop(stream_id, None)
         self.stream_subscriptions.pop(stream_id, None)
         self.message_buffers.pop(stream_id, None)
-        
+
         # Remove from Redis
         if self.redis_client:
             await self.redis_client.hdel(STREAM_REGISTRY_KEY, stream_id)
-        
+
         logger.info(f"Cleaned up stream: {stream_id}")
-    
+
     async def _heartbeat_loop(self):
         """Send heartbeat messages to maintain connections."""
         while True:
             try:
                 await asyncio.sleep(HEARTBEAT_INTERVAL)
-                
+
                 heartbeat_message = {
                     "type": StreamEventType.HEARTBEAT,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
-                
+
                 failed_connections = []
                 for connection_id, websocket in self.active_connections.items():
                     try:
                         await websocket.send_text(json.dumps(heartbeat_message))
                     except Exception:
                         failed_connections.append(connection_id)
-                
+
                 # Clean up failed connections
                 for connection_id in failed_connections:
                     await self.disconnect_websocket(connection_id)
-                    
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -430,15 +430,15 @@ async def agent_stream_websocket(websocket: WebSocket, agent_id: str):
     connection_id = None
     try:
         connection_id = await streaming_manager.connect_websocket(websocket)
-        
+
         while True:
             # Receive messages from client
             message = await websocket.receive_text()
             data = json.loads(message)
-            
+
             # Handle different message types
             msg_type = data.get("type")
-            
+
             if msg_type == "subscribe":
                 stream_id = data.get("stream_id")
                 if stream_id:
@@ -448,18 +448,18 @@ async def agent_stream_websocket(websocket: WebSocket, agent_id: str):
                         "success": success,
                         "stream_id": stream_id
                     }))
-            
+
             elif msg_type == "unsubscribe":
                 stream_id = data.get("stream_id")
                 if stream_id:
                     await streaming_manager.unsubscribe_from_stream(connection_id, stream_id)
-            
+
             elif msg_type == "ping":
                 await websocket.send_text(json.dumps({
                     "type": "pong",
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }))
-    
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -475,7 +475,7 @@ async def stream_websocket(websocket: WebSocket, stream_id: str):
     connection_id = None
     try:
         connection_id = await streaming_manager.connect_websocket(websocket)
-        
+
         # Send initial connection confirmation
         await websocket.send_text(json.dumps({
             "type": "connection",
@@ -483,7 +483,7 @@ async def stream_websocket(websocket: WebSocket, stream_id: str):
             "stream_id": stream_id,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }))
-        
+
         # Auto-subscribe to the requested stream if it exists
         if stream_id in streaming_manager.stream_sessions:
             success = await streaming_manager.subscribe_to_stream(connection_id, stream_id)
@@ -493,15 +493,15 @@ async def stream_websocket(websocket: WebSocket, stream_id: str):
                     "stream_id": stream_id,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }))
-        
+
         # Keep connection alive and handle messages
         while True:
             message = await websocket.receive_text()
             data = json.loads(message)
-            
+
             # Handle different message types
             msg_type = data.get("type")
-            
+
             if msg_type == "ping":
                 await websocket.send_text(json.dumps({
                     "type": "pong",
@@ -522,7 +522,7 @@ async def stream_websocket(websocket: WebSocket, stream_id: str):
                     "type": "unsubscribed",
                     "stream_id": target_stream
                 }))
-            
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -538,7 +538,7 @@ async def streaming_websocket_endpoint(websocket: WebSocket, stream_id: str):
     connection_id = None
     try:
         connection_id = await streaming_manager.connect_websocket(websocket)
-        
+
         # Send initial connection confirmation
         await websocket.send_text(json.dumps({
             "type": "connection",
@@ -546,7 +546,7 @@ async def streaming_websocket_endpoint(websocket: WebSocket, stream_id: str):
             "stream_id": stream_id,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }))
-        
+
         # Auto-subscribe to the requested stream if it exists
         if stream_id in streaming_manager.stream_sessions:
             success = await streaming_manager.subscribe_to_stream(connection_id, stream_id)
@@ -556,15 +556,15 @@ async def streaming_websocket_endpoint(websocket: WebSocket, stream_id: str):
                     "stream_id": stream_id,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }))
-        
+
         # Keep connection alive and handle messages
         while True:
             message = await websocket.receive_text()
             data = json.loads(message)
-            
+
             # Handle different message types
             msg_type = data.get("type")
-            
+
             if msg_type == "ping":
                 await websocket.send_text(json.dumps({
                     "type": "pong",
@@ -585,7 +585,7 @@ async def streaming_websocket_endpoint(websocket: WebSocket, stream_id: str):
                     "type": "unsubscribed",
                     "stream_id": target_stream
                 }))
-            
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -602,10 +602,10 @@ async def init_stream(request: Dict[str, Any]):
     """Initialize a new streaming session."""
     agent_id = request.get("agent_id")
     pin_name = request.get("pin_name", "output")
-    
+
     if not agent_id:
         raise HTTPException(status_code=400, detail="agent_id is required")
-    
+
     try:
         session = await streaming_manager.create_stream_session(agent_id, pin_name)
         return {
@@ -622,10 +622,10 @@ async def init_stream(request: Dict[str, Any]):
 @router.get("/api/v1/streams/{stream_id}/sse")
 async def sse_stream(stream_id: str):
     """Server-Sent Events endpoint for unidirectional streaming."""
-    
+
     if stream_id not in streaming_manager.stream_sessions:
         raise HTTPException(status_code=404, detail="Stream not found")
-    
+
     async def event_generator():
         """Generate SSE events for the stream."""
         try:
@@ -642,22 +642,22 @@ async def sse_stream(stream_id: str):
             else:
                 _start_data = json.dumps(_start_payload)
             yield f"event: stream_start\ndata: {_start_data}\n\n"
-            
+
             # Create a temporary subscription for SSE
             sse_connection_id = f"sse_{uuid.uuid4().hex[:8]}"
             streaming_manager.stream_subscriptions[stream_id].add(sse_connection_id)
-            
+
             # Track last message count to send new messages
             last_message_count = 0
-            
+
             while stream_id in streaming_manager.stream_sessions:
                 session = streaming_manager.stream_sessions[stream_id]
-                
+
                 # Send new messages from buffer
                 if stream_id in streaming_manager.message_buffers:
                     buffer = streaming_manager.message_buffers[stream_id]
                     new_messages = buffer[last_message_count:]
-                    
+
                     for message in new_messages:
                         event_type = message.type.value
                         payload_obj = message.model_dump()
@@ -668,9 +668,9 @@ async def sse_stream(stream_id: str):
                         else:
                             data_json = json.dumps(payload_obj)
                         yield f"event: {event_type}\ndata: {data_json}\n\n"
-                    
+
                     last_message_count = len(buffer)
-                
+
                 # Check if stream ended
                 if session.status == StreamStatus.COMPLETED:
                     _end_payload = {"stream_id": stream_id}
@@ -686,9 +686,9 @@ async def sse_stream(stream_id: str):
                         _end_data = json.dumps(_end_payload)
                     yield f"event: stream_end\ndata: {_end_data}\n\n"
                     break
-                
+
                 await asyncio.sleep(0.1)  # Small delay to prevent tight loop
-            
+
         except Exception as e:
             logger.error(f"SSE stream error: {e}")
             yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
@@ -696,7 +696,7 @@ async def sse_stream(stream_id: str):
             # Clean up SSE subscription
             if stream_id in streaming_manager.stream_subscriptions:
                 streaming_manager.stream_subscriptions[stream_id].discard(sse_connection_id)
-    
+
     headers = {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
@@ -706,7 +706,7 @@ async def sse_stream(stream_id: str):
     # Optional header emission when CE is enabled
     if CE_ENABLED and CE_RESPONSE_HEADER:
         headers[CE_RESPONSE_HEADER] = "true"
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -728,7 +728,7 @@ async def get_stream_info(stream_id: str):
     """Get information about a specific stream."""
     if stream_id not in streaming_manager.stream_sessions:
         raise HTTPException(status_code=404, detail="Stream not found")
-    
+
     session = streaming_manager.stream_sessions[stream_id]
     return session.model_dump()
 
@@ -738,7 +738,7 @@ async def end_stream_endpoint(stream_id: str):
     """End a streaming session."""
     if stream_id not in streaming_manager.stream_sessions:
         raise HTTPException(status_code=404, detail="Stream not found")
-    
+
     await streaming_manager.end_stream(stream_id)
     return {"message": f"Stream {stream_id} ended"}
 
@@ -750,9 +750,9 @@ async def publish_stream_data(stream_id: str, data: Dict[str, Any]):
     """Publish data to a stream (used by agents)."""
     if stream_id not in streaming_manager.stream_sessions:
         raise HTTPException(status_code=404, detail="Stream not found")
-    
+
     session = streaming_manager.stream_sessions[stream_id]
-    
+
     # Create stream message
     message = StreamMessage(
         type=StreamEventType.STREAM_DATA,
@@ -762,10 +762,10 @@ async def publish_stream_data(stream_id: str, data: Dict[str, Any]):
         stream_id=stream_id,
         sequence=session.message_count + 1
     )
-    
+
     # Broadcast to subscribers
     await streaming_manager.broadcast_to_stream(stream_id, message)
-    
+
     return {"message": "Data published", "sequence": message.sequence}
 
 

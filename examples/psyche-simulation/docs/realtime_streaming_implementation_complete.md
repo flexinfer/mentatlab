@@ -108,17 +108,17 @@ UI shows final message
 
 ## Benefits
 
-1. **User Experience**: 
+1. **User Experience**:
    - No more frozen UI during processing
    - Immediate feedback when agent starts thinking
    - Text appears progressively as generated
 
-2. **Transparency**: 
+2. **Transparency**:
    - Users see exactly what the system is doing
    - Clear indication of processing state
    - Progress visualization
 
-3. **Performance**: 
+3. **Performance**:
    - Perceived faster responses
    - Better user engagement
    - Reduced anxiety during waits

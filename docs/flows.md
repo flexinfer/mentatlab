@@ -2,22 +2,22 @@
 *Last updated: 2025‑07‑22*
 
 > **TL;DR** A *Flow* is a declarative, Git‑tracked JSON/YAML document (`*.mlab`) that
-> 1. lays out **nodes** (agents, tools, data sources, UI widgets)  
-> 2. connects them with **typed edges** (data, control, event)  
-> 3. stores **layout hints** so the canvas re‑opens exactly as you left it  
+> 1. lays out **nodes** (agents, tools, data sources, UI widgets)
+> 2. connects them with **typed edges** (data, control, event)
+> 3. stores **layout hints** so the canvas re‑opens exactly as you left it
 > 4. is runnable via `mentatctl run <file>.mlab` or the Play ▶ button in the UI.
 
 ---
 
 ## 0 Why a Flow Spec?
-*Grounding in **§1 Product Vision – Composable Canvas & Configuration **  
-and **§2 Reference Architecture***  
+*Grounding in **§1 Product Vision – Composable Canvas & Configuration **
+and **§2 Reference Architecture***
 
-MentatLab’s north star is **“drag, drop, run, iterate.”**  
+MentatLab’s north star is **“drag, drop, run, iterate.”**
 To achieve that we need a portable artefact that:
 
-1. **Describes computation** (what agents run, in what order).  
-2. **Captures presentation** (pane positions, chat tabs, hidden/expanded nodes).  
+1. **Describes computation** (what agents run, in what order).
+2. **Captures presentation** (pane positions, chat tabs, hidden/expanded nodes).
 3. **Round‑trips losslessly** between:
    * Canvas UI ↔ Git‑tracked file (*DevOps*) ↔ REST/GraphQL API (*Programmatic control*).
 
@@ -229,6 +229,6 @@ Compose boldly, deploy safely, observe instantly — welcome to MentatLab Flow
 
 ### How this closes the gap
 
-* **Front‑end composability** is now front‑and‑centre: the flow file, canvas elements, edge semantics and UI panels are all documented.  
-* Every section explicitly references the parts of your **original proposal (VISION, ARCH, ROAD‑MAP, PRACTICES)** so newcomers see the lineage from high‑level plan to file‑level reality.  
+* **Front‑end composability** is now front‑and‑centre: the flow file, canvas elements, edge semantics and UI panels are all documented.
+* Every section explicitly references the parts of your **original proposal (VISION, ARCH, ROAD‑MAP, PRACTICES)** so newcomers see the lineage from high‑level plan to file‑level reality.
 * The file complements—not replaces—`agents.md`, keeping a clean separation of *micro‑level* (Cog‑Pak) and *macro‑level* (Flow).

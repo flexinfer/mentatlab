@@ -63,7 +63,7 @@ spec:
             configMapKeyRef:
               name: psyche-simulation-config
               key: PORT
-        
+
         # Redis Configuration
         - name: REDIS_HOST
           valueFrom:
@@ -87,7 +87,7 @@ spec:
               key: REDIS_PASSWORD
         - name: REDIS_URL
           value: "redis://:$(REDIS_PASSWORD)@$(REDIS_HOST):$(REDIS_PORT)/$(REDIS_DB)"
-        
+
         # LLM Configuration
         - name: LLM_API_URL
           valueFrom:
@@ -114,7 +114,7 @@ spec:
             configMapKeyRef:
               name: psyche-simulation-config
               key: LLM_TEMPERATURE
-        
+
         # Security Configuration
         - name: JWT_SECRET_KEY
           valueFrom:
@@ -131,7 +131,7 @@ spec:
             secretKeyRef:
               name: psyche-simulation-secrets
               key: SESSION_ENCRYPTION_KEY
-        
+
         # WebSocket Configuration
         - name: WEBSOCKET_AUTH_KEY
           valueFrom:
@@ -143,21 +143,21 @@ spec:
             configMapKeyRef:
               name: psyche-simulation-config
               key: WEBSOCKET_ENABLE_REDIS
-        
+
         # Health Check Configuration
         - name: HEALTH_CHECK_INTERVAL
           valueFrom:
             configMapKeyRef:
               name: psyche-simulation-config
               key: HEALTH_CHECK_INTERVAL
-        
+
         # Metrics Configuration
         - name: METRICS_ENABLED
           valueFrom:
             configMapKeyRef:
               name: psyche-simulation-config
               key: METRICS_ENABLED
-        
+
         resources:
           requests:
             memory: "512Mi"
@@ -165,7 +165,7 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "1000m"
-        
+
         # Health Checks
         livenessProbe:
           httpGet:
@@ -177,7 +177,7 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
           successThreshold: 1
-        
+
         readinessProbe:
           httpGet:
             path: /health/ready
@@ -188,7 +188,7 @@ spec:
           timeoutSeconds: 3
           failureThreshold: 3
           successThreshold: 1
-        
+
         # Startup probe for slow-starting containers
         startupProbe:
           httpGet:
@@ -200,7 +200,7 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 30
           successThreshold: 1
-        
+
         # Security Context
         securityContext:
           allowPrivilegeEscalation: false
@@ -211,7 +211,7 @@ spec:
           capabilities:
             drop:
             - ALL
-        
+
         # Volume Mounts
         volumeMounts:
         - name: tmp
@@ -223,13 +223,13 @@ spec:
         - name: agent-config
           mountPath: /app/config/agents
           readOnly: true
-        
+
         # Environment-specific settings
         lifecycle:
           preStop:
             exec:
               command: ["/bin/sh", "-c", "sleep 15"]
-      
+
       # Init Container for Redis connectivity check
       initContainers:
       - name: redis-check
@@ -269,7 +269,7 @@ spec:
           capabilities:
             drop:
             - ALL
-      
+
       # Volumes
       volumes:
       - name: tmp
@@ -282,7 +282,7 @@ spec:
         configMap:
           name: psyche-simulation-agent-config
           defaultMode: 0644
-      
+
       # Pod scheduling
       affinity:
         podAntiAffinity:
@@ -296,12 +296,12 @@ spec:
                   values:
                   - psyche-simulation
               topologyKey: kubernetes.io/hostname
-      
+
       # Termination grace period
       terminationGracePeriodSeconds: 30
-      
+
       # DNS Policy
       dnsPolicy: ClusterFirst
-      
+
       # Restart policy
       restartPolicy: Always

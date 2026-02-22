@@ -79,14 +79,14 @@
     },
     {
       "id": "DEBT-008",
-      "title": "Monolithic scheduler.go (1,028 lines) mixes DAG execution, retry, gate logic",
+      "title": "Monolithic scheduler.go mixes logic; lack of Strategy Pattern",
       "component": "orchestrator-go/scheduler",
-      "evidence": "services/orchestrator-go/internal/scheduler/scheduler.go is 1,028 lines. DAG walk, retry backoff, gate approval, and event emission all in one file.",
+      "evidence": "services/orchestrator-go/internal/scheduler/scheduler.go is 1,028 lines. node_exec.go uses complex switch statements for dispatching. No Strategy pattern for node types.",
       "impact": 3,
       "risk_reduction": 2,
       "drag_reduction": 4,
       "effort": 3,
-      "acceptance_criteria": "Extract retry logic to retry.go, gate logic to gate.go, event emission to events.go. scheduler.go under 400 lines. All scheduler tests pass."
+      "acceptance_criteria": "Implement Strategy pattern for node execution. Extract retry logic to retry.go, gate logic to gate.go. Core scheduler.go under 400 lines."
     },
     {
       "id": "DEBT-009",
@@ -175,6 +175,50 @@
       "drag_reduction": 2,
       "effort": 1.5,
       "acceptance_criteria": "Add healthcheck to gateway, orchestrator, redis, frontend in docker-compose.dev.yml. Add deploy.resources.limits for dev parity."
+    },
+    {
+      "id": "DEBT-017",
+      "title": "Agent code duplication; lack of Template Method pattern in SDK",
+      "component": "agents/common",
+      "evidence": "Psyche-sim and Echo agents manually implement input parsing, error handling, and emission. No base class to enforce contract.",
+      "impact": 3,
+      "risk_reduction": 2,
+      "drag_reduction": 4,
+      "effort": 3,
+      "acceptance_criteria": "Create AgentBase class in agents/common. Standardize lifecycle: setup -> read -> process -> write. Migrate existing agents."
+    },
+    {
+      "id": "DEBT-018",
+      "title": "CLI scaffolding is brittle; lack of Builder pattern",
+      "component": "cli/mentatctl",
+      "evidence": "agent_commands.py uses simple string replacement for templates. Hard to add optional features (K8s, CI) without complex conditionals.",
+      "impact": 2,
+      "risk_reduction": 2,
+      "drag_reduction": 3,
+      "effort": 2,
+      "acceptance_criteria": "Implement Builder pattern for agent scaffolding. Decouple template copying from variable substitution."
+    },
+    {
+      "id": "DEBT-019",
+      "title": "Go service initialization is rigid; lack of Options pattern",
+      "component": "services/orchestrator-go",
+      "evidence": "Scheduler and Hub constructors take large, rigid config structs. Hard to add parameters without breaking changes.",
+      "impact": 2,
+      "risk_reduction": 1,
+      "drag_reduction": 3,
+      "effort": 2,
+      "acceptance_criteria": "Migrate NewScheduler and NewHub to Functional Options pattern. Support variadic options for optional features."
+    },
+    {
+      "id": "DEBT-020",
+      "title": "Fragmented component creation in orchestrator main.go",
+      "component": "services/orchestrator-go/cmd",
+      "evidence": "main.go is 300+ lines of switch-case instantiation logic. Violates SRP and makes main.go hard to read.",
+      "impact": 3,
+      "risk_reduction": 2,
+      "drag_reduction": 4,
+      "effort": 2,
+      "acceptance_criteria": "Implement Factory pattern for RunStore, FlowStore, and Driver creation. Simplify main.go to high-level orchestration."
     }
   ]
 }

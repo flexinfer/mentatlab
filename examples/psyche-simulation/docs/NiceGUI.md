@@ -21,22 +21,22 @@ class PsycheSimulation:
     def __init__(self):
         self.agents = self.initialize_agents()
         self.conversation_history = []
-        
+
     async def run_autonomous_loop(self, iterations=5):
         for i in range(iterations):
             # Update progress
             ui.notify(f'Iteration {i+1}/{iterations}')
-            
+
             # Run agents concurrently
             tasks = [
-                self.run_agent(name, agent) 
+                self.run_agent(name, agent)
                 for name, agent in self.agents.items()
             ]
             results = await asyncio.gather(*tasks)
-            
+
             # Update UI dynamically
             yield results
-            
+
             await asyncio.sleep(1)  # Pause for effect
 
 # Create and run
