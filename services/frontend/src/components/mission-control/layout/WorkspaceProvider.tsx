@@ -283,6 +283,19 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   }, [isEnabled]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Auto-connect on mount when AUTO_CONNECT is enabled
+  // ─────────────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isEnabled('AUTO_CONNECT') || !isEnabled('CONNECT_WS')) return;
+    (async () => {
+      try { await startLiveConnection(); } catch { /* connection errors are logged in startLiveConnection */ }
+    })();
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Auto-select latest run
   // ─────────────────────────────────────────────────────────────────────────
 

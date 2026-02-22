@@ -49,10 +49,12 @@ export interface ConnectionManagerConfig {
   timeout?: number;
   /** Enable auto-reconnect (default: true) */
   autoReconnect?: boolean;
-  /** Max reconnect attempts (default: 5) */
+  /** Max reconnect attempts before giving up (default: 10, 0 = unlimited) */
   maxReconnectAttempts?: number;
-  /** Reconnect delay sequence in ms */
-  reconnectDelays?: number[];
+  /** Initial backoff delay in ms for exponential backoff (default: 1000) */
+  initialBackoffMs?: number;
+  /** Maximum backoff delay in ms (default: 30000) */
+  maxBackoffMs?: number;
   /** Callback for incoming messages */
   onMessage: (message: TransportEvent) => void;
   /** Callback for connection state changes */
@@ -104,8 +106,9 @@ export class ConnectionManager {
       sseUrl: config.sseUrl ?? getOrchestratorBaseUrl(),
       timeout: config.timeout ?? 5000,
       autoReconnect: config.autoReconnect ?? true,
-      maxReconnectAttempts: config.maxReconnectAttempts ?? 5,
-      reconnectDelays: config.reconnectDelays ?? [1000, 2000, 5000, 10000, 30000],
+      maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
+      initialBackoffMs: config.initialBackoffMs ?? 1000,
+      maxBackoffMs: config.maxBackoffMs ?? 30000,
       onMessage: config.onMessage,
       onStateChange: config.onStateChange,
       onError: config.onError,
@@ -420,15 +423,18 @@ export class ConnectionManager {
   // ─────────────────────────────────────────────────────────────────────────
 
   private scheduleReconnect(): void {
-    if (this.state.reconnectAttempts >= this.config.maxReconnectAttempts) {
+    if (this.config.maxReconnectAttempts > 0 &&
+        this.state.reconnectAttempts >= this.config.maxReconnectAttempts) {
       this.log('Max reconnect attempts reached');
       this.setStatus(StreamConnectionState.ERROR, 'none');
       return;
     }
 
-    const delay = this.config.reconnectDelays[
-      Math.min(this.state.reconnectAttempts, this.config.reconnectDelays.length - 1)
-    ] ?? 30000;
+    // Exponential backoff: base * 2^attempt, capped at maxBackoffMs, with ±25% jitter
+    const base = this.config.initialBackoffMs * Math.pow(2, this.state.reconnectAttempts);
+    const capped = Math.min(base, this.config.maxBackoffMs);
+    const jitter = capped * (0.75 + Math.random() * 0.5);
+    const delay = Math.round(jitter);
 
     this.log(`Scheduling reconnect in ${delay}ms (attempt ${this.state.reconnectAttempts + 1})`);
     this.setStatus(StreamConnectionState.RECONNECTING, this.state.transport);

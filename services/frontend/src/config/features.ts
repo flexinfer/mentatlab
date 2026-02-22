@@ -15,8 +15,8 @@ export const FeatureFlags = {
   // Runtime connection control: when false, UI shows streaming surfaces without attempting WS connect
   // Default ON in dev so the live connect control is available immediately
   CONNECT_WS: (env.VITE_CONNECT_WS ?? 'true') === 'true',
-  // Auto-connect live stream on page load (off by default in prod)
-  AUTO_CONNECT: (env.VITE_FF_AUTO_CONNECT ?? 'false') === 'true',
+  // Auto-connect live stream on page load (on by default; disable via VITE_FF_AUTO_CONNECT=false)
+  AUTO_CONNECT: (env.VITE_FF_AUTO_CONNECT ?? 'true') === 'true',
   // Visual contract checking overlay
   CONTRACT_OVERLAY: (env.VITE_FF_CONTRACT_OVERLAY ?? (env.DEV ? 'true' : 'false')) === 'true',
   // Orchestrator Runs panel (dev/demo only)
