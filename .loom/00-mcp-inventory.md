@@ -1,5 +1,33 @@
 # MCP Inventory
 
+## 2026-02-20 Refresh (Mission Control UI/UX Planning)
+
+### Commands/Calls Run
+
+- `functions.read_mcp_resource(server="loom", uri="loom://config")`
+- `functions.read_mcp_resource(server="loom", uri="loom://tools/index")`
+- `functions.read_mcp_resource(server="loom", uri="loom://health")`
+- `functions.read_mcp_resource(server="loom", uri="loom://servers")` (failed twice with loom socket broken pipe)
+- `functions.mcp__loom__codebase_memory__codebase_stats(repo_id="mentatlab-frontend")`
+- `functions.mcp__loom__codebase_memory__codebase_get_definition(...)`
+- `functions.mcp__loom__codebase_memory__codebase_text_search(...)`
+
+### Snapshot Summary
+
+- Active Loom profile: `full`
+- Server count: `42`
+- Tool count: `445`
+- Tool index pages: `5`
+- Health status: all listed servers healthy in `loom://health`
+- Codebase index status (`repo_id=mentatlab-frontend`):
+  - `total_chunks=1349` (`typescript=1345`)
+  - chunk mix: `module=194`, `function=432`, `method=314`, `class=273`, `variable=101`
+
+### Notes / Constraints
+
+- `loom://servers` was transiently unreadable (`broken pipe`), but `loom://config`, `loom://tools/index`, and `loom://health` returned valid inventory and status.
+- Frontend-focused repo indexing is currently healthy and sufficient for line-level source planning.
+
 ## 2026-02-18 Refresh (Docs Integration Task)
 
 ### Commands/Calls Run

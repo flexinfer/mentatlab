@@ -1,6 +1,6 @@
 # Workspace Snapshot
 
-- Generated: 2026-02-18T16:34:39-05:00
+- Generated: 2026-02-20T09:27:55-05:00
 - Root: `/Users/cblevins/workspace/services/mentatlab`
 - Git toplevel: `/Users/cblevins/workspace/services/mentatlab`
 - Platform: `macOS-26.3-arm64-arm-64bit`
@@ -8,7 +8,10 @@
 
 ## Git
 ```
-## main...origin/main [ahead 1]
+## main...origin/main
+ M .loom/tech-debt-backlog.md
+ M ROADMAP.md
+?? docs/roadmap-reconciliation-2026-02-20.md
 ```
 
 ### Remotes
@@ -25,7 +28,7 @@ origin	https://gitlab.flexinfer.ai/services/mentatlab.git (push)
 
 ### HEAD
 ```
-0df31f1 fix(k8s): add ORCH_RUNSTORE=redis and trigger rollout for K8s driver image
+a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
 ```
 
 ## Top-Level Layout
@@ -108,6 +111,11 @@ origin	https://gitlab.flexinfer.ai/services/mentatlab.git (push)
 - `.loom/30-implementation-plan.md`
 - `.loom/40-decisions.md`
 - `.loom/50-worklog.md`
+- `.loom/tech-debt-backlog.md`
+- `.loom/tech-debt-inventory.json`
+- `.loom/tech-debt-inventory.md`
+- `.loom/tech-debt-plan.md`
+- `.loom/tech-debt-priority.md`
 - `.pdm-python`
 - `.pre-commit-config.yaml`
 - `.sops.yaml`
@@ -281,17 +289,12 @@ origin	https://gitlab.flexinfer.ai/services/mentatlab.git (push)
 - `docs/roadmap-reconciliation-2026-02-15.md`
 - `docs/roadmap-reconciliation-2026-02-16.md`
 - `docs/roadmap-reconciliation-2026-02-17.md`
-- `docs/status/README.md`
-- `docs/status/anchors.json`
-- `docs/status/project-status.yaml`
-- `docs/ui-mission-control.md`
-- `dump.rdb`
-- `examples/conditional_routing.json`
-- `examples/data_pipeline.json`
-- `examples/foreach_batch.json`
-- `examples/hello_chat.json`
-- `examples/psyche-simulation/agents/__init__.py`
-- `examples/psyche-simulation/agents/anima_animus.py`
+- `docs/roadmap-reconciliation-2026-02-19.md`
+- `docs/site/README.md`
+- `docs/site/api-reference.md`
+- `docs/site/architecture.md`
+- `docs/site/deployment.md`
+- `docs/site/getting-started.md`
 - `…`
 
 ## AGENTS.md Files

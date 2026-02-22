@@ -4,8 +4,8 @@
 
 This plan outlines a comprehensive rearchitecture of the MentatLab WebUI to support the beta milestone's multimodal and streaming requirements. The transformation will evolve the current single-modal, batch-processing frontend into a sophisticated multimodal-first platform capable of handling audio (WAV), image (JPEG/PNG), and video streams up to 1GB with <100ms streaming latency.
 
-**Total Effort**: 61-86 developer days across 4 phases over 16 weeks  
-**Key Deliverables**: Multimodal UI, S3 integration, WebSocket streaming, enhanced state management  
+**Total Effort**: 61-86 developer days across 4 phases over 16 weeks
+**Key Deliverables**: Multimodal UI, S3 integration, WebSocket streaming, enhanced state management
 **Success Metrics**: <100ms latency, 1GB file support, real-time progress tracking
 
 ## 1. New Architecture Overview
@@ -31,18 +31,18 @@ graph TB
         WS[WebSocket Manager]
         FC[File Controller]
     end
-    
+
     subgraph "Data Layer"
         S3[S3-Compatible Storage]
         CDN[CDN/Edge Cache]
     end
-    
+
     subgraph "Backend Services"
         GW[Gateway Service]
         OR[Orchestrator]
         AG[Agents]
     end
-    
+
     UI --> SM
     UI --> FC
     SM --> SL
@@ -234,7 +234,7 @@ export const useFlowStore = create<FlowState>()(
           // Flow state
           flows: new Map(),
           activeFlowId: null,
-          
+
           // Actions
           updateFlow: (flowId, updates) =>
             set((state) => {
@@ -254,7 +254,7 @@ export const useMediaStore = create<MediaState>()(
       mediaItems: new Map(),
       uploadQueue: [],
       activeUploads: new Map(),
-      
+
       // Actions
       queueUpload: (file, metadata) =>
         set((state) => {
@@ -269,7 +269,7 @@ export const useStreamingStore = create<StreamingState>()(
     // Streaming state
     activeStreams: new Map(),
     connectionStatus: 'disconnected',
-    
+
     // Actions
     registerStream: (streamId, config) => set((state) => ({
       activeStreams: new Map(state.activeStreams).set(streamId, {
@@ -333,13 +333,13 @@ export class ApiService {
   private http: HttpClient;
   private ws: WebSocketClient;
   private storage: StorageClient;
-  
+
   constructor(config: ApiConfig) {
     this.http = new HttpClient(config.baseUrl);
     this.ws = new WebSocketClient(config.wsUrl);
     this.storage = new StorageClient(config.s3Config);
   }
-  
+
   // Modular service endpoints
   flows = new FlowService(this.http);
   agents = new AgentService(this.http);
@@ -357,17 +357,17 @@ export class MediaService {
   async uploadFile(file: File, options: UploadOptions): Promise<MediaReference> {
     // 1. Request presigned URL
     const { uploadUrl, reference } = await this.getPresignedUrl(file);
-    
+
     // 2. Chunk file if needed
     const chunks = file.size > CHUNK_SIZE ? await this.chunkFile(file) : [file];
-    
+
     // 3. Upload with progress
     await this.uploadChunks(chunks, uploadUrl, options.onProgress);
-    
+
     // 4. Return reference
     return reference;
   }
-  
+
   async getMedia(reference: MediaReference): Promise<MediaData> {
     // Implement caching, CDN fallback, etc.
   }
@@ -379,10 +379,10 @@ export class MediaService {
 ```typescript
 export class StreamingService {
   private connections: Map<string, StreamConnection>;
-  
+
   async createStream(config: StreamConfig): Promise<Stream> {
     const connection = await this.establishConnection(config);
-    
+
     return {
       id: connection.id,
       send: (data) => connection.send(data),
@@ -390,7 +390,7 @@ export class StreamingService {
       close: () => this.closeStream(connection.id),
     };
   }
-  
+
   private async establishConnection(config: StreamConfig) {
     // WebSocket with SSE fallback
     try {
@@ -422,12 +422,12 @@ export const MultimodalComponents = {
   MediaCard: ({ media, size, actions }) => {...},
   MediaGallery: ({ items, layout, onSelect }) => {...},
   MediaPreview: ({ reference, controls }) => {...},
-  
+
   // File Handling
   DropZone: ({ accept, maxSize, onDrop }) => {...},
   UploadQueue: ({ items, onCancel, onRetry }) => {...},
   FileTypeIcon: ({ mimeType, size }) => {...},
-  
+
   // Progress & Feedback
   ProgressRing: ({ value, size, color }) => {...},
   StreamingIndicator: ({ status, latency }) => {...},
@@ -450,7 +450,7 @@ const MultimodalDropZone: React.FC = () => {
     maxSize: 1024 * 1024 * 1024, // 1GB
     onDrop: handleFileUpload,
   });
-  
+
   return (
     <div {...getRootProps()} className={styles.dropzone}>
       <input {...getInputProps()} />
@@ -469,7 +469,7 @@ const MultimodalDropZone: React.FC = () => {
 ```typescript
 const MediaPreview: React.FC<{ reference: MediaReference }> = ({ reference }) => {
   const { type, thumbnailUrl, metadata } = reference;
-  
+
   return (
     <div className={styles.preview}>
       {type === 'image' && <ImageThumbnail src={thumbnailUrl} />}
@@ -522,7 +522,7 @@ const MediaGrid: React.FC<{ items: MediaItem[] }> = ({ items }) => {
       <MediaCard item={items[index]} />
     </div>
   );
-  
+
   return (
     <AutoSizer>
       {({ height, width }) => (
@@ -556,11 +556,11 @@ export const PerformanceMonitor = {
   trackStreamLatency: (streamId: string, latency: number) => {
     analytics.track('stream_latency', { streamId, latency });
   },
-  
+
   trackUploadProgress: (fileId: string, progress: number, speed: number) => {
     analytics.track('upload_progress', { fileId, progress, speed });
   },
-  
+
   trackComponentLoad: (component: string, loadTime: number) => {
     analytics.track('component_load', { component, loadTime });
   },
@@ -675,7 +675,7 @@ graph LR
     B --> C[Parallel Implementation]
     C --> D[Gradual Rollout]
     D --> E[Full Migration]
-    
+
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style E fill:#9f9,stroke:#333,stroke-width:2px
 ```
@@ -750,15 +750,15 @@ const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
 
 const uploadLargeFile = async (file: File) => {
   const chunks = Math.ceil(file.size / CHUNK_SIZE);
-  
+
   for (let i = 0; i < chunks; i++) {
     const chunk = file.slice(
       i * CHUNK_SIZE,
       Math.min((i + 1) * CHUNK_SIZE, file.size)
     );
-    
+
     await uploadChunk(chunk, i, chunks);
-    
+
     // Allow garbage collection
     await new Promise(resolve => setTimeout(resolve, 0));
   }
@@ -771,10 +771,10 @@ const uploadLargeFile = async (file: File) => {
 class ResilientWebSocket {
   private reconnectAttempts = 0;
   private maxReconnects = 5;
-  
+
   connect() {
     this.ws = new WebSocket(this.url);
-    
+
     this.ws.onerror = () => {
       if (this.reconnectAttempts < this.maxReconnects) {
         setTimeout(() => {

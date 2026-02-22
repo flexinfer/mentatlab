@@ -28,22 +28,22 @@ def test_agent_scheduling_with_validation(mock_validate, scheduling_service):
         ],
         "longRunning": False
     }
-    
+
     inputs = {"input1": "test"}
-    
+
     # Mock successful validation
     mock_validate.return_value = ValidationResult(
         is_valid=True,
         errors=[],
         warnings=[]
     )
-    
+
     # Schedule the agent
     resource_id = scheduling_service.scheduleAgent(agent_manifest, inputs)
-    
+
     # Verify validation was called
     mock_validate.assert_called_once_with(agent_manifest)
-    
+
     # Verify job was created
     assert resource_id.startswith("test-agent-")
     assert resource_id in scheduling_service.scheduled_jobs
@@ -58,20 +58,20 @@ def test_invalid_agent_scheduling(mock_validate, scheduling_service):
         "id": "test.invalid",
         # Missing required fields
     }
-    
+
     # Mock failed validation
     mock_validate.return_value = ValidationResult(
         is_valid=False,
         errors=["Invalid agent manifest: missing required field 'image'"],
         warnings=[]
     )
-    
+
     # Try to schedule the agent - should raise ValueError
     with pytest.raises(ValueError) as exc_info:
         scheduling_service.scheduleAgent(invalid_manifest, {})
-    
+
     assert "Agent manifest validation failed" in str(exc_info.value)
-    
+
     # Verify job was not created
     assert len(scheduling_service.scheduled_jobs) == 0
 
@@ -80,10 +80,10 @@ def test_workflow_scheduling(scheduling_service):
     """Test workflow scheduling."""
     workflow_id = "test-workflow"
     cron_schedule = "0 * * * *"
-    
+
     # Schedule workflow
     job_id = scheduling_service.scheduleWorkflow(workflow_id, cron_schedule)
-    
+
     # Verify job was created
     assert job_id.startswith(f"workflow-{workflow_id}-")
     assert job_id in scheduling_service.scheduled_jobs
@@ -97,11 +97,11 @@ def test_job_status_retrieval(scheduling_service):
     # Schedule a job first
     agent_manifest = {"id": "test-agent", "image": "test:latest"}
     resource_id = scheduling_service.scheduleAgent(agent_manifest, {}, skip_validation=True)
-    
+
     # Get status
     status = scheduling_service.getJobStatus(resource_id)
     assert status["status"] == "scheduled"
-    
+
     # Test non-existent job
     status = scheduling_service.getJobStatus("non-existent-job")
     assert status["status"] == "not_found"
@@ -112,17 +112,17 @@ def test_job_cleanup(scheduling_service):
     # Schedule a job first
     agent_manifest = {"id": "test-agent", "image": "test:latest"}
     resource_id = scheduling_service.scheduleAgent(agent_manifest, {}, skip_validation=True)
-    
+
     # Verify job exists
     assert resource_id in scheduling_service.scheduled_jobs
-    
+
     # Cleanup job
     success = scheduling_service.cleanupJob(resource_id)
     assert success is True
-    
+
     # Verify job is gone
     assert resource_id not in scheduling_service.scheduled_jobs
-    
+
     # Test cleanup of non-existent job
     success = scheduling_service.cleanupJob("non-existent-job")
     assert success is False

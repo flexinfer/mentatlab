@@ -13,8 +13,8 @@ from .session_handler import SessionHandler, SessionManager
 
 __version__ = "1.0.0"
 __all__ = [
-    "UserManager", 
-    "UserRole", 
-    "SessionHandler", 
+    "UserManager",
+    "UserRole",
+    "SessionHandler",
     "SessionManager"
 ]

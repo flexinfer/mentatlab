@@ -144,7 +144,7 @@ export const StreamingControls: React.FC<StreamingControlsProps> = ({
             <span>▶️</span>
             <span>Start All</span>
           </button>
-          
+
           <button
             onClick={onPauseAll}
             disabled={globalStatus !== 'running'}
@@ -153,7 +153,7 @@ export const StreamingControls: React.FC<StreamingControlsProps> = ({
             <span>⏸️</span>
             <span>Pause All</span>
           </button>
-          
+
           <button
             onClick={onResumeAll}
             disabled={pausedSessionsCount === 0}
@@ -162,7 +162,7 @@ export const StreamingControls: React.FC<StreamingControlsProps> = ({
             <span>⏯️</span>
             <span>Resume All</span>
           </button>
-          
+
           <button
             onClick={onStopAll}
             disabled={globalStatus === 'stopped'}

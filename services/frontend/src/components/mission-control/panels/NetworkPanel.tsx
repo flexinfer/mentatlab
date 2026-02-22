@@ -611,14 +611,7 @@ export default function NetworkPanel({ runId }: Props) {
 
   const empty = nodes.length === 0;
 
-  // Auto-attempt live connection only when explicitly enabled
-  React.useEffect(() => {
-    if (!FeatureFlags.AUTO_CONNECT) return;
-    (async () => {
-      try { await startLiveConnection(); } catch {}
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Auto-connect is now handled by WorkspaceProvider (M14.3)
 
   React.useEffect(() => {
     if (!containerRef.current) return;

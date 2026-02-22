@@ -1,7 +1,7 @@
 # Beta Milestone Executive Summary
 ## Multimodal Support & Streaming Inference API
 
-**Timeline**: Q3-Q4 2025 (4 months)  
+**Timeline**: Q3-Q4 2025 (4 months)
 **Dependencies**: Sprint 5 completion (K8s scheduling, SDK v1.0)
 
 ---
@@ -27,7 +27,7 @@
 - Output: classification + confidence
 - Resources: 2 CPU, 4GB RAM
 
-# Audio Transcriber  
+# Audio Transcriber
 - Input: audio (WAV/MP3)
 - Output: streaming transcript
 - Resources: 1 CPU, 2GB RAM
@@ -112,9 +112,9 @@ Agent → WebSocket → Gateway → Fan-out → Multiple Clients
 
 ## Risk Mitigation
 
-**Storage Costs**: Implement retention policies and compression  
-**Network Bandwidth**: CDN integration for large files  
-**GPU Availability**: Queue management and priority scheduling  
+**Storage Costs**: Implement retention policies and compression
+**Network Bandwidth**: CDN integration for large files
+**GPU Availability**: Queue management and priority scheduling
 **Security**: Content validation and access control
 
 ---

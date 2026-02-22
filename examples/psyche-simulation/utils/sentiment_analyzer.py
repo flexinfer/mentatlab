@@ -56,12 +56,12 @@ def get_emotional_tone(text: str) -> Dict[str, float]:
     """
     polarity = analyze_sentiment(text)
     subjectivity = analyze_subjectivity(text)
-    
+
     # Estimate emotional dimensions
     arousal = abs(polarity) * subjectivity  # High polarity + subjectivity = high arousal
     valence = polarity  # Positive/negative emotion
     dominance = 1.0 - subjectivity if polarity > 0 else subjectivity  # Confidence/control
-    
+
     return {
         'polarity': polarity,
         'subjectivity': subjectivity,
@@ -87,7 +87,7 @@ def calculate_emotional_distance(sentiment1: Dict[str, float], sentiment2: Dict[
     # Simple Euclidean distance in emotional space
     dimensions = ['polarity', 'subjectivity', 'arousal']
     distance_squared = sum(
-        (sentiment1.get(dim, 0) - sentiment2.get(dim, 0)) ** 2 
+        (sentiment1.get(dim, 0) - sentiment2.get(dim, 0)) ** 2
         for dim in dimensions
     )
     return distance_squared ** 0.5
@@ -98,11 +98,11 @@ def find_emotional_patterns(sentiment_history: List[Dict[str, float]]) -> Dict[s
     """
     if not sentiment_history:
         return {}
-    
+
     # Calculate averages
     avg_polarity = sum(s['polarity'] for s in sentiment_history) / len(sentiment_history)
     avg_subjectivity = sum(s['subjectivity'] for s in sentiment_history) / len(sentiment_history)
-    
+
     # Find trends
     if len(sentiment_history) > 1:
         polarity_trend = sentiment_history[-1]['polarity'] - sentiment_history[0]['polarity']
@@ -110,7 +110,7 @@ def find_emotional_patterns(sentiment_history: List[Dict[str, float]]) -> Dict[s
     else:
         polarity_trend = 0
         subjectivity_trend = 0
-    
+
     # Identify volatility
     if len(sentiment_history) > 2:
         polarity_changes = [
@@ -120,7 +120,7 @@ def find_emotional_patterns(sentiment_history: List[Dict[str, float]]) -> Dict[s
         volatility = sum(polarity_changes) / len(polarity_changes)
     else:
         volatility = 0
-    
+
     return {
         'average_polarity': avg_polarity,
         'average_subjectivity': avg_subjectivity,

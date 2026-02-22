@@ -1,16 +1,16 @@
 /**
  * Media Service - Handles multimodal media upload, processing, and streaming
  */
- 
+
 import { BaseService } from './baseService';
 import { HttpClient } from './httpClient';
 import { WebSocketClient } from './websocketClient'; // Keep for now, might be removed later
 import { MediaReference } from '../../types/media'; // Import MediaReference
 import { v4 as uuidv4 } from 'uuid'; // Import uuidv4 for file IDs
- 
+
 export type MediaType = 'image' | 'audio' | 'video' | 'document';
 export type MediaStatus = 'uploading' | 'processing' | 'ready' | 'failed';
- 
+
 export interface MediaFile {
   id: string;
   filename: string;
@@ -30,21 +30,21 @@ export interface MediaFile {
   createdAt: string;
   updatedAt: string;
 }
- 
+
 export interface MediaUploadProgress {
   fileId: string;
   loaded: number;
   total: number;
   percentage: number;
 }
- 
+
 export interface MediaStreamConfig {
   mediaId: string;
   quality?: 'low' | 'medium' | 'high' | 'auto';
   startTime?: number;
   endTime?: number;
 }
- 
+
 export interface MediaProcessingOptions {
   resize?: { width: number; height: number };
   format?: string;
@@ -52,17 +52,17 @@ export interface MediaProcessingOptions {
   trim?: { start: number; end: number };
   watermark?: { text: string; position: string };
 }
- 
+
 // Define CHUNK_SIZE as per rearchitecture plan (Section 9.2)
 const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
- 
+
 export class MediaService extends BaseService {
   private uploadAbortControllers = new Map<string, AbortController>();
- 
+
   constructor(http: HttpClient, ws: WebSocketClient | null) {
     super(http, ws, { basePath: '/api/media', enableStreaming: true });
   }
- 
+
   /**
    * Upload a media file with presigned URLs and chunking
    */
@@ -76,7 +76,7 @@ export class MediaService extends BaseService {
     const fileId = uuidv4(); // Generate a unique ID for this upload
     this.uploadAbortControllers.set(fileId, new AbortController());
     const abortSignal = this.uploadAbortControllers.get(fileId)?.signal;
- 
+
     try {
       // 1. Request presigned URL
       const { uploadUrl, reference } = await this.getPresignedUrl({
@@ -86,18 +86,18 @@ export class MediaService extends BaseService {
         fileId: fileId,
         metadata: options?.metadata,
       });
- 
+
       // 2. Chunk file if needed and upload
       const chunks = this.chunkFile(file);
       await this.uploadChunks(fileId, chunks, uploadUrl, options?.onProgress, abortSignal);
-      
+
       // 3. Return reference
       return reference;
     } finally {
       this.uploadAbortControllers.delete(fileId);
     }
   }
- 
+
   /**
    * Request a presigned URL from the backend
    */
@@ -114,7 +114,7 @@ export class MediaService extends BaseService {
     );
     return response;
   }
- 
+
   /**
    * Chunk a file into smaller parts
    */
@@ -127,7 +127,7 @@ export class MediaService extends BaseService {
     }
     return chunks;
   }
- 
+
   /**
    * Upload file chunks with progress tracking
    */
@@ -140,7 +140,7 @@ export class MediaService extends BaseService {
   ): Promise<void> {
     let loaded = 0;
     const total = chunks.reduce((sum, chunk) => sum + chunk.size, 0);
- 
+
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       try {
@@ -148,13 +148,13 @@ export class MediaService extends BaseService {
         await new Promise<void>((resolve, reject) => {
           xhr.open('PUT', uploadUrl);
           xhr.setRequestHeader('Content-Type', chunk.type);
-          
+
           // Add auth headers if available
           const authHeader = this.http.defaults.headers.common['Authorization'];
           if (authHeader) {
             xhr.setRequestHeader('Authorization', authHeader);
           }
- 
+
           xhr.upload.onprogress = (event) => {
             if (event.lengthComputable && onProgress) {
               // Calculate progress for the entire file, not just the current chunk
@@ -167,7 +167,7 @@ export class MediaService extends BaseService {
               });
             }
           };
- 
+
           xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) {
               loaded += chunk.size; // Update total loaded bytes
@@ -176,12 +176,12 @@ export class MediaService extends BaseService {
               reject(new Error(`Upload of chunk ${i + 1} failed with status ${xhr.status}`));
             }
           };
- 
+
           xhr.onerror = () => reject(new Error(`Upload of chunk ${i + 1} failed`));
           xhr.onabort = () => reject(new Error('Upload cancelled'));
- 
+
           abortSignal?.addEventListener('abort', () => xhr.abort());
- 
+
           xhr.send(chunk);
         });
       } catch (error) {
@@ -190,7 +190,7 @@ export class MediaService extends BaseService {
       }
     }
   }
- 
+
   /**
    * Cancel an ongoing upload
    */
@@ -201,14 +201,14 @@ export class MediaService extends BaseService {
       this.uploadAbortControllers.delete(fileId);
     }
   }
- 
+
   /**
    * Get media file details
    */
   async getMedia(mediaId: string): Promise<MediaFile> {
     return this.get<MediaFile>(`/${mediaId}`);
   }
- 
+
   /**
    * List media files
    */
@@ -220,14 +220,14 @@ export class MediaService extends BaseService {
   }): Promise<{ items: MediaFile[]; total: number }> {
     return this.get<{ items: MediaFile[]; total: number }>('', params);
   }
- 
+
   /**
    * Delete media file
    */
   async deleteMedia(mediaId: string): Promise<void> {
     return this.delete<void>(`/${mediaId}`);
   }
- 
+
   /**
    * Process media file (resize, convert, etc.)
    */
@@ -236,15 +236,15 @@ export class MediaService extends BaseService {
     options: MediaProcessingOptions
   ): Promise<MediaFile> {
     const response = await this.post<MediaFile>(`/${mediaId}/process`, options);
-    
+
     // Subscribe to processing updates if streaming is available
     if (this.isStreamingAvailable) {
       this.subscribeToProcessingUpdates(response.id);
     }
-    
+
     return response;
   }
- 
+
   /**
    * Get media thumbnail
    */
@@ -254,7 +254,7 @@ export class MediaService extends BaseService {
   ): Promise<string> {
     return this.get<string>(`/${mediaId}/thumbnail`, { size });
   }
- 
+
   /**
    * Start media streaming
    */
@@ -268,22 +268,22 @@ export class MediaService extends BaseService {
       url: string;
       protocol: 'hls' | 'dash' | 'webrtc';
     }>('/stream/start', config);
-    
+
     // Subscribe to stream events
     if (this.isStreamingAvailable && response.streamId) {
       this.subscribeToStreamEvents(response.streamId);
     }
-    
+
     return response;
   }
- 
+
   /**
    * Stop media streaming
    */
   async stopStreaming(streamId: string): Promise<void> {
     return this.post<void>(`/stream/${streamId}/stop`);
   }
- 
+
   /**
    * Get signed URL for direct upload (S3)
    */
@@ -302,7 +302,7 @@ export class MediaService extends BaseService {
       expires: string;
     }>('/upload-url', params);
   }
- 
+
   /**
    * Subscribe to media processing updates
    */
@@ -316,7 +316,7 @@ export class MediaService extends BaseService {
       }
     });
   }
- 
+
   /**
    * Subscribe to stream events
    */
@@ -330,7 +330,7 @@ export class MediaService extends BaseService {
       }
     });
   }
- 
+
   /**
    * Subscribe to media upload progress via WebSocket
    */
@@ -340,7 +340,7 @@ export class MediaService extends BaseService {
   ): (() => void) | null {
     return this.subscribeToStream(`upload:${fileId}:progress`, onProgress);
   }
- 
+
   /**
    * Analyze media content (AI-powered)
    */
@@ -355,7 +355,7 @@ export class MediaService extends BaseService {
       confidence?: number;
     }>(`/${mediaId}/analyze`, { type: analysisType });
   }
- 
+
   /**
    * Get media usage statistics
    */
@@ -373,10 +373,10 @@ export class MediaService extends BaseService {
     }>('/stats');
   }
 }
- 
+
 // Export singleton instance
 let mediaServiceInstance: MediaService;
- 
+
 export function getMediaService(http: HttpClient, ws: WebSocketClient | null): MediaService {
   if (!mediaServiceInstance) {
     mediaServiceInstance = new MediaService(http, ws);

@@ -54,35 +54,35 @@ __version__ = "1.0.0"
 __all__ = [
     # JWT Middleware
     "JWTMiddleware",
-    "TokenBlacklist", 
+    "TokenBlacklist",
     "require_auth",
     "require_permission",
     "validate_token",
-    
+
     # Permissions
     "Permission",
     "PermissionManager",
     "ResourcePermission",
     "check_permission",
     "has_permission",
-    
+
     # Encryption
     "DataEncryption",
     "encrypt_data",
     "decrypt_data",
     "hash_sensitive_data",
     "generate_encryption_key",
-    
+
     # Audit Logging
     "AuditLogger",
     "SecurityEvent",
     "log_security_event",
     "get_audit_trail",
     "export_audit_logs",
-    
+
     # API Security
     "RateLimiter",
-    "InputValidator", 
+    "InputValidator",
     "SecurityHeaders",
     "CORSConfig",
     "apply_security_middleware"

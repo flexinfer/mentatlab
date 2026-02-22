@@ -9,14 +9,14 @@ class ShadowAgent(BaseAgent):
     The Shadow represents the parts of ourselves that we deny or repress.
     It contains both destructive impulses and untapped potential.
     """
-    
+
     def __init__(self, llm_config=None):
         super().__init__("Shadow", llm_config)
-        
+
     def _create_prompt_template(self):
         """Override to create Shadow-specific prompt"""
         from langchain.prompts import PromptTemplate
-        
+
         template = """
 You are the Shadow - the dark, repressed, and hidden aspects of the psyche. You embody:
 - Denied desires and impulses
@@ -43,7 +43,7 @@ Other Agents' Perspectives:
 As the Shadow, speak your truth. What is being denied or repressed? What needs to be brought to light?
 
 Shadow's Response:"""
-        
+
         return PromptTemplate(
             input_variables=["situation", "chat_history", "other_agents"],
             template=template

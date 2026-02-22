@@ -81,7 +81,7 @@ export default function useFileUpload() {
           ? p.percentage
           : Math.round(((p?.loaded || 0) / (p?.total || item.file.size)) * 100);
       (store as any).setUploadProgress?.(id, percentage);
- 
+
       // store derived metrics locally if desired
       const meta = progressMetaRef.current.get(id) || {};
       progressMetaRef.current.set(id, meta);

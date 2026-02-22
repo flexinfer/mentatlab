@@ -182,7 +182,7 @@ describe('TopBar', () => {
   it('renders connection status indicator', () => {
     render(<TopBar />);
     expect(screen.getByTestId('connection-indicator')).toBeInTheDocument();
-    expect(screen.getByText('Disconnected')).toBeInTheDocument();
+    expect(screen.getByText('Offline')).toBeInTheDocument();
   });
 
   it('applies custom className', () => {

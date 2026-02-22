@@ -127,14 +127,14 @@ Deep OTel span coverage, run↔trace correlation, local Tempo, gateway trace pro
 - Add cycle detection before run execution (prevents scheduler deadlocks)
 - Validate conditional expressions select valid branches at design time
 - Add memory protection for large ForEach collections (cap concurrent body nodes)
-- Source: `services/orchestrator-go/internal/validator/validator.go:276-361`
+- Source: `services/orchestrator-go/internal/validator/validator.go:276-361`, [Issue #35](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/35)
 
 #### M10.5 WebSocket reconnection
 
 - Implement exponential backoff reconnection in gateway WebSocket hub
 - Add idle connection culling with configurable heartbeat timeout
 - Add client-side reconnection in frontend SSE/WS transport
-- Source: `services/gateway-go/hub/hub.go:259`, `services/frontend/src/services/api/streaming/`
+- Source: `services/gateway-go/hub/hub.go:259`, `services/frontend/src/services/api/streaming/`, [Issue #36](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/36)
 
 **Acceptance:** All M5/M6 pending items validated on live K3s cluster. DAG cycle detection prevents deadlocks. WebSocket connections recover from transient failures.
 
@@ -146,6 +146,8 @@ Deep OTel span coverage, run↔trace correlation, local Tempo, gateway trace pro
 
 #### M11.1 MCP-Tool-as-Agent adapter
 
+Tracking issue: [#37](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/37)
+
 Create a universal "loom-mcp-executor" agent that wraps any loom MCP tool as a MentatLab agent node.
 
 - New agent in `agents/loom-mcp-executor/` with NDJSON stdin/stdout contract
@@ -156,6 +158,8 @@ Create a universal "loom-mcp-executor" agent that wraps any loom MCP tool as a M
 - Source: `agents/common/emit.py`, `platform/gitops/mcp/context/registry.yaml`
 
 #### M11.2 MentatLab-as-MCP-server
+
+Tracking issue: [#38](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/38)
 
 Create `mcp-mentatlab` server in loom-core exposing orchestrator operations as MCP tools.
 
@@ -170,6 +174,8 @@ Create `mcp-mentatlab` server in loom-core exposing orchestrator operations as M
 
 #### M11.3 Agent context integration
 
+Tracking issue: [#39](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/39)
+
 Connect MentatLab runs to loom agent-context sessions for persistent memory across executions.
 
 - Map each MentatLab run → `agent_session_start` (auto-created, namespace = `mentatlab/{flow_id}`)
@@ -181,6 +187,8 @@ Connect MentatLab runs to loom agent-context sessions for persistent memory acro
 
 #### M11.4 Workflow bridge (loom workflows ↔ MentatLab flows)
 
+Tracking issue: [#40](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/40)
+
 Enable bidirectional conversion between loom workflow definitions and MentatLab flow graphs.
 
 - Export: MentatLab canvas → `agent_workflow_define` call (nodes → steps, edges → dependencies)
@@ -189,6 +197,8 @@ Enable bidirectional conversion between loom workflow definitions and MentatLab 
 - Source: `services/frontend/src/components/mission-control/`, `services/loom-core/cmd/mcp-agent-context/tools_workflows.go`
 
 #### M11.5 MCP tool palette in canvas
+
+Tracking issue: [#41](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/41)
 
 Populate the frontend node palette with available MCP tools from the loom proxy.
 

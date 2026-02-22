@@ -298,7 +298,7 @@ async def index():
     # UI elements that update on WebSocket events
     agent_messages = ui.column()
     network_graph = ui.element('div')
-    
+
     # Events automatically update connected UI elements
 ```
 

@@ -44,6 +44,86 @@ Deliver first-class MentatLab docs inside `services/flexinfer-site` rather than 
 
 ---
 
+## 2026-02-20 Slice: M16 Mission Control Functional UX Standardization
+
+### Objective
+
+Deliver a reliable, production-grade Mission Control interaction model by fixing connection ownership and status UX first, then standardizing visual primitives and cleaning legacy surface drift.
+
+### Scope
+
+- Frontend only (`services/frontend`)
+- No backend API feature additions
+- No orchestrator scheduler behavior changes
+
+### Phase Plan
+
+#### M16.1 Functional stabilization (connection authority)
+
+1. Pick one transport owner for Mission Control (prefer `useStreamingTransport` + connection-manager path).
+2. Route `startLiveConnection` and network-panel connect actions through that owner.
+3. Remove duplicate ad-hoc connect logic in `WorkspaceProvider` and `NetworkPanel` dynamic imports.
+4. Refactor `StreamingCanvas` to consume shared connection/session state instead of opening raw sockets and polling `/api/v1/streams`.
+5. Normalize base URL defaults to gateway/orchestrator config helpers and remove active-path `localhost:8000` fallbacks.
+
+Acceptance:
+- single connect path in code,
+- no duplicate live-connect side effects,
+- consistent status transitions.
+
+#### M16.2 Status UX normalization
+
+1. Keep one canonical `ConnectionStatusBanner` mount.
+2. Replace fixed global positioning with layout-aware placement (top bar status slot or dedicated status rail).
+3. Ensure retry action always calls the same connection authority.
+4. Add compact status indicator in top bar for connected state while keeping error states actionable.
+
+Acceptance:
+- exactly one visible status/error surface at a time,
+- retry behavior deterministic,
+- no overlapping banners.
+
+#### M16.3 Professional visual standardization
+
+1. Define restrained operator tokens for dark mode (reduce neon glow, lower saturation accents).
+2. Align panel chrome across top bar, sidebars, canvas shell, and bottom dock.
+3. Standardize typography hierarchy (primary sans + selective mono for telemetry values only).
+4. Remove or gate heavy visual effects that obscure data legibility.
+
+Acceptance:
+- consistent spacing/color/radius/shadow across primary shells,
+- improved readability in dense states (errors + active run + logs).
+
+#### M16.4 Regression safety net
+
+1. Add targeted tests around connection status rendering (single banner, retry wiring).
+2. Add tests for URL resolution defaults to prevent `8000` regressions.
+3. Capture before/after screenshots in local dev for top bar, canvas, dock, error state.
+
+Acceptance:
+- `npm run lint` passes,
+- `npm test -- --run --reporter=dot` passes,
+- visual QA checklist completed.
+
+### Source Anchors
+
+- `services/frontend/src/App.tsx:17`
+- `services/frontend/src/App.tsx:18`
+- `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:203`
+- `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:250`
+- `services/frontend/src/components/mission-control/layout/TopBar.tsx:107`
+- `services/frontend/src/components/ui/ConnectionStatusBanner.tsx:36`
+- `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:203`
+- `services/frontend/src/components/mission-control/panels/NetworkPanel.tsx:609`
+- `services/frontend/src/components/StreamingCanvas.tsx:42`
+- `services/frontend/src/components/StreamingCanvas.tsx:89`
+- `services/frontend/src/services/api/apiService.ts:113`
+- `services/frontend/src/config/orchestrator.ts:10`
+- `services/frontend/src/config/orchestrator.ts:75`
+- `services/frontend/src/hooks/useStreamingTransport.ts:106`
+
+---
+
 ## Milestones
 
 ### M0: Foundation (Infrastructure Fix)

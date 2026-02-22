@@ -9,7 +9,7 @@ gation: SSE fallback, connection pooling
 
 The existing technical debt significantly increases the risk of:
 - Integration failures
-- Performance bottlenecks  
+- Performance bottlenecks
 - Maintenance complexity
 - Feature delivery delays
 

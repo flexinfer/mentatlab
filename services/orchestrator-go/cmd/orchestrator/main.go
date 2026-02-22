@@ -18,15 +18,11 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/dataflow"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/factories"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/tracing"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
 func main() {
@@ -72,40 +68,10 @@ func main() {
 	}
 
 	// Initialize RunStore based on configuration
-	var store runstore.RunStore
-	switch cfg.RunStoreType {
-	case "redis":
-		redisCfg := &runstore.RedisConfig{
-			URL:      cfg.RedisURL,
-			Password: cfg.RedisPassword,
-			DB:       cfg.RedisDB,
-			Prefix:   "runs",
-			TTL:      cfg.RunStoreTTL,
-		}
-		redisStore, err := runstore.NewRedisStore(redisCfg)
-		if err != nil {
-			if !cfg.AllowMemoryFallback {
-				logger.Error("failed to connect to Redis and ORCH_ALLOW_MEMORY_FALLBACK is not set", "error", err)
-				os.Exit(1)
-			}
-			metrics.RunStoreFallbackTotal.Inc()
-			logger.Warn("failed to connect to Redis, falling back to memory store (ORCH_ALLOW_MEMORY_FALLBACK=true)", "error", err)
-			storeCfg := &runstore.Config{
-				EventMaxLen: cfg.EventMaxLen,
-				TTLSeconds:  int64(cfg.RunStoreTTL.Seconds()),
-			}
-			store = runstore.NewMemoryStore(storeCfg)
-		} else {
-			store = redisStore
-			logger.Info("using Redis runstore", slog.String("url", cfg.RedisURL))
-		}
-	default:
-		storeCfg := &runstore.Config{
-			EventMaxLen: cfg.EventMaxLen,
-			TTLSeconds:  int64(cfg.RunStoreTTL.Seconds()),
-		}
-		store = runstore.NewMemoryStore(storeCfg)
-		logger.Info("using in-memory runstore")
+	store, err := factories.CreateRunStore(cfg, logger)
+	if err != nil {
+		logger.Error("failed to initialize runstore", "error", err)
+		os.Exit(1)
 	}
 	defer store.Close()
 
@@ -113,60 +79,22 @@ func main() {
 	emitter := driver.NewRunStoreEmitter(store)
 
 	// Select execution driver based on ORCH_DRIVER config
-	var execDriver driver.Driver
-	switch cfg.DriverType {
-	case "k8s":
-		k8sCfg := &driver.K8sDriverConfig{
-			K8sConfig: &k8s.Config{
-				InCluster:  cfg.K8sInCluster,
-				Kubeconfig: cfg.K8sKubeconfig,
-				Namespace:  cfg.K8sNamespace,
-			},
-			JobConfig: &k8s.JobConfig{
-				Namespace:        cfg.K8sNamespace,
-				ImagePullSecrets: cfg.K8sImagePullSecrets,
-			},
-		}
-		k8sDriver, err := driver.NewK8sDriver(emitter, k8sCfg)
-		if err != nil {
-			logger.Error("failed to create K8s driver", "error", err)
-			os.Exit(1)
-		}
-		execDriver = k8sDriver
-		logger.Info("using K8s job driver", slog.String("namespace", cfg.K8sNamespace))
-	default:
-		execDriver = driver.NewLocalSubprocessDriver(emitter, &driver.SubprocessConfig{
-			EnvPassthrough: map[string]string{
-				"ORCHESTRATOR_URL": "http://localhost:" + cfg.Port,
-			},
-		})
-		logger.Info("using subprocess driver")
+	execDriver, err := factories.CreateDriver(cfg, emitter, logger)
+	if err != nil {
+		logger.Error("failed to create driver", "error", err)
+		os.Exit(1)
 	}
 
 	// Command resolver for agents
-	resolveCmd := func(node *types.NodeSpec) []string {
-		if len(node.Command) > 0 {
-			return node.Command
-		}
-		// Fallback: resolve agent by convention from agents/ directory.
-		// Agent IDs use dotted notation (e.g. "mentatlab.echo") mapping to agents/echo/main.py.
-		if node.AgentID != "" {
-			name := node.AgentID
-			if idx := strings.LastIndex(name, "."); idx >= 0 {
-				name = name[idx+1:]
-			}
-			return []string{"python", "agents/" + name + "/main.py"}
-		}
-		return nil
-	}
+	resolveCmd := factories.CreateCommandResolver(cfg)
 
-	schedCfg := &scheduler.Config{
-		MaxParallelism:     cfg.MaxParallelism,
-		DefaultMaxRetries:  cfg.DefaultMaxRetries,
-		DefaultBackoffSecs: cfg.DefaultBackoffSecs,
-		DefaultRunTimeout:  cfg.DefaultRunTimeout,
-	}
-	sched := scheduler.New(store, execDriver, resolveCmd, schedCfg, logger.With(slog.String("component", "scheduler")))
+	sched := scheduler.NewScheduler(store, execDriver, resolveCmd,
+		scheduler.WithMaxParallelism(cfg.MaxParallelism),
+		scheduler.WithDefaultMaxRetries(cfg.DefaultMaxRetries),
+		scheduler.WithDefaultBackoffSecs(cfg.DefaultBackoffSecs),
+		scheduler.WithDefaultRunTimeout(cfg.DefaultRunTimeout),
+		scheduler.WithLogger(logger.With(slog.String("component", "scheduler"))),
+	)
 
 	logger.Info("scheduler initialized",
 		slog.String("driver", cfg.DriverType),
@@ -184,44 +112,18 @@ func main() {
 	}
 
 	// Initialize agent registry
-	var agentRegistry registry.AgentRegistry
-	if cfg.RunStoreType == "redis" {
-		// Parse Redis URL for registry
-		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
-		registryCfg := &registry.RedisConfig{
-			Addr:     redisAddr,
-			Password: cfg.RedisPassword,
-			DB:       cfg.RedisDB,
-		}
-		redisRegistry, err := registry.NewRedisRegistry(registryCfg)
-		if err != nil {
-			logger.Warn("failed to create Redis agent registry, using memory", "error", err)
-			agentRegistry = registry.NewMemoryRegistryWithDefaults()
-		} else {
-			agentRegistry = redisRegistry
-			logger.Info("using Redis agent registry")
-		}
-	} else {
-		agentRegistry = registry.NewMemoryRegistryWithDefaults()
-		logger.Info("using in-memory agent registry with defaults")
+	agentRegistry, err := factories.CreateAgentRegistry(cfg, logger)
+	if err != nil {
+		logger.Error("failed to initialize agent registry", "error", err)
+		os.Exit(1)
 	}
 	defer agentRegistry.Close()
 
 	// Initialize flow store
-	var flows flowstore.FlowStore
-	if cfg.RunStoreType == "redis" {
-		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
-		redisFlows, err := flowstore.NewRedisStore(redisAddr)
-		if err != nil {
-			logger.Warn("failed to create Redis flow store, using memory", "error", err)
-			flows = flowstore.NewMemoryStore()
-		} else {
-			flows = redisFlows
-			logger.Info("using Redis flow store")
-		}
-	} else {
-		flows = flowstore.NewMemoryStore()
-		logger.Info("using in-memory flow store")
+	flows, err := factories.CreateFlowStore(cfg, logger)
+	if err != nil {
+		logger.Error("failed to initialize flow store", "error", err)
+		os.Exit(1)
 	}
 	defer flows.Close()
 

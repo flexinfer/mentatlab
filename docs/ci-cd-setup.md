@@ -20,21 +20,21 @@ jobs:
   test-gateway:
     name: Test Gateway Service
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
+
     - name: Install PDM
       uses: pdm-project/setup-pdm@v4
       with:
         python-version: '3.11'
         cache: true
-    
+
     - name: Cache PDM dependencies
       uses: actions/cache@v4
       with:
@@ -44,17 +44,17 @@ jobs:
         key: ${{ runner.os }}-gateway-pdm-${{ hashFiles('services/gateway/pdm.lock') }}
         restore-keys: |
           ${{ runner.os }}-gateway-pdm-
-    
+
     - name: Install dependencies
       working-directory: services/gateway
       run: |
         pdm install --dev
-    
+
     - name: Run tests
       working-directory: services/gateway
       run: |
         pdm run pytest tests/ -v --tb=short
-    
+
     - name: Run linting
       working-directory: services/gateway
       run: |
@@ -65,21 +65,21 @@ jobs:
   test-orchestrator:
     name: Test Orchestrator Service
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
+
     - name: Install PDM
       uses: pdm-project/setup-pdm@v4
       with:
         python-version: '3.11'
         cache: true
-    
+
     - name: Cache PDM dependencies
       uses: actions/cache@v4
       with:
@@ -89,17 +89,17 @@ jobs:
         key: ${{ runner.os }}-orchestrator-pdm-${{ hashFiles('services/orchestrator/pdm.lock') }}
         restore-keys: |
           ${{ runner.os }}-orchestrator-pdm-
-    
+
     - name: Install dependencies
       working-directory: services/orchestrator
       run: |
         pdm install --dev
-    
+
     - name: Run tests
       working-directory: services/orchestrator
       run: |
         pdm run pytest app/tests/ -v --tb=short
-    
+
     - name: Run linting
       working-directory: services/orchestrator
       run: |
@@ -110,17 +110,17 @@ jobs:
   test-frontend:
     name: Test Frontend Service
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
         cache-dependency-path: services/frontend/package-lock.json
-    
+
     - name: Cache node modules
       uses: actions/cache@v4
       with:
@@ -128,26 +128,26 @@ jobs:
         key: ${{ runner.os }}-frontend-node-${{ hashFiles('services/frontend/package-lock.json') }}
         restore-keys: |
           ${{ runner.os }}-frontend-node-
-    
+
     - name: Install dependencies
       working-directory: services/frontend
       run: npm ci
-    
+
     - name: Run linting
       working-directory: services/frontend
       run: |
         npm run lint || true
-    
+
     - name: Run type checking
       working-directory: services/frontend
       run: |
         npm run type-check || true
-    
+
     - name: Run tests
       working-directory: services/frontend
       run: |
         npm test -- --run || true
-    
+
     - name: Build frontend
       working-directory: services/frontend
       run: npm run build
@@ -156,22 +156,22 @@ jobs:
   test-echo-agent:
     name: Test Echo Agent
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
+
     - name: Install dependencies
       working-directory: services/agents/echo
       run: |
         python -m pip install --upgrade pip
         pip install -r src/requirements.txt || echo "No requirements.txt found"
         pip install pytest
-    
+
     - name: Run tests
       working-directory: services/agents/echo
       run: |
@@ -183,24 +183,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-gateway, test-orchestrator, test-frontend]
     if: success()
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
+
     - name: Install PDM
       uses: pdm-project/setup-pdm@v4
       with:
         python-version: '3.11'
-    
+
     - name: Install root dependencies
       run: |
         pdm install --dev || pip install pytest
-    
+
     - name: Run integration tests
       run: |
         pytest -v --tb=short || echo "No integration tests found"
@@ -214,13 +214,13 @@ jobs:
         service:
           - path: services/agents/echo
             name: echo-agent
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-    
+
     - name: Build Docker image
       uses: docker/build-push-action@v5
       with:
@@ -234,10 +234,10 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
@@ -252,7 +252,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-gateway, test-orchestrator, test-frontend, test-echo-agent]
     if: success()
-    
+
     steps:
     - name: CI Passed
       run: echo "All CI checks passed successfully!"

@@ -56,7 +56,7 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
     // Apply search filter
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
-      processed = processed.filter(msg => 
+      processed = processed.filter(msg =>
         JSON.stringify(msg.data).toLowerCase().includes(searchLower) ||
         msg.agent_id.toLowerCase().includes(searchLower) ||
         msg.stream_id.toLowerCase().includes(searchLower)
@@ -181,7 +181,7 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
             onChange={(e) => setSearchTerm(e.target.value)}
             className="flex-1 min-w-64 px-3 py-1 border border-gray-300 rounded-md text-sm bg-white dark:mc-card-bg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          
+
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-600">Filter:</span>
             {messageTypes.map(type => (
@@ -197,7 +197,7 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
                 {getMessageTypeIcon(type)} {type}
               </button>
             ))}
-            
+
             <button
               onClick={clearFilters}
               className="px-2 py-1 rounded text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:hover:opacity-90"
@@ -243,24 +243,24 @@ export const StreamingConsole: React.FC<StreamingConsoleProps> = ({
                       {formatTimestamp(message.timestamp)}
                     </span>
                   )}
-                  
+
                   {/* Message Type Icon */}
                   <span className="flex-shrink-0 w-6">
                     {getMessageTypeIcon(message.type)}
                   </span>
-                  
+
                   {/* Agent/Stream Info */}
                   <span className="text-gray-400 text-xs flex-shrink-0 w-32 truncate">
                     {message.agent_id.substring(0, 8)}.../{message.stream_id.substring(0, 8)}...
                   </span>
-                  
+
                   {/* Message Data */}
                   <div className="flex-1 min-w-0">
                     <pre className="whitespace-pre-wrap break-words text-xs">
                       {formatMessageData(message.data)}
                     </pre>
                   </div>
-                  
+
                   {/* Sequence Number */}
                   {message.sequence !== undefined && (
                     <span className="text-gray-500 text-xs flex-shrink-0">

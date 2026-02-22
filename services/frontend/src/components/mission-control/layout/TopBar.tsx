@@ -248,18 +248,31 @@ const STATUS_STYLES: Record<string, { dot: string; label: string; text: string }
   [StreamConnectionState.CONNECTED]: { dot: 'bg-emerald-400', label: 'Connected', text: 'text-emerald-400' },
   [StreamConnectionState.CONNECTING]: { dot: 'bg-blue-400 animate-pulse', label: 'Connecting…', text: 'text-blue-400' },
   [StreamConnectionState.RECONNECTING]: { dot: 'bg-amber-400 animate-pulse', label: 'Reconnecting…', text: 'text-amber-400' },
-  [StreamConnectionState.DISCONNECTED]: { dot: 'bg-gray-400', label: 'Disconnected', text: 'text-gray-400' },
+  [StreamConnectionState.DISCONNECTED]: { dot: 'bg-zinc-400', label: 'Offline', text: 'text-zinc-400' },
   [StreamConnectionState.ERROR]: { dot: 'bg-red-400', label: 'Error', text: 'text-red-400' },
+};
+
+const TRANSPORT_LABELS: Record<string, string> = {
+  websocket: 'WS',
+  sse: 'SSE',
+  simulation: 'Sim',
+  none: '',
 };
 
 function ConnectionStatusIndicator() {
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
+  const transportType = useStreamingStore((s) => s.transportType ?? 'none');
   const style = STATUS_STYLES[connectionStatus] ?? STATUS_STYLES[StreamConnectionState.DISCONNECTED];
+  const transportLabel = connectionStatus === StreamConnectionState.CONNECTED
+    ? TRANSPORT_LABELS[transportType] ?? ''
+    : '';
 
   return (
     <div className="flex items-center gap-1.5" data-testid="connection-indicator">
       <span className={`w-2 h-2 rounded-full ${style.dot}`} />
-      <span className={`text-[11px] font-medium ${style.text}`}>{style.label}</span>
+      <span className={`text-[11px] font-medium ${style.text}`}>
+        {style.label}{transportLabel ? ` (${transportLabel})` : ''}
+      </span>
     </div>
   );
 }

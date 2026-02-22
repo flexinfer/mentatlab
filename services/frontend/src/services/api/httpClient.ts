@@ -36,7 +36,7 @@ export class HttpClient {
   private config: HttpConfig;
   private interceptors: HttpInterceptor[] = [];
   private abortControllers: Map<string, AbortController> = new Map();
-  
+
   // Public defaults property for configuration
   public defaults: {
     baseURL?: string;
@@ -56,7 +56,7 @@ export class HttpClient {
       },
       ...config,
     };
-    
+
     // Initialize defaults
     this.defaults = {
       baseURL: config.baseUrl,
@@ -218,7 +218,7 @@ export class HttpClient {
   private buildUrl(url: string, params?: Record<string, any>): string {
     const baseUrl = this.defaults.baseURL || this.config.baseUrl;
     const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
-    
+
     if (!params) return fullUrl;
 
     const searchParams = new URLSearchParams();

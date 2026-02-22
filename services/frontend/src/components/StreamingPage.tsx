@@ -7,11 +7,11 @@ import { streamingService } from '../services/api/streamingService';
 
 const StreamingPage: React.FC = () => {
   const { activeStreamId, streams, connectionStatus } = useStreamingStore();
-  
+
   // Convert streams object to array and get active stream's messages
   const streamArray = Object.values(streams);
   const activeStream = activeStreamId ? streams[activeStreamId] : null;
-  
+
   // Convert console messages to StreamMessage format
   const messages = (activeStream?.console || []).map(msg => ({
     type: 'stream_data' as const,
@@ -21,7 +21,7 @@ const StreamingPage: React.FC = () => {
     stream_id: activeStreamId || '',
     sequence: 0
   }));
-  
+
   // Map status to expected format
   const getGlobalStatus = (status?: string) => {
     switch (status) {

@@ -36,4 +36,3 @@ roleRef:
   kind: Role
   name: orchestrator-scheduler
   apiGroup: rbac.authorization.k8s.io
-

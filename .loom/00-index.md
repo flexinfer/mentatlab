@@ -6,7 +6,8 @@
 - MCP inventory: `00-mcp-inventory.md`
 - **Assessment: `10-research.md`** - Full codebase audit with sourced findings
 - Product spec: `20-product-spec.md`
-- **Implementation plan: `30-implementation-plan.md`** - M0-M9 milestone plan
+- **Implementation plan: `30-implementation-plan.md`** - M0-M16 milestone plan
+- **M16 issue checklist: `31-m16-issue-checklist.md`** - PR-sized execution board
 - **Decisions: `40-decisions.md`** - Go-first, archive aspirational specs, keep agents
 - Worklog: `50-worklog.md`
 
@@ -26,6 +27,7 @@
 - [x] Execute M7: Multi-User & API Maturity
 - [x] Execute M8: Frontend Quality (47 test files, 673 tests, 49% coverage)
 - [x] Execute M9: Observability & Tracing UI (span enrichment → trace query → waterfall UI)
+- [ ] M16: Mission Control Functional UX Standardization (single transport, consistent status UX, visual cleanup)
 - [ ] M10: Live Validation & Stabilization (K8s job driver e2e, MinIO artifacts, gate/webhook live tests)
 - [ ] M11: Loom / MCP Integration (MCP-tool-as-agent, MentatLab-as-MCP-server, agent context bridge)
 - [ ] M12: Agent SDK & Runtime Maturity (structured errors, progress events, TypeScript SDK, checkpoints)
@@ -42,6 +44,14 @@
 5. **Agent SDK gaps** — No structured errors, no progress events, no TypeScript SDK, no state persistence (M12)
 6. **Auth is coarse-grained** — Any valid token accesses any endpoint; needs scope-based authz, audit logging (M13)
 7. **Frontend feature flags disabled** — S3_STORAGE, AUTO_CONNECT, CONSOLE_VIRTUALIZATION need enabling with backend support (M14)
+
+## Key Findings (2026-02-20 UI/UX Planning Refresh)
+
+1. **Connection handling is fragmented in UI code** — `WorkspaceProvider`, `NetworkPanel`, and `StreamingCanvas` each own connection logic instead of one transport/state authority.
+2. **Connection status banner is rendered in multiple places** — duplicated `ConnectionStatusBanner` mounts produce overlapping fixed-position alerts and inconsistent retry behavior.
+3. **Runtime URL defaults are inconsistent** — legacy API clients still default to `localhost:8000`, while orchestrator/gateway config points to `7070/8080`.
+4. **Streaming transport hook exists but is effectively unused** — `useStreamingTransport` is implemented but not wired into main Mission Control flows.
+5. **Visual system mixes professional and neon/cyberpunk styles** — global dark theme and React Flow overrides reduce clarity for production operators.
 
 ## M1 Progress — Complete
 

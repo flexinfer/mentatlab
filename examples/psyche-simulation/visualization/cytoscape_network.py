@@ -64,7 +64,7 @@ class EdgeData:
 
 class CytoscapeNetworkGenerator:
     """Generates Cytoscape.js compatible network data"""
-    
+
     # Agent colors based on psychological archetypes
     AGENT_COLORS = {
         NodeType.EGO: "#4A90E2",        # Blue - conscious self
@@ -73,22 +73,22 @@ class CytoscapeNetworkGenerator:
         NodeType.ANIMA_ANIMUS: "#F5A623", # Gold - inner opposite
         NodeType.SELF: "#7ED321"        # Green - integrated whole
     }
-    
+
     # Edge colors by type
     EDGE_COLORS = {
         EdgeType.COMMUNICATION: "rgba(125,125,125,0.5)",
         EdgeType.EMERGENCY: "rgba(255,87,51,0.8)",
         EdgeType.INFLUENCE: "rgba(155,89,182,0.6)"
     }
-    
+
     def __init__(self):
         self.nodes: Dict[str, NodeData] = {}
         self.edges: Dict[str, EdgeData] = {}
-        
+
     def add_agent_node(
-        self, 
-        agent_id: str, 
-        agent_type: NodeType, 
+        self,
+        agent_id: str,
+        agent_type: NodeType,
         active: bool = True,
         size_multiplier: float = 1.0,
         metadata: Optional[Dict[str, Any]] = None
@@ -104,7 +104,7 @@ class CytoscapeNetworkGenerator:
             metadata=metadata or {}
         )
         self.nodes[agent_id] = node
-        
+
     def add_communication_edge(
         self,
         from_agent: str,
@@ -115,10 +115,10 @@ class CytoscapeNetworkGenerator:
     ):
         """Add a communication edge between agents"""
         edge_id = f"{from_agent}_{to_agent}"
-        
+
         # Adjust width based on weight
         width = max(1.0, min(8.0, weight * 3.0))
-        
+
         edge = EdgeData(
             id=edge_id,
             source=from_agent,
@@ -131,13 +131,13 @@ class CytoscapeNetworkGenerator:
             metadata=metadata or {}
         )
         self.edges[edge_id] = edge
-        
+
     def update_node_activity(self, agent_id: str, active: bool, size_multiplier: float = 1.0):
         """Update node activity status"""
         if agent_id in self.nodes:
             self.nodes[agent_id].active = active
             self.nodes[agent_id].size = 50.0 * size_multiplier
-            
+
     def update_edge_weight(self, from_agent: str, to_agent: str, weight: float):
         """Update edge weight and appearance"""
         edge_id = f"{from_agent}_{to_agent}"
@@ -145,11 +145,11 @@ class CytoscapeNetworkGenerator:
             self.edges[edge_id].weight = weight
             self.edges[edge_id].width = max(1.0, min(8.0, weight * 3.0))
             self.edges[edge_id].active = weight > 0
-            
+
     def generate_cytoscape_elements(self) -> List[Dict[str, Any]]:
         """Generate Cytoscape.js elements array"""
         elements = []
-        
+
         # Add nodes
         for node in self.nodes.values():
             element = {
@@ -168,7 +168,7 @@ class CytoscapeNetworkGenerator:
                 }
             }
             elements.append(element)
-            
+
         # Add edges
         for edge in self.edges.values():
             if edge.active:
@@ -189,9 +189,9 @@ class CytoscapeNetworkGenerator:
                     }
                 }
                 elements.append(element)
-                
+
         return elements
-        
+
     def generate_cytoscape_config(self, container_id: str = "network-graph") -> Dict[str, Any]:
         """Generate complete Cytoscape.js configuration"""
         return {
@@ -205,7 +205,7 @@ class CytoscapeNetworkGenerator:
                 "selectionType": "single"
             }
         }
-        
+
     def _get_default_styles(self) -> List[Dict[str, Any]]:
         """Get default Cytoscape.js styles"""
         return [
@@ -235,7 +235,7 @@ class CytoscapeNetworkGenerator:
             {
                 "selector": "node[type='shadow']",
                 "style": {
-                    "background-color": self.AGENT_COLORS[NodeType.SHADOW], 
+                    "background-color": self.AGENT_COLORS[NodeType.SHADOW],
                     "border-color": "#654321"
                 }
             },
@@ -303,7 +303,7 @@ class CytoscapeNetworkGenerator:
                 }
             }
         ]
-        
+
     def _get_default_layout(self) -> Dict[str, Any]:
         """Get default layout configuration"""
         return {
@@ -321,19 +321,19 @@ class CytoscapeNetworkGenerator:
             "coolingFactor": 0.95,
             "minTemp": 1.0
         }
-        
+
     def get_network_stats(self) -> Dict[str, Any]:
         """Get network statistics"""
         active_nodes = sum(1 for node in self.nodes.values() if node.active)
         active_edges = sum(1 for edge in self.edges.values() if edge.active)
-        
+
         # Calculate degree centrality
         node_degrees = {node_id: 0 for node_id in self.nodes.keys()}
         for edge in self.edges.values():
             if edge.active:
                 node_degrees[edge.source] += 1
                 node_degrees[edge.target] += 1
-                
+
         return {
             "total_nodes": len(self.nodes),
             "active_nodes": active_nodes,
@@ -347,11 +347,11 @@ class CytoscapeNetworkGenerator:
 
 class AgentNetworkVisualizer:
     """High-level interface for agent network visualization"""
-    
+
     def __init__(self):
         self.generator = CytoscapeNetworkGenerator()
         self._initialized = False
-        
+
     def initialize_agent_network(self, agents: Dict[str, Any]):
         """Initialize the network with agent information"""
         # Map agent names to node types
@@ -363,31 +363,31 @@ class AgentNetworkVisualizer:
             "anima/animus": NodeType.ANIMA_ANIMUS,
             "self": NodeType.SELF
         }
-        
+
         for agent_name in agents.keys():
             agent_type = agent_type_mapping.get(
-                agent_name.lower().replace('_agent', ''), 
+                agent_name.lower().replace('_agent', ''),
                 NodeType.EGO
             )
             self.generator.add_agent_node(agent_name, agent_type)
-            
+
         self._initialized = True
-        
+
     def update_from_communication_matrix(self, matrix: Dict[str, Dict[str, float]]):
         """Update network visualization from communication matrix"""
         if not self._initialized:
             return
-            
+
         # Update edges based on communication strength
         for from_agent, targets in matrix.items():
             for to_agent, strength in targets.items():
                 if from_agent != to_agent and strength > 0:
                     self.generator.add_communication_edge(
-                        from_agent, 
-                        to_agent, 
+                        from_agent,
+                        to_agent,
                         weight=strength
                     )
-                    
+
     def update_emergency_communications(self, emergency_paths: List[Tuple[str, str]]):
         """Add emergency communication paths"""
         for from_agent, to_agent in emergency_paths:
@@ -398,23 +398,23 @@ class AgentNetworkVisualizer:
                 edge_type=EdgeType.EMERGENCY,
                 metadata={"emergency": True}
             )
-            
+
     def set_agent_activity(self, agent_activities: Dict[str, bool]):
         """Update agent activity status"""
         for agent_name, active in agent_activities.items():
             size_multiplier = 1.5 if active else 0.8
             self.generator.update_node_activity(agent_name, active, size_multiplier)
-            
+
     def get_cytoscape_config(self, container_id: str = "network-graph") -> str:
         """Get Cytoscape.js configuration as JSON string"""
         config = self.generator.generate_cytoscape_config(container_id)
         return json.dumps(config, indent=2)
-        
+
     def get_network_summary(self) -> Dict[str, Any]:
         """Get comprehensive network summary"""
         stats = self.generator.get_network_stats()
         elements = self.generator.generate_cytoscape_elements()
-        
+
         return {
             "statistics": stats,
             "elements_count": len(elements),
@@ -428,7 +428,7 @@ class AgentNetworkVisualizer:
 if __name__ == "__main__":
     # Create visualizer
     visualizer = AgentNetworkVisualizer()
-    
+
     # Initialize with sample agents
     sample_agents = {
         "ego": {},
@@ -437,9 +437,9 @@ if __name__ == "__main__":
         "anima_animus": {},
         "self": {}
     }
-    
+
     visualizer.initialize_agent_network(sample_agents)
-    
+
     # Sample communication matrix
     sample_matrix = {
         "ego": {"shadow": 0.8, "persona": 0.3, "self": 0.5},
@@ -448,22 +448,22 @@ if __name__ == "__main__":
         "anima_animus": {"self": 0.9, "shadow": 0.3},
         "self": {"ego": 0.4, "anima_animus": 0.7}
     }
-    
+
     visualizer.update_from_communication_matrix(sample_matrix)
-    
+
     # Add emergency communications
     emergency_paths = [("shadow", "self"), ("persona", "anima_animus")]
     visualizer.update_emergency_communications(emergency_paths)
-    
+
     # Set activity status
     activities = {"ego": True, "shadow": True, "persona": False, "anima_animus": True, "self": True}
     visualizer.set_agent_activity(activities)
-    
+
     # Generate configuration
     config = visualizer.get_cytoscape_config()
     print("Cytoscape.js Configuration:")
     print(config[:500] + "..." if len(config) > 500 else config)
-    
+
     # Get summary
     summary = visualizer.get_network_summary()
     print(f"\nNetwork Summary: {json.dumps(summary['statistics'], indent=2)}")

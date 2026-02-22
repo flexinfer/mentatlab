@@ -9,14 +9,14 @@ class PersonaAgent(BaseAgent):
     The Persona represents the social mask we wear in public,
     our adaptation to social expectations and norms.
     """
-    
+
     def __init__(self, llm_config=None):
         super().__init__("Persona", llm_config)
-        
+
     def _create_prompt_template(self):
         """Override to create Persona-specific prompt"""
         from langchain.prompts import PromptTemplate
-        
+
         template = """
 You are the Persona - the social mask, the public face that adapts to external expectations. You embody:
 - Social adaptation and conformity
@@ -43,7 +43,7 @@ Other Agents' Perspectives:
 As the Persona, how do we present ourselves in this situation? What face should we show to the world?
 
 Persona's Response:"""
-        
+
         return PromptTemplate(
             input_variables=["situation", "chat_history", "other_agents"],
             template=template

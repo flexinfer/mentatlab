@@ -8,12 +8,12 @@ import { useCanvasStore } from '@/stores';
 const validateInput = (value: string, type: string): { isValid: boolean; error?: string } => {
   // Sanitize input first
   const sanitized = DOMPurify.sanitize(value);
-  
+
   // Basic length validation
   if (sanitized.length > 1000) {
     return { isValid: false, error: 'Input too long (max 1000 characters)' };
   }
-  
+
   // Type-specific validation
   switch (type) {
     case 'email':
@@ -35,7 +35,7 @@ const validateInput = (value: string, type: string): { isValid: boolean; error?:
       }
       break;
   }
-  
+
   // Check for potentially dangerous patterns
   const dangerousPatterns = [
     /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
@@ -43,13 +43,13 @@ const validateInput = (value: string, type: string): { isValid: boolean; error?:
     /on\w+\s*=/gi,
     /data:text\/html/gi
   ];
-  
+
   for (const pattern of dangerousPatterns) {
     if (pattern.test(sanitized)) {
       return { isValid: false, error: 'Input contains potentially dangerous content' };
     }
   }
-  
+
   return { isValid: true };
 };
 
@@ -106,7 +106,7 @@ const ConfigurationPanel: React.FC = (): React.JSX.Element => { // Explicitly de
     const { name, value } = e.target;
     const type = (e.target as HTMLInputElement).type || (e.target as HTMLSelectElement).type || (e.target as HTMLTextAreaElement).type; // Get type from appropriate element
     const checked = (e.target as HTMLInputElement).checked; // Only for checkboxes
-    
+
     let processedValue: any = value;
     if (type === 'number') {
       processedValue = parseFloat(value);
@@ -121,13 +121,13 @@ const ConfigurationPanel: React.FC = (): React.JSX.Element => { // Explicitly de
     const validation = (type === 'text' || type === 'email' || type === 'url' || type === 'number')
       ? validateInput(value, type)
       : { isValid: true };
-    
+
     // Update validation errors
     setValidationErrors(prev => ({
       ...prev,
       [name]: validation.isValid ? '' : validation.error || 'Invalid input'
     }));
-    
+
     // Only update if validation passes or if it's a non-validated type (like boolean)
     if (validation.isValid) {
       const sanitizedValue = (typeof processedValue === 'string')
@@ -138,7 +138,7 @@ const ConfigurationPanel: React.FC = (): React.JSX.Element => { // Explicitly de
         ...prevData,
         [name]: sanitizedValue,
       }));
-      
+
       if (selectedNodeId) {
         updateNodeConfig(selectedNodeId, { [name]: sanitizedValue });
       }

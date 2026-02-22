@@ -579,22 +579,22 @@ export enum StreamEventType {
   CONNECTED = 'stream:connected',
   DISCONNECTED = 'stream:disconnected',
   RECONNECTING = 'stream:reconnecting',
-  
+
   // Data events
   DATA_RECEIVED = 'stream:data:received',
   DATA_SENT = 'stream:data:sent',
   CHUNK_COMPLETE = 'stream:chunk:complete',
-  
+
   // Quality events
   QUALITY_CHANGED = 'stream:quality:changed',
   BUFFER_LOW = 'stream:buffer:low',
   BUFFER_RECOVERED = 'stream:buffer:recovered',
-  
+
   // Error events
   ERROR_NETWORK = 'stream:error:network',
   ERROR_DECODE = 'stream:error:decode',
   ERROR_PERMISSION = 'stream:error:permission',
-  
+
   // State events
   STATE_CHANGED = 'stream:state:changed',
   METADATA_UPDATED = 'stream:metadata:updated',

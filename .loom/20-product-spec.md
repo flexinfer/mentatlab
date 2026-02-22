@@ -1,4 +1,87 @@
-# Product Spec: MentatLab Docs + flexinfer-site Integration
+# Product Specs
+
+## 2026-02-20 Spec: Mission Control Functional UX Standardization (M16)
+
+### Summary
+
+Stabilize Mission Control so the UI is reliably functional under real backend conditions, then standardize visual and interaction patterns for a professional operator experience. The first milestone is connection reliability and clear runtime feedback; aesthetic polish follows only after functional parity.
+
+### Goals
+
+- Establish one connection/stream transport authority for Mission Control.
+- Remove duplicate/conflicting connection status surfaces.
+- Align frontend runtime defaults with Go gateway/orchestrator ports and routing.
+- Standardize core layout/panel primitives and visual tokens across canvas, bars, and dock.
+- Preserve existing DAG and panel capabilities while reducing cognitive overload.
+
+### Non-Goals
+
+- Rewriting Mission Control architecture from scratch.
+- Building a new design system package in this slice.
+- Shipping new orchestration features (gates/webhooks/cron/etc.) as part of this UX stabilization.
+
+### Users / Stakeholders
+
+- Operators running and debugging flows in Mission Control.
+- Engineers building and validating orchestration features.
+- Product/design owners responsible for platform polish and consistency.
+
+### Functional Requirements
+
+1. Single transport owner for live connection state used by top bar, canvas, network panel, and bottom dock.
+2. One canonical connection status surface (global banner/toast/status bar), with deterministic retry behavior.
+3. URL/base config normalization:
+   - gateway default `http://127.0.0.1:8080` (or runtime origin in browser),
+   - orchestrator default `http://localhost:7070`,
+   - no legacy `localhost:8000` defaults in active path.
+4. Streaming state transitions (`idle/connecting/connected/reconnecting/error`) are reflected consistently in all relevant components.
+5. Legacy `/streaming` route either:
+   - removed, or
+   - feature-flagged and clearly labeled non-primary.
+
+### Non-Functional Requirements
+
+- No regression in existing frontend test pass baseline.
+- TypeScript compile clean (`tsc --noEmit`).
+- Visible latency for status updates < 1 second after transport events.
+- UI text contrast and spacing meet current workspace accessibility baseline.
+
+### UX Requirements
+
+- Clear information hierarchy: run controls, connection state, selected-node context, and console visibility should not compete.
+- Standardized spacing/radius/border/shadow tokens across top bar, sidebars, canvas shell, and bottom dock.
+- Dark theme should be operationally legible (reduced neon/glow noise, restrained accent usage).
+- Connection errors should appear once, with a clear next action.
+
+### Acceptance Criteria
+
+1. With backend offline, user sees one error status and one retry path; no duplicated banners.
+2. With backend online, connect/disconnect/reconnect status transitions are coherent across all controls.
+3. Launching from default dev settings connects to Go stack endpoints without manual URL edits.
+4. `npm run lint` and `npm test -- --run --reporter=dot` pass.
+5. Visual review screenshots show consistent panel chrome and typography across main Mission Control surfaces.
+
+### Sources
+
+- `services/frontend/src/App.tsx:17`
+- `services/frontend/src/App.tsx:18`
+- `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:203`
+- `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:250`
+- `services/frontend/src/components/mission-control/layout/TopBar.tsx:107`
+- `services/frontend/src/components/ui/ConnectionStatusBanner.tsx:36`
+- `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:203`
+- `services/frontend/src/components/mission-control/panels/NetworkPanel.tsx:609`
+- `services/frontend/src/components/StreamingCanvas.tsx:42`
+- `services/frontend/src/components/StreamingCanvas.tsx:89`
+- `services/frontend/src/services/api/apiService.ts:113`
+- `services/frontend/src/config/orchestrator.ts:10`
+- `services/frontend/src/config/orchestrator.ts:75`
+- `services/frontend/src/index.css:49`
+- `services/frontend/tailwind.config.js:18`
+
+---
+
+## 2026-02-18 Spec: MentatLab Docs + flexinfer-site Integration
 
 ## Summary
 

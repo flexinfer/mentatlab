@@ -190,7 +190,7 @@ class EnhancedStream {
               this.endRunIfNeeded('canceled');
             }
           }
-          
+
           if (!this.isManuallyDisconnected && event.code !== 1000) {
             this.handleReconnection();
           } else {
@@ -307,7 +307,7 @@ class EnhancedStream {
   private handleMessage(data: string | ArrayBuffer, normalized?: any): void {
     try {
       let message: StreamingMessage;
-      
+
       if (typeof data === 'string') {
         message = JSON.parse(data);
       } else {
@@ -325,7 +325,7 @@ class EnhancedStream {
       // Update sequence tracking
       if ((message as any).sequence !== undefined) {
         if ((message as any).sequence > this.lastSequenceNumber + 1) {
-          console.warn('[EnhancedStream] Message sequence gap detected:', 
+          console.warn('[EnhancedStream] Message sequence gap detected:',
             this.lastSequenceNumber, '->', (message as any).sequence);
         }
         this.lastSequenceNumber = (message as any).sequence;
@@ -466,7 +466,7 @@ class EnhancedStream {
     console.error('[EnhancedStream] Error message:', message.code, message.message);
     this.stats.lastError = new Error(`${message.code}: ${message.message}`);
     (useStreamingStore.getState() as StreamingState).addStreamError(this.streamId, message);
-    
+
     if (!message.recoverable) {
       this.setConnectionState(StreamConnectionState.ERROR);
     }
@@ -508,7 +508,7 @@ class EnhancedStream {
    * Handle quality adaptation messages
    */
   private handleQualityAdaptation(message: QualityAdaptationMessage): void {
-    console.log('[EnhancedStream] Quality adaptation:', message.currentQuality, 
+    console.log('[EnhancedStream] Quality adaptation:', message.currentQuality,
       'reason:', message.reason);
   }
 
@@ -534,12 +534,12 @@ class EnhancedStream {
         this.ws.send(data);
         this.stats.messagesSent++;
         this.stats.bytesSent += data.length;
-        
+
         // Track messages that need acknowledgment
         if (this.shouldTrackAck(message)) {
           this.pendingAcks.set(message.id!, { message, timestamp: Date.now() });
         }
-        
+
         return true;
       } catch (error) {
         console.error('[EnhancedStream] Failed to send message:', error);

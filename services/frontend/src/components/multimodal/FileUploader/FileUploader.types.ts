@@ -18,19 +18,19 @@ export interface FileUploaderProps {
   maxSize?: number;                   // Max file size in bytes
   maxFiles?: number;                  // Max concurrent files
   multiple?: boolean;                 // Allow multiple file selection
-  
+
   // Handlers
   onUpload?: (files: File[]) => void;
   onProgress?: (progress: UploadProgress) => void;
   onComplete?: (results: MediaReference[]) => void;
   onError?: (error: UploadError) => void;
-  
+
   // Customization
   className?: string;
   disabled?: boolean;
   showPreview?: boolean;
   showProgress?: boolean;
-  
+
   // S3 Configuration
   getPresignedUrl?: (file: File) => Promise<PresignedUrlResponse>;
   chunkSize?: number;  // Default: 5MB

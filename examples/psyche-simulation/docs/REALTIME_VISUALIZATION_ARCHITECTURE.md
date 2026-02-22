@@ -53,25 +53,25 @@ graph TB
         B --> D[Agent Network Viz]
         B --> E[Conversation Analysis]
     end
-    
+
     subgraph "Application Layer"
         F[Agent Network Manager] --> G[Message Queue System]
         G --> H[Communication Router]
         H --> I[Emergency Protocols]
     end
-    
+
     subgraph "Processing Layer"
         J[LLM Wrapper] --> K[Sentiment Pipeline]
         K --> L[Prompt Adaptation]
         L --> M[Performance Monitor]
     end
-    
+
     subgraph "Data Layer"
         N[Memory Management] --> O[Bounded Collections]
         O --> P[Conversation History]
         P --> Q[Metrics Store]
     end
-    
+
     A --> F
     F --> J
     J --> N
@@ -193,13 +193,13 @@ class UserAuthData(TypedDict):
 ```python
 class WebSocketEventManager:
     """Thread-safe manager for WebSocket events with Redis integration"""
-    
+
     def __init__(self, redis_manager=None):
         self.redis_manager = redis_manager
         self.event_queue: Queue[WebSocketEvent] = Queue()
         self.subscribers: Dict[str, List[Callable]] = {}
         self.lock = threading.RLock()
-        
+
     def emit_event(self, event: WebSocketEvent)
     def subscribe(self, event_type: Union[EventType, str], callback: Callable)
     def create_agent_message(self, agent_id: str, recipient: str, content: str, ...)
@@ -273,7 +273,7 @@ class LLMWrapper:
 #### Async Processing Patterns
 ```python
 # From psyche_simulation.py
-async def _get_agent_response(self, agent_name: str, agent: Any, 
+async def _get_agent_response(self, agent_name: str, agent: Any,
                               situation: str, other_agents_output: Dict[str, str]) -> str:
     # Run in thread pool to avoid blocking
     loop = asyncio.get_event_loop()
@@ -301,7 +301,7 @@ flowchart LR
     E --> F[Response Generation]
     F --> G[UI Update]
     G --> H[Real-time Charts]
-    
+
     I[Emergency Events] --> J[Priority Queue]
     J --> K[Immediate Processing]
     K --> L[Alert System]
@@ -403,12 +403,12 @@ The system maintains backward compatibility with Plotly.js visualization:
 async def _update_network_chart(self):
     matrix = self.network.get_communication_matrix()
     fig = go.Figure()
-    
+
     # Add nodes and edges based on communication strength
     node_x = [0, -1, 1, -1, 1]  # Predefined positions
     node_y = [0, -1, -1, 1, 1]
     node_names = list(self.agents.keys())
-    
+
     # Dynamic edge rendering based on communication strength
     for i, from_agent in enumerate(node_names):
         for j, to_agent in enumerate(node_names):
@@ -431,7 +431,7 @@ Production-ready implementation with advanced features:
 // Implemented Cytoscape integration with authentication
 const cy = cytoscape({
   container: document.getElementById('network-graph'),
-  
+
   elements: [
     // Agent nodes with real-time state
     { data: { id: 'ego', label: 'Ego', type: 'primary', state: 'active' } },
@@ -439,14 +439,14 @@ const cy = cytoscape({
     { data: { id: 'anima', label: 'Anima/Animus', type: 'tertiary', state: 'waiting' } },
     { data: { id: 'persona', label: 'Persona', type: 'quaternary', state: 'active' } },
     { data: { id: 'self', label: 'Self', type: 'primary', state: 'integrating' } },
-    
+
     // Dynamic communication edges with authentication
     { data: { source: 'ego', target: 'shadow', weight: 0.8, authenticated: true } },
     { data: { source: 'shadow', target: 'anima', weight: 0.6, authenticated: true } },
     { data: { source: 'anima', target: 'self', weight: 0.9, authenticated: true } },
     { data: { source: 'self', target: 'ego', weight: 0.7, authenticated: true } }
   ],
-  
+
   style: [
     {
       selector: 'node',
@@ -481,7 +481,7 @@ const cy = cytoscape({
       }
     }
   ],
-  
+
   layout: {
     name: 'cose',
     animate: true,
@@ -543,12 +543,12 @@ graph TD
     A --> C[Conversation History]
     A --> D[UI State]
     A --> E[System Metrics]
-    
+
     B --> F[Individual Agent Memory]
     C --> G[Bounded Collections]
     D --> H[Tab States]
     E --> I[Performance Counters]
-    
+
     J[State Persistence] --> K[Memory Cleanup]
     K --> L[Cache Management]
 ```
@@ -565,25 +565,25 @@ The Redis integration has been fully implemented with advanced features for prod
 ```python
 class RedisStateManager:
     """Thread-safe Redis state manager with connection pooling and error handling"""
-    
+
     def __init__(self, redis_url="redis://localhost:6379", db=0, max_connections=50):
         # Connection pooling for performance
         self.pool = redis.ConnectionPool.from_url(
             redis_url, db=db, max_connections=max_connections,
             socket_timeout=5, retry_on_timeout=True, decode_responses=True
         )
-        
+
     # Agent State Management (Implemented)
     def store_agent_state(self, agent_id: str, state: Dict[str, Any], ttl: Optional[int] = None) -> bool
     def get_agent_state(self, agent_id: str) -> Optional[Dict[str, Any]]
     def update_agent_state(self, agent_id: str, updates: Dict[str, Any], ttl: Optional[int] = None) -> bool
-    
+
     # Conversation Management (Implemented)
     def store_conversation(self, agent_id: str, conversation: Dict[str, Any], ttl: int = 3600) -> bool
     def get_conversation_history(self, agent_id: str, limit: int = 100,
                                start_time: Optional[datetime] = None,
                                end_time: Optional[datetime] = None) -> List[Dict[str, Any]]
-    
+
     # Real-time Pub/Sub (Implemented)
     def publish_real_time_update(self, channel: str, data: Dict[str, Any]) -> bool
     def subscribe_to_channel(self, channel: str, callback: Callable[[Dict[str, Any]], None]) -> bool
@@ -602,7 +602,7 @@ def _redis_operation(self, operation_name: str = "operation"):
             logger.warning(f"Redis {operation_name} skipped - no connection")
             yield None
             return
-    
+
     try:
         yield self._client
     except (ConnectionError, TimeoutError) as e:
@@ -618,7 +618,7 @@ def _start_pubsub_thread(self):
     self._pubsub = self._client.pubsub()
     for channel in self._subscribers:
         self._pubsub.subscribe(channel)
-    
+
     self._running = True
     self._pubsub_thread = threading.Thread(
         target=self._pubsub_listener, daemon=True
@@ -666,32 +666,32 @@ conversation_state = {
 ```python
 class PsycheRedisIntegration:
     """Integration layer connecting AgentNetwork with RedisStateManager"""
-    
+
     def __init__(self, agent_network: AgentNetwork, redis_manager: Optional[RedisStateManager] = None,
                  auto_persist: bool = True, conversation_ttl: int = 3600):
         # Automatic message persistence through method hooking
         self._hook_network_events()
-        
+
         # Real-time pub/sub subscriptions
         self._setup_subscriptions()
-    
+
     def _hook_network_events(self):
         """Hook into AgentNetwork to automatically persist messages"""
         original_send_message = self.network.send_message
-        
+
         def enhanced_send_message(from_agent: str, to_agent: str, message: str,
                                 context: Optional[Dict[str, Any]] = None) -> bool:
             success = original_send_message(from_agent, to_agent, message, context)
-            
+
             if success and self.auto_persist:
                 threading.Thread(
                     target=self._persist_message,
                     args=(from_agent, to_agent, message, context),
                     daemon=True
                 ).start()
-            
+
             return success
-        
+
         self.network.send_message = enhanced_send_message
 ```
 
@@ -714,14 +714,14 @@ def create_redis_integrated_network(
     """Create an AgentNetwork with Redis integration"""
     network = AgentNetwork(max_queue_size=max_queue_size)
     redis_manager = RedisStateManager(redis_url=redis_url)
-    
+
     integration = PsycheRedisIntegration(
         agent_network=network,
         redis_manager=redis_manager,
         auto_persist=auto_persist,
         conversation_ttl=conversation_ttl
     )
-    
+
     return network, integration
 ```
 
@@ -745,13 +745,13 @@ graph LR
     B --> C[Conversation Store]
     B --> D[Agent States]
     B --> E[Real-time Pub/Sub]
-    
+
     F[WebSocket Events] --> G[Redis Publisher]
     G --> H[Live Updates]
-    
+
     I[Session Manager] --> J[Session Data]
     J --> K[User Preferences]
-    
+
     L[Performance Monitor] --> M[Metrics Storage]
     M --> N[Historical Analytics]
 ```
@@ -781,7 +781,7 @@ def _enforce_rate_limit():
 for i, (agent_name, agent) in enumerate(self.agents.items()):
     if i > 0:
         await asyncio.sleep(3.0)  # 3 second delay between agents
-    
+
     # Send messages to other agents with additional pacing
     for recipient in self.agents:
         if recipient != agent_name:
@@ -820,7 +820,7 @@ class OptimizedChartManager:
     def __init__(self):
         self.update_queue = asyncio.Queue()
         self.last_update = {}
-        
+
     async def queue_update(self, chart_id, data):
         # Throttle updates to prevent overwhelming
         now = asyncio.get_event_loop().time()
@@ -883,7 +883,7 @@ class CircuitBreaker:
 # From agents/network.py
 def update_conversation_state(self, conversation_state: Dict[str, float]):
     stagnation = conversation_state.get('stagnation', 0.0)
-    
+
     # Activate emergency communication paths
     if stagnation > COMMUNICATION_CONFIG['emergency_threshold'] and not self.emergency_mode:
         self.emergency_mode = True
@@ -919,7 +919,7 @@ async def _update_visualizations(self):
     # Update network visualization
     if self.network_chart:
         await self._update_network_chart()
-    
+
     # Update sentiment chart
     if self.sentiment_chart:
         await self._update_sentiment_chart()
@@ -934,7 +934,7 @@ async def _update_health_indicators(self, state: Dict[str, float]):
             # Determine health color
             if metric in ['stagnation', 'repetition']:
                 color = 'red' if value > 0.7 else 'yellow' if value > 0.4 else 'green'
-            
+
             indicator = self.health_indicators[metric]
             indicator['progress'].set_value(value)
             indicator['label'].set_text(f'{value:.3f}')
@@ -950,7 +950,7 @@ class AgentNetworkGraph(ui.element):
         self.agents = agents
         self.connections = connections
         self._setup_plotly_graph()
-    
+
     def update_network(self, new_data):
         self._props['data'] = new_data
         self.update()
@@ -1032,7 +1032,7 @@ async def create_session(
         user_profile = self.user_manager.get_user_by_id(user_id)
         if not user_profile:
             return False, "User not found", None, None
-        
+
         # Generate session ID and create session data
         session_id = self._generate_session_id()
         session_data = SessionData(
@@ -1045,18 +1045,18 @@ async def create_session(
             expires_at=datetime.now() + timedelta(hours=self.session_timeout_hours),
             metadata=metadata or {}
         )
-        
+
         # Create session handler and JWT token
         handler = SessionHandler(session_data, self.redis_manager, self.user_manager)
         permissions = await self.permission_manager.get_user_permissions(user_id)
         jwt_token = self._generate_jwt_token(user_id, session_id, list(permissions))
-        
+
         # Store session with automatic cleanup
         with self.lock:
             self.session_handlers[session_id] = handler
-        
+
         return True, "Session created successfully", session_id, jwt_token
-        
+
     except Exception as e:
         logger.error(f"Error creating session: {e}")
         return False, "Failed to create session", None, None
@@ -1072,7 +1072,7 @@ class MultiUserSessionManager:
         self.user_manager = UserManager(redis_manager)
         self.active_sessions: Dict[str, SessionHandler] = {}
         self.user_sessions: Dict[str, List[str]] = {}  # user_id -> session_ids
-        
+
     def create_user_session(self, user_id: str, session_type: SessionType = SessionType.SINGLE_USER):
         """Create isolated user session with authentication."""
         # Create authenticated session
@@ -1080,27 +1080,27 @@ class MultiUserSessionManager:
             user_id=user_id,
             session_type=session_type
         )
-        
+
         if success:
             # Track user sessions for management
             if user_id not in self.user_sessions:
                 self.user_sessions[user_id] = []
             self.user_sessions[user_id].append(session_id)
-            
+
             # Set up session-specific agent pools
             session_handler = self.session_manager.get_session_handler(session_id)
             if session_handler:
                 self._initialize_agent_pool(session_handler)
-            
+
             return session_handler, jwt_token
-        
+
         return None, None
-    
+
     def _initialize_agent_pool(self, session_handler: SessionHandler):
         """Initialize agent network for session."""
         # Create isolated agent network for this session
         agent_network = AgentNetwork(max_queue_size=100)
-        
+
         # Set up Redis integration for the session
         redis_integration = PsycheRedisIntegration(
             agent_network=agent_network,
@@ -1139,9 +1139,9 @@ if __name__ == '__main__':
         redis_url=os.getenv('REDIS_URL', 'redis://localhost:6379'),
         max_connections=50
     )
-    
+
     multi_user_manager = MultiUserSessionManager(redis_manager)
-    
+
     create_ui(multi_user_manager)
     ui.run(
         title='Psyche Simulation',
@@ -1388,18 +1388,18 @@ class Permission(str, Enum):
     SYSTEM_ADMIN = "system:admin"
     SYSTEM_CONFIG = "system:config"
     SYSTEM_MONITOR = "system:monitor"
-    
+
     # Agent permissions
     AGENT_CREATE = "agent:create"
     AGENT_MODIFY = "agent:modify"
     AGENT_DELETE = "agent:delete"
     AGENT_VIEW = "agent:view"
-    
+
     # Session permissions
     SESSION_CREATE = "session:create"
     SESSION_MANAGE = "session:manage"
     SESSION_VIEW = "session:view"
-    
+
     # Data permissions
     DATA_EXPORT = "data:export"
     DATA_IMPORT = "data:import"
@@ -1424,17 +1424,17 @@ class SecurityEventType(str, Enum):
     LOGOUT = "auth.logout"
     TOKEN_REFRESH = "auth.token.refresh"
     TOKEN_REVOKED = "auth.token.revoked"
-    
+
     # Authorization events
     ACCESS_GRANTED = "authz.access.granted"
     ACCESS_DENIED = "authz.access.denied"
     PERMISSION_CHANGED = "authz.permission.changed"
-    
+
     # Session events
     SESSION_CREATED = "session.created"
     SESSION_EXPIRED = "session.expired"
     SESSION_TERMINATED = "session.terminated"
-    
+
     # Security events
     SUSPICIOUS_ACTIVITY = "security.suspicious"
     RATE_LIMIT_EXCEEDED = "security.rate_limit"
@@ -1458,7 +1458,7 @@ class SecurityAuditLogger:
             '%(asctime)s - %(levelname)s - %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        
+
     def log_security_event(
         self,
         event_type: Union[SecurityEventType, str],
@@ -1478,9 +1478,9 @@ class SecurityAuditLogger:
             "ip_address": ip_address,
             "details": details or {}
         }
-        
+
         log_message = json.dumps(event_data, ensure_ascii=False)
-        
+
         # Map severity to log level
         if severity == SecurityEventSeverity.CRITICAL:
             self.logger.critical(log_message)
@@ -1502,17 +1502,17 @@ class JWTMiddleware:
         self.secret_key = secret_key
         self.algorithm = "HS256"
         self.token_blacklist = TokenBlacklist(redis_manager)
-        
+
     async def validate_token(self, token: str) -> Optional[TokenInfo]:
         """Validate JWT token with comprehensive security checks."""
         try:
             # Check blacklist first (fast Redis lookup)
             if await self.token_blacklist.is_blacklisted(token):
                 return None
-            
+
             # Decode and validate token
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-            
+
             # Extract token information
             token_info = TokenInfo(
                 user_id=payload.get("user_id"),
@@ -1522,9 +1522,9 @@ class JWTMiddleware:
                 issued_at=datetime.fromtimestamp(payload.get("iat", 0)),
                 expires_at=datetime.fromtimestamp(payload.get("exp", 0))
             )
-            
+
             return token_info
-            
+
         except jwt.ExpiredSignatureError:
             return None
         except jwt.InvalidTokenError:
@@ -1542,15 +1542,15 @@ def require_auth(permissions: Optional[List[Permission]] = None):
             token = extract_token_from_request()
             if not token:
                 raise UnauthorizedError("Authentication required")
-            
+
             token_info = await jwt_middleware.validate_token(token)
             if not token_info:
                 raise UnauthorizedError("Invalid or expired token")
-            
+
             if permissions:
                 if not has_permissions(token_info.permissions, permissions):
                     raise ForbiddenError("Insufficient permissions")
-            
+
             return await func(token_info, *args, **kwargs)
         return wrapper
     return decorator
@@ -1571,11 +1571,11 @@ class SecurityMonitor:
     def __init__(self, redis_manager: RedisStateManager):
         self.redis_manager = redis_manager
         self.audit_logger = SecurityAuditLogger()
-        
+
     async def monitor_login_attempts(self, user_id: str, ip_address: str, success: bool):
         """Monitor and track login attempts for abuse detection."""
         key = f"login_attempts:{user_id}:{ip_address}"
-        
+
         if success:
             # Clear failed attempts on successful login
             await self.redis_manager.delete_key(key)
@@ -1588,7 +1588,7 @@ class SecurityMonitor:
         else:
             # Increment failed attempts
             attempts = await self.redis_manager.increment_counter(key, ttl=900)  # 15 minutes
-            
+
             await self.audit_logger.log_security_event(
                 SecurityEventType.LOGIN_FAILURE,
                 SecurityEventSeverity.MEDIUM,
@@ -1596,7 +1596,7 @@ class SecurityMonitor:
                 ip_address=ip_address,
                 details={"failed_attempts": attempts}
             )
-            
+
             # Lock account after 5 failed attempts
             if attempts >= 5:
                 await self.lock_account(user_id, duration=900)  # 15 minutes
@@ -1626,24 +1626,24 @@ SECURITY_CONFIG = {
     "jwt_secret": os.environ.get("JWT_SECRET"),  # Must be set in production
     "jwt_expiration_hours": 24,
     "jwt_refresh_threshold_hours": 4,
-    
+
     # Session settings
     "session_timeout_hours": 24,
     "max_concurrent_sessions": 5,
     "session_cleanup_interval": 3600,
-    
+
     # Rate limiting
     "rate_limit_requests_per_minute": 100,
     "rate_limit_burst_size": 10,
     "brute_force_threshold": 5,
     "account_lockout_duration": 900,
-    
+
     # Security features
     "enable_audit_logging": True,
     "audit_log_retention_days": 30,
     "enable_suspicious_activity_detection": True,
     "enable_ip_blacklisting": True,
-    
+
     # CORS settings
     "cors_allowed_origins": ["https://yourdomain.com"],
     "cors_allowed_methods": ["GET", "POST", "PUT", "DELETE"],
@@ -1903,12 +1903,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    
+
     - name: Build Docker image
       run: |
         docker build -t psyche-sim:${{ github.sha }} .
         docker tag psyche-sim:${{ github.sha }} psyche-sim:latest
-    
+
     - name: Push to Registry
       env:
         REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
@@ -1916,7 +1916,7 @@ jobs:
         echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin $REGISTRY
         docker push $REGISTRY/psyche-sim:${{ github.sha }}
         docker push $REGISTRY/psyche-sim:latest
-    
+
     - name: Deploy to Kubernetes
       env:
         KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
@@ -1944,7 +1944,7 @@ router = APIRouter(prefix="/api/v1")
 async def health_check():
     """
     Health check endpoint for Kubernetes probes
-    
+
     Returns:
         dict: Health status with component checks
     """
@@ -1954,7 +1954,7 @@ async def health_check():
         "version": "1.0.0",
         "components": {}
     }
-    
+
     # Check Redis
     try:
         redis_status = await check_redis_health()
@@ -1965,7 +1965,7 @@ async def health_check():
             "error": str(e)
         }
         health_status["status"] = "degraded"
-    
+
     # Check WebSocket
     try:
         ws_status = await check_websocket_health()
@@ -1976,14 +1976,14 @@ async def health_check():
             "error": str(e)
         }
         health_status["status"] = "degraded"
-    
+
     return health_status
 
 @router.get("/ready")
 async def readiness_check():
     """
     Readiness check endpoint for Kubernetes
-    
+
     Returns:
         dict: Readiness status
     """
@@ -1991,16 +1991,16 @@ async def readiness_check():
         "ready": True,
         "timestamp": datetime.utcnow().isoformat()
     }
-    
+
     # Check if all required services are ready
     if not await is_redis_ready():
         ready_status["ready"] = False
         ready_status["reason"] = "Redis not ready"
-    
+
     if not await is_database_ready():
         ready_status["ready"] = False
         ready_status["reason"] = "Database not ready"
-    
+
     return ready_status
 ```
 
@@ -2031,13 +2031,13 @@ class LoginResponse(BaseModel):
 async def login(request: LoginRequest):
     """
     Authenticate user and create session
-    
+
     Args:
         request: Login credentials
-        
+
     Returns:
         LoginResponse: JWT tokens and user info
-        
+
     Raises:
         HTTPException: 401 if authentication fails
     """
@@ -2046,32 +2046,32 @@ async def login(request: LoginRequest):
         request.username,
         request.password
     )
-    
+
     if not user:
         raise HTTPException(
             status_code=401,
             detail="Invalid credentials"
         )
-    
+
     # Create session
     success, message, session_id, jwt_token = \
         await session_manager.create_session(
             user_id=user.user_id,
             metadata={"device_id": request.device_id}
         )
-    
+
     if not success:
         raise HTTPException(
             status_code=500,
             detail="Failed to create session"
         )
-    
+
     # Generate refresh token
     refresh_token = await generate_refresh_token(
         user_id=user.user_id,
         session_id=session_id
     )
-    
+
     return LoginResponse(
         access_token=jwt_token,
         refresh_token=refresh_token,
@@ -2091,13 +2091,13 @@ async def login(request: LoginRequest):
 async def refresh_token(refresh_token: str):
     """
     Refresh access token using refresh token
-    
+
     Args:
         refresh_token: Valid refresh token
-        
+
     Returns:
         dict: New access token
-        
+
     Raises:
         HTTPException: 401 if refresh token invalid
     """
@@ -2108,13 +2108,13 @@ async def refresh_token(refresh_token: str):
             status_code=401,
             detail="Invalid refresh token"
         )
-    
+
     # Generate new access token
     new_token = await generate_access_token(
         user_id=token_data["user_id"],
         session_id=token_data["session_id"]
     )
-    
+
     return {
         "access_token": new_token,
         "token_type": "bearer",
@@ -2130,10 +2130,10 @@ async def logout(
 ):
     """
     Logout user and invalidate session
-    
+
     Args:
         token_info: Validated token information
-        
+
     Returns:
         dict: Logout status
     """
@@ -2141,13 +2141,13 @@ async def logout(
     success = await session_manager.terminate_session(
         token_info.session_id
     )
-    
+
     # Blacklist token
     await token_blacklist.add_token(
         token_info.access_token,
         expires_at=token_info.expires_at
     )
-    
+
     # Log security event
     await security_logger.log_security_event(
         SecurityEventType.LOGOUT,
@@ -2155,7 +2155,7 @@ async def logout(
         user_id=token_info.user_id,
         session_id=token_info.session_id
     )
-    
+
     return {"status": "success", "message": "Logged out successfully"}
 ```
 
@@ -2174,18 +2174,18 @@ async def validate_token(
 ) -> TokenInfo:
     """
     Validate JWT token from Authorization header
-    
+
     Args:
         credentials: Bearer token from header
-        
+
     Returns:
         TokenInfo: Validated token information
-        
+
     Raises:
         HTTPException: 401 if token invalid
     """
     token = credentials.credentials
-    
+
     # Validate token
     token_info = await jwt_middleware.validate_token(token)
     if not token_info:
@@ -2194,7 +2194,7 @@ async def validate_token(
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"}
         )
-    
+
     return token_info
 ```
 
@@ -2213,7 +2213,7 @@ async def rate_limit_middleware(request: Request, call_next):
     """
     # Check rate limit
     key = f"rate_limit:{get_remote_address(request)}"
-    
+
     try:
         # Apply rate limit (100 requests per minute)
         await limiter.check_rate_limit(
@@ -2227,12 +2227,12 @@ async def rate_limit_middleware(request: Request, call_next):
             SecurityEventSeverity.MEDIUM,
             ip_address=get_remote_address(request)
         )
-        
+
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded"
         )
-    
+
     response = await call_next(request)
     return response
 ```
@@ -2263,7 +2263,7 @@ from typing import Dict
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
-        
+
     async def connect(
         self,
         websocket: WebSocket,
@@ -2278,15 +2278,15 @@ class ConnectionManager:
         if not token_info:
             await websocket.close(code=4001, reason="Unauthorized")
             return False
-        
+
         # Accept connection
         await websocket.accept()
         self.active_connections[session_id] = websocket
-        
+
         # Send initial state
         await self.send_initial_state(session_id)
         return True
-    
+
     async def disconnect(self, session_id: str):
         """
         Handle WebSocket disconnection
@@ -2310,12 +2310,12 @@ async def websocket_endpoint(
     connected = await manager.connect(websocket, session_id, token)
     if not connected:
         return
-    
+
     try:
         while True:
             # Receive message
             data = await websocket.receive_json()
-            
+
             # Handle different event types
             if data["type"] == "agent_command":
                 await handle_agent_command(session_id, data)
@@ -2323,7 +2323,7 @@ async def websocket_endpoint(
                 await handle_ui_interaction(session_id, data)
             elif data["type"] == "subscribe":
                 await handle_subscription(session_id, data)
-                
+
     except WebSocketDisconnect:
         await manager.disconnect(session_id)
     except Exception as e:
@@ -2390,29 +2390,29 @@ app = FastAPI(
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-        
+
     openapi_schema = get_openapi(
         title="Psyche Simulation API",
         version="1.0.0",
         description="""
         ## Overview
         The Psyche Simulation API provides real-time access to psychological agent simulations.
-        
+
         ## Authentication
         All API endpoints require JWT authentication. Include the token in the Authorization header:
         ```
         Authorization: Bearer <your-token>
         ```
-        
+
         ## Rate Limiting
         API requests are limited to 100 requests per minute per IP address.
-        
+
         ## WebSocket
         Real-time updates are available through WebSocket connections at `/ws/{session_id}`.
         """,
         routes=app.routes,
     )
-    
+
     # Add security schemes
     openapi_schema["components"]["securitySchemes"] = {
         "bearerAuth": {
@@ -2421,7 +2421,7 @@ def custom_openapi():
             "bearerFormat": "JWT"
         }
     }
-    
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 

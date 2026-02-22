@@ -239,13 +239,13 @@ def _emit_stream_message(msg: Dict[str, Any]) -> None:
 
 class CTMProcessor:
     """Main CTM processing engine."""
-    
+
     def __init__(self, config: CTMConfig):
         self.config = config
         if torch is None:
             raise RuntimeError("PyTorch is not available in this image. Install torch or use a compatible image.")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+
         # Initialize CTM components
         self.timekeeper = TimeKeeper(config.tick)
         self.memory = SlidingMemory(config.compute.history_len)
@@ -255,48 +255,48 @@ class CTMProcessor:
         self.attention = AttentionRouter(config.compute, self.device)
         self.halting = HaltingController(config.halting)
         self.telemetry = TelemetryBus(config.telemetry)
-        
+
     def process_tick(self, input_embedding: torch.Tensor, tick: int) -> Dict[str, Any]:
         """Process a single tick of the CTM."""
         tick_data = {"tick": tick}
-        
+
         # Get pre-activations from memory
         pre_activations = self.memory.get_window()
-        
+
         # Neuron processing with oscillations
         neuron_outputs = self.neuron_pool.forward(
-            input_embedding, 
+            input_embedding,
             pre_activations,
             tick
         )
         tick_data["neuron_outputs"] = neuron_outputs
-        
+
         # Synapse aggregation
         aggregated = self.synapse.aggregate(neuron_outputs)
         tick_data["aggregated"] = aggregated
-        
+
         # Synchronization computation
         sync_scores = self.sync_matrix.compute(neuron_outputs)
         tick_data["sync_scores"] = sync_scores
-        
+
         # Attention routing
         attended = self.attention.route(aggregated, sync_scores)
         tick_data["attended"] = attended
-        
+
         # Store in memory
         self.memory.push(attended)
-        
+
         # Compute certainty for halting
         certainty = self.halting.compute_certainty(attended, sync_scores)
         tick_data["certainty"] = certainty
-        
+
         return tick_data
-    
+
     async def run_streaming(self, prompt: str, agent_id: str, stream_id: str):
         """Run CTM in streaming mode with telemetry."""
         # Initial embedding from prompt
         input_embedding = self._encode_prompt(prompt)
-        
+
         # Stream start event
         start_msg = {
             "id": str(uuid.uuid4()),
@@ -308,12 +308,12 @@ class CTMProcessor:
             "sequence": 0
         }
         _emit_stream_message(start_msg)
-        
+
         sequence = 1
         tick = 0
         should_halt = False
         final_output = None
-        
+
         while tick < self.config.tick.max_ticks and not should_halt:
             # Tick start event
             tick_msg = {
@@ -327,10 +327,10 @@ class CTMProcessor:
             }
             _emit_stream_message(tick_msg)
             sequence += 1
-            
+
             # Process tick
             tick_data = self.process_tick(input_embedding, tick)
-            
+
             # Neuron fire events (sample a few)
             if tick % 5 == 0:  # Every 5 ticks
                 for i in range(min(3, self.config.compute.num_neurons)):
@@ -349,7 +349,7 @@ class CTMProcessor:
                     }
                     _emit_stream_message(neuron_msg)
                     sequence += 1
-            
+
             # Sync update event
             if tick % 3 == 0:
                 sync_msg = {
@@ -366,7 +366,7 @@ class CTMProcessor:
                 }
                 _emit_stream_message(sync_msg)
                 sequence += 1
-            
+
             # Attention route event
             if tick % 4 == 0:
                 attn_msg = {
@@ -383,7 +383,7 @@ class CTMProcessor:
                 }
                 _emit_stream_message(attn_msg)
                 sequence += 1
-            
+
             # Progress event
             progress_msg = {
                 "id": str(uuid.uuid4()),
@@ -399,12 +399,12 @@ class CTMProcessor:
             }
             _emit_stream_message(progress_msg)
             sequence += 1
-            
+
             # Check halting condition
             should_halt = self.halting.should_halt(tick_data["certainty"])
             if should_halt:
                 final_output = tick_data["attended"]
-            
+
             # Status update
             status_msg = {
                 "id": str(uuid.uuid4()),
@@ -422,17 +422,17 @@ class CTMProcessor:
             }
             _emit_stream_message(status_msg)
             sequence += 1
-            
+
             tick += 1
             await asyncio.sleep(self.config.tick.tick_interval)
-        
+
         # Final output
         if final_output is None:
             final_output = self.process_tick(input_embedding, tick)["attended"]
-        
+
         # Generate text from final output
         final_text = self._decode_output(final_output)
-        
+
         # Final text stream
         final_msg = {
             "id": str(uuid.uuid4()),
@@ -447,7 +447,7 @@ class CTMProcessor:
         }
         _emit_stream_message(final_msg)
         sequence += 1
-        
+
         # Stream end
         end_msg = {
             "id": str(uuid.uuid4()),
@@ -464,30 +464,30 @@ class CTMProcessor:
             "sequence": sequence
         }
         _emit_stream_message(end_msg)
-        
+
         return final_text, tick
-    
+
     def _encode_prompt(self, prompt: str) -> torch.Tensor:
         """Encode prompt to embedding (simplified)."""
         # Simple hash-based encoding for demonstration
         hash_val = hash(prompt) % (2**32)
         torch.manual_seed(hash_val)
         return torch.randn(1, self.config.compute.model_dim, device=self.device)
-    
+
     def _decode_output(self, output: torch.Tensor) -> str:
         """Decode output tensor to text (simplified)."""
         # Generate deterministic text based on output statistics
         mean_val = output.mean().item()
         std_val = output.std().item()
         norm_val = output.norm().item()
-        
+
         responses = [
             f"CTM converged with high certainty (μ={mean_val:.3f}, σ={std_val:.3f})",
             f"Temporal processing stabilized at norm {norm_val:.3f}",
             f"Neuron synchronization achieved equilibrium",
             f"Adaptive computation completed with final state statistics: mean={mean_val:.3f}",
         ]
-        
+
         # Select response based on output characteristics
         idx = int(abs(mean_val * 100)) % len(responses)
         return responses[idx]
@@ -499,20 +499,20 @@ def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> D
     """
     config = load_config_from_env()
     processor = CTMProcessor(config)
-    
+
     prompt = ""
     if isinstance(spec, dict) and isinstance(spec.get("prompt"), str):
         prompt = spec["prompt"].strip()
     else:
         prompt = str(spec) if spec is not None else " "
-    
+
     # Run CTM for a fixed number of ticks
     input_embedding = processor._encode_prompt(prompt)
-    
+
     tick_history = []
     final_output = None
     final_tick = 0
-    
+
     for tick in range(config.tick.max_ticks):
         tick_data = processor.process_tick(input_embedding, tick)
         tick_history.append({
@@ -520,18 +520,18 @@ def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> D
             "certainty": float(tick_data["certainty"]),
             "sync_mean": float(tick_data["sync_scores"].mean().item()),
         })
-        
+
         if processor.halting.should_halt(tick_data["certainty"]):
             final_output = tick_data["attended"]
             final_tick = tick
             break
-        
+
         final_output = tick_data["attended"]
         final_tick = tick
-    
+
     # Generate result
     final_text = processor._decode_output(final_output)
-    
+
     result = {
         "text": final_text,
         "ctm_stats": {
@@ -543,10 +543,10 @@ def process(spec: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> D
         },
         "tick_history": tick_history[:10]  # First 10 ticks for summary
     }
-    
+
     if context is not None:
         result["context_received"] = context
-    
+
     return result
 
 
@@ -574,15 +574,15 @@ def main() -> int:
             out = make_output(err, start_time, end_time)
             print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
             return 1
-        
+
         spec = incoming.get("spec") if isinstance(incoming, dict) else incoming
         context = incoming.get("context") if isinstance(incoming, dict) else None
-        
+
         # Configure CloudEvents from environment
         ce_enabled = _env_flag_true(os.environ.get("CE_ENABLED"))
         ce_source = os.environ.get("CTM_CE_SOURCE", "/mentatlab/agent/ctm-cogpack")
         ce_version = os.environ.get("CTM_CE_VERSION", "1.0")
-        
+
         execution_id: Optional[str] = None
         if isinstance(incoming, dict):
             v = incoming.get("execution_id")
@@ -592,19 +592,19 @@ def main() -> int:
             v = context.get("execution_id")
             if isinstance(v, str) and v:
                 execution_id = v
-        
+
         _CE_CONFIG.update({
             "enabled": ce_enabled,
             "source": ce_source,
             "specversion": ce_version,
             "execution_id": execution_id,
         })
-        
+
         # Check for streaming mode
         mode = None
         if isinstance(spec, dict):
             mode = spec.get("mode")
-        
+
         # Determine if we should use vLLM backend
         vllm_base = os.environ.get("VLLM_BASE_URL", "").strip()
         use_vllm = _env_flag_true(os.environ.get("CTM_USE_VLLM", "1")) and bool(vllm_base)
@@ -692,10 +692,10 @@ def main() -> int:
                 result_payload = {"text": text, "backend": "vllm"}
             else:
                 result_payload = process(spec or {}, context)
-        
+
         end_time = time.time()
         output = make_output(result_payload, start_time, end_time)
-        
+
         # Emit final result
         if _CE_CONFIG.get("enabled"):
             final_envelope = make_cloudevent(
@@ -710,7 +710,7 @@ def main() -> int:
             print(json.dumps(output, separators=(",", ":"), ensure_ascii=False))
         sys.stdout.flush()
         return 0
-        
+
     except Exception as exc:
         end_time = time.time()
         tb = traceback.format_exc()

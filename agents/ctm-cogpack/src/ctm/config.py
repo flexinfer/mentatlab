@@ -52,7 +52,7 @@ class CTMConfig:
     compute: ComputeConfig
     halting: HaltingConfig
     telemetry: TelemetryConfig
-    
+
     def to_dict(self) -> dict:
         """Convert config to dictionary."""
         return {
@@ -65,30 +65,30 @@ class CTMConfig:
 
 def load_config_from_env() -> CTMConfig:
     """Load configuration from environment variables."""
-    
+
     def get_env_int(key: str, default: int) -> int:
         try:
             return int(os.environ.get(key, str(default)))
         except ValueError:
             return default
-    
+
     def get_env_float(key: str, default: float) -> float:
         try:
             return float(os.environ.get(key, str(default)))
         except ValueError:
             return default
-    
+
     def get_env_bool(key: str, default: bool) -> bool:
         val = os.environ.get(key, str(default)).lower()
         return val in ("true", "1", "yes", "on")
-    
+
     # Load tick config
     tick = TickConfig(
         tick_interval=get_env_float("CTM_TICK_INTERVAL", 0.1),
         max_ticks=get_env_int("CTM_MAX_TICKS", 48),
         time_encoding_dim=get_env_int("CTM_TIME_ENCODING_DIM", 16),
     )
-    
+
     # Load compute config
     compute = ComputeConfig(
         num_neurons=get_env_int("CTM_NEURONS", 128),
@@ -98,7 +98,7 @@ def load_config_from_env() -> CTMConfig:
         history_len=get_env_int("CTM_HISTORY_LEN", 32),
         dropout=get_env_float("CTM_DROPOUT", 0.1),
     )
-    
+
     # Load halting config
     halting = HaltingConfig(
         certainty_threshold=get_env_float("CTM_CERTAINTY_THRESHOLD", 0.92),
@@ -106,7 +106,7 @@ def load_config_from_env() -> CTMConfig:
         stability_window=get_env_int("CTM_STABILITY_WINDOW", 3),
         stability_epsilon=get_env_float("CTM_STABILITY_EPSILON", 0.01),
     )
-    
+
     # Load telemetry config
     telemetry = TelemetryConfig(
         enabled=get_env_bool("CTM_TELEMETRY_ENABLED", True),
@@ -115,7 +115,7 @@ def load_config_from_env() -> CTMConfig:
         emit_sync_events=get_env_bool("CTM_EMIT_SYNC_EVENTS", True),
         emit_attention_events=get_env_bool("CTM_EMIT_ATTENTION_EVENTS", True),
     )
-    
+
     return CTMConfig(
         tick=tick,
         compute=compute,

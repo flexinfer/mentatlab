@@ -5,7 +5,7 @@ test.describe('Health Check Tests', () => {
     const response = await request.get('http://localhost:8000/healthz');
     expect(response.ok()).toBeTruthy();
     expect(response.status()).toBe(200);
-    
+
     const data = await response.json();
     expect(data).toHaveProperty('status', 'ok');
     expect(data).toHaveProperty('streaming_enabled', true);
@@ -15,7 +15,7 @@ test.describe('Health Check Tests', () => {
     const response = await request.get('http://localhost:8001/healthz');
     expect(response.ok()).toBeTruthy();
     expect(response.status()).toBe(200);
-    
+
     const data = await response.json();
     expect(data).toHaveProperty('status', 'healthy');
   });
@@ -24,7 +24,7 @@ test.describe('Health Check Tests', () => {
     const response = await request.get('http://localhost:8000/');
     expect(response.ok()).toBeTruthy();
     expect(response.status()).toBe(200);
-    
+
     const data = await response.json();
     expect(data).toHaveProperty('message');
     expect(data).toHaveProperty('version');

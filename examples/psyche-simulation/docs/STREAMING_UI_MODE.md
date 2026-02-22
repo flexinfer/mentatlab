@@ -28,7 +28,7 @@ python psyche_simulation.py
 - Traditional page-based navigation
 - Established and tested functionality
 
-### Streaming UI  
+### Streaming UI
 - Single-page application with expandable sections
 - Optimized for real-time updates
 - Modern, streamlined interface

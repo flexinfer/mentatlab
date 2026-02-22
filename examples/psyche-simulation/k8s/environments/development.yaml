@@ -14,7 +14,7 @@ data:
   LOG_LEVEL: "DEBUG"
   PORT: "8080"
   HOST: "0.0.0.0"
-  
+
   # Redis Configuration
   REDIS_HOST: "redis-service"
   REDIS_PORT: "6379"
@@ -22,7 +22,7 @@ data:
   REDIS_MAX_CONNECTIONS: "10"
   REDIS_SOCKET_TIMEOUT: "5"
   REDIS_RETRY_ON_TIMEOUT: "true"
-  
+
   # LLM Configuration
   LLM_API_URL: "http://litellm.flexinfer.ai/v1/chat/completions"
   LLM_MODEL: "deepseek-r1-abliterated"
@@ -34,34 +34,34 @@ data:
   LLM_RETRY_DELAY: "2.0"
   LLM_MAX_RETRY_DELAY: "30.0"
   LLM_MAX_CONCURRENT_REQUESTS: "2"
-  
+
   # Session Configuration
   SESSION_AUTO_SAVE_INTERVAL: "120"
   SESSION_MAX_CONVERSATION_HISTORY: "50"
   SESSION_THINKING_INTERVAL: "10"
-  
+
   # WebSocket Configuration
   WEBSOCKET_ENABLE_REDIS: "true"
   WEBSOCKET_REDIS_CHANNEL: "websocket_events_dev"
-  
+
   # Health Check Configuration
   HEALTH_CHECK_INTERVAL: "15"
   HEALTH_CHECK_TIMEOUT: "5"
   HEALTH_CHECK_REDIS_TIMEOUT: "3"
-  
+
   # Performance Monitoring
   METRICS_ENABLED: "true"
   METRICS_PORT: "9090"
   METRICS_PATH: "/metrics"
-  
+
   # Security Configuration
   JWT_EXPIRATION_HOURS: "8"
   BCRYPT_ROUNDS: "10"
-  
+
   # Export Configuration
   EXPORT_FORMATS: "html,markdown,json"
   EXPORT_DEFAULT_FORMAT: "json"
-  
+
   # UI Configuration
   UI_TITLE: "Psyche Simulation - Development"
   UI_THEME: "dark"

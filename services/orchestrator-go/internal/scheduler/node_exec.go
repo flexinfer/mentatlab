@@ -62,72 +62,34 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 			}
 		}
 
-		// Dispatch based on node type
-		if spec.IsControlFlow() {
-			// Gate nodes have special handling — they block until approval
-			if spec.Gate != nil {
-				s.executeGate(nodeCtx, rctx, nodeID, spec)
-				return
-			}
+		// Resolve executor
+		nodeType := "agent"
+		if spec.Gate != nil {
+			nodeType = "gate"
+		} else if spec.Conditional != nil {
+			nodeType = "conditional"
+		} else if spec.ForEach != nil {
+			nodeType = "foreach"
+		}
 
-			var err error
-			switch {
-			case spec.Conditional != nil:
-				err = s.executeConditional(ctx, rctx, spec)
-			case spec.ForEach != nil:
-				err = s.executeForEach(ctx, rctx, spec)
-			// Subflow not yet implemented
-			default:
-				err = fmt.Errorf("unknown control flow type for node %s", nodeID)
-			}
+		executor, ok := s.executors[nodeType]
+		if !ok {
+			s.logger.Error("unknown node type", slog.String("node_id", nodeID), slog.String("type", nodeType))
+			s.onNodeFinished(ctx, rctx, nodeID, 1)
+			return
+		}
 
-			exitCode := 0
-			if err != nil {
-				s.logger.Error("control flow execution failed",
-					slog.String("run_id", rctx.runID),
-					slog.String("node_id", nodeID),
-					slog.Any("error", err))
+		exitCode, err := executor.Execute(nodeCtx, s, rctx, nodeID, spec)
+		if err != nil {
+			s.logger.Error("node execution failed",
+				slog.String("run_id", rctx.runID),
+				slog.String("node_id", nodeID),
+				slog.String("type", nodeType),
+				slog.Any("error", err))
+			// Ensure we have a non-zero exit code if error occurred
+			if exitCode == 0 {
 				exitCode = 1
 			}
-			s.onNodeFinished(ctx, rctx, nodeID, exitCode)
-			return
-		}
-
-		// Regular agent node - resolve command
-		cmd := s.resolveCmd(spec)
-		if len(cmd) == 0 {
-			// No command - skip this node
-			s.onNodeFinished(ctx, rctx, nodeID, 0)
-			return
-		}
-
-		// Build env
-		env := make(map[string]string)
-		for k, v := range spec.Env {
-			env[k] = v
-		}
-		env["ATTEMPT"] = fmt.Sprintf("%d", attempts+1)
-		// Pass image to driver so K8s driver can use it for the Job container.
-		if spec.Image != "" {
-			env["AGENT_IMAGE"] = spec.Image
-		}
-
-		// Calculate timeout
-		timeout := 0.0
-		if spec.Timeout > 0 {
-			timeout = spec.Timeout.Seconds()
-		}
-
-		// Run via driver
-		exitCode, err := s.driver.RunNode(nodeCtx, rctx.runID, nodeID, cmd, env, timeout)
-		if err != nil {
-			s.logger.Error("driver execution failed", slog.String("run_id", rctx.runID), slog.String("node_id", nodeID), slog.Any("error", err))
-			exitCode = 1
-		}
-
-		// Capture agent outputs for downstream data flow
-		if exitCode == 0 {
-			s.captureNodeOutputs(ctx, rctx.runID, nodeID)
 		}
 
 		s.onNodeFinished(ctx, rctx, nodeID, exitCode)
@@ -234,7 +196,6 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 }
 
 // resolveRetryPolicy returns the max retries and backoff seconds for a node.
-// Per-node RetryPolicy takes precedence over the legacy Retries field and global defaults.
 func (s *Scheduler) resolveRetryPolicy(spec *types.NodeSpec, attempt int) (maxRetries int, backoffSec float64) {
 	if spec.RetryPolicy != nil {
 		rp := spec.RetryPolicy
@@ -271,4 +232,75 @@ func (s *Scheduler) resolveRetryPolicy(spec *types.NodeSpec, attempt int) (maxRe
 		backoffSec = 60
 	}
 	return maxRetries, backoffSec
+}
+
+// nodeExecutor implementations
+
+type agentExecutor struct{}
+
+func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error) {
+	cmd := s.resolveCmd(spec)
+	if len(cmd) == 0 {
+		return 0, nil
+	}
+
+	// Build env
+	env := make(map[string]string)
+	for k, v := range spec.Env {
+		env[k] = v
+	}
+
+	// ATTEMPT is handled via state lookup in onNodeFinished, but we pass it for the agent to know
+	state, _ := s.store.GetNodeState(ctx, rctx.runID, nodeID)
+	attempts := 0
+	if state != nil {
+		attempts = state.Retries
+	}
+	env["ATTEMPT"] = fmt.Sprintf("%d", attempts+1)
+
+	if spec.Image != "" {
+		env["AGENT_IMAGE"] = spec.Image
+	}
+
+	timeout := 0.0
+	if spec.Timeout > 0 {
+		timeout = spec.Timeout.Seconds()
+	}
+
+	exitCode, err := s.driver.RunNode(ctx, rctx.runID, nodeID, cmd, env, timeout)
+	if err != nil {
+		return exitCode, err
+	}
+
+	if exitCode == 0 {
+		s.captureNodeOutputs(ctx, rctx.runID, nodeID)
+	}
+
+	return exitCode, nil
+}
+
+type gateExecutor struct{}
+
+func (e *gateExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error) {
+	return s.executeGate(ctx, rctx, nodeID, spec), nil
+}
+
+type conditionalExecutor struct{}
+
+func (e *conditionalExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error) {
+	err := s.executeConditional(ctx, rctx, spec)
+	if err != nil {
+		return 1, err
+	}
+	return 0, nil
+}
+
+type forEachExecutor struct{}
+
+func (e *forEachExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error) {
+	err := s.executeForEach(ctx, rctx, spec)
+	if err != nil {
+		return 1, err
+	}
+	return 0, nil
 }

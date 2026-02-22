@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     // Log error to console and external service
     console.error('ErrorBoundary caught an error:', error, errorInfo);
-    
+
     // Call custom error handler if provided
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
@@ -75,7 +75,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <p className="mt-2 text-center text-sm text-gray-600">
                 An unexpected error occurred. Please try refreshing the page.
               </p>
-              
+
               <div className="mt-6 space-y-4">
                 <button
                   onClick={() => window.location.reload()}
@@ -83,7 +83,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 >
                   Refresh Page
                 </button>
-                
+
                 <button
                   onClick={() => this.setState({ hasError: false, error: null, errorInfo: null })}
                   className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white dark:mc-card-bg hover:bg-gray-50 dark:hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"

@@ -11,6 +11,97 @@ MentatLab has accumulated fragmented planning docs, duplicate service implementa
 - Q3: Can the project be built and deployed end-to-end right now?
 - Q4: What is the minimum viable path to a working agent dev/orchestration tool?
 
+## 2026-02-20 Addendum: Mission Control UI/UX Functional Audit
+
+### Problem
+
+Mission Control currently looks feature-rich but behaves inconsistently under real connection conditions. The immediate need is to make the UI reliably functional (connection, run visibility, status feedback) and then standardize the UX so it looks intentional and production-ready.
+
+### Focused Questions
+
+- Q1: Is there a single source of truth for streaming/connection state?
+- Q2: Are status/error signals presented once, clearly, and in context?
+- Q3: Do environment defaults align with the active Go gateway/orchestrator stack?
+- Q4: Which frontend surfaces are legacy versus production path?
+
+### Findings (Facts)
+
+1. The app ships two top-level UX paths: `/` uses `MissionControlLayout` while `/streaming` still uses `StreamingPage`.
+   - Source: `services/frontend/src/App.tsx:17`
+   - Source: `services/frontend/src/App.tsx:18`
+2. `MissionControlLayout` renders `StreamingCanvas` and also mounts a global `ConnectionStatusBanner`.
+   - Source: `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:203`
+   - Source: `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:250`
+3. `TopBar` independently mounts another `ConnectionStatusBanner`, creating duplicate status surfaces.
+   - Source: `services/frontend/src/components/mission-control/layout/TopBar.tsx:107`
+4. `ConnectionStatusBanner` is hardcoded as fixed-position (`fixed top-20 left-1/2 ...`), so duplicate mounts can visually stack/conflict.
+   - Source: `services/frontend/src/components/ui/ConnectionStatusBanner.tsx:36`
+5. Live-connect behavior is duplicated:
+   - `WorkspaceProvider.startLiveConnection()` dynamically imports `streamingService` and calls `connect()`.
+   - `NetworkPanel.connectLive()` repeats the same dynamic-import + connect pattern.
+   - Source: `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:203`
+   - Source: `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:205`
+   - Source: `services/frontend/src/components/mission-control/panels/NetworkPanel.tsx:609`
+   - Source: `services/frontend/src/components/mission-control/panels/NetworkPanel.tsx:612`
+6. `StreamingCanvas` runs its own connection lifecycle:
+   - polls `/api/v1/streams` every 2s,
+   - derives websocket URLs manually,
+   - opens raw `WebSocket` clients directly.
+   - Source: `services/frontend/src/components/StreamingCanvas.tsx:42`
+   - Source: `services/frontend/src/components/StreamingCanvas.tsx:76`
+   - Source: `services/frontend/src/components/StreamingCanvas.tsx:89`
+   - Source: `services/frontend/src/components/StreamingCanvas.tsx:96`
+   - Source: `services/frontend/src/components/StreamingCanvas.tsx:100`
+7. A newer transport abstraction exists (`useStreamingTransport`) but appears unintegrated with Mission Control flows.
+   - Source: `services/frontend/src/hooks/useStreamingTransport.ts:106`
+   - Source (search command): `rg -n "useStreamingTransport\\(" services/frontend/src --glob '!**/*.test.*' --glob '!**/__tests__/**'`
+8. API/gateway URL defaults are inconsistent:
+   - `apiService` still defaults to `http://localhost:8000` and `ws://localhost:8000/ws`,
+   - orchestrator config defaults to `http://localhost:7070`,
+   - gateway config defaults to `http://127.0.0.1:8080`.
+   - Source: `services/frontend/src/services/api/apiService.ts:113`
+   - Source: `services/frontend/src/services/api/apiService.ts:114`
+   - Source: `services/frontend/src/config/orchestrator.ts:10`
+   - Source: `services/frontend/src/config/orchestrator.ts:75`
+9. The visual system is internally inconsistent with a “professional” operator UI target:
+   - global dark mode still defines neon cyberpunk tokens and effects,
+   - React Flow overrides force glow-heavy styling,
+   - typography defaults split between Inter and JetBrains Mono.
+   - Source: `services/frontend/src/index.css:49`
+   - Source: `services/frontend/src/index.css:63`
+   - Source: `services/frontend/src/index.css:145`
+   - Source: `services/frontend/tailwind.config.js:18`
+   - Source: `services/frontend/tailwind.config.js:19`
+10. Baseline quality gates are green but noisy:
+   - TypeScript lint pass: `npm run lint` (frontend),
+   - tests pass: `49 files`, `713 tests`.
+   - Source (command): `npm run lint` in `services/frontend`
+   - Source (command): `npm test -- --run --reporter=dot` in `services/frontend`
+
+### Assumptions
+
+- The screenshot-reported “Connection Error” is primarily a frontend connection-orchestration issue, not a backend outage.
+- Mission Control (`/`) is the intended primary production UI, while `/streaming` is legacy/demo.
+
+### Open Questions
+
+- Should `/streaming` be removed now or retained behind a feature flag for diagnostic use?
+- Should the “live connection” model be explicit user-driven only, or auto-connect when a run is active?
+- Is the desired dark theme still required, or should operator-first light theme become default?
+
+### Options
+
+1. Thin patch set: keep architecture, remove duplicate banner, align URL defaults, and tune styles.
+   - Fastest but leaves connection ownership fragmented.
+2. Functional-first standardization (recommended): consolidate connection control into one transport owner, then normalize status/visual tokens.
+   - Slightly larger change but resolves core reliability and UX consistency.
+3. Full frontend refactor now.
+   - Highest risk and unnecessary for immediate reliability.
+
+### Recommendation
+
+Adopt option 2: ship a short, phased slice that first unifies runtime connection ownership and status UX, then standardizes visual tokens/components. This addresses “most importantly functional” before aesthetic cleanup.
+
 ## 2026-02-18 Addendum: MentatLab Docs Integration with flexinfer-site
 
 ### Problem

@@ -62,10 +62,10 @@ def create_session():
         validation = input_validator.validate_input(data.get('session_name', ''), 'session_name')
         if not validation['is_valid']:
             return jsonify({'error': 'Invalid input', 'details': validation['errors']}), 400
-        
+
         # Your existing session creation logic here
         # ...
-        
+
         return jsonify({'success': True, 'session_id': session_id})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -80,10 +80,10 @@ def get_session(session_id):
     validation = input_validator.validate_input(session_id, 'uuid')
     if not validation['is_valid']:
         return jsonify({'error': 'Invalid session ID'}), 400
-    
+
     # Your existing session retrieval logic here
     # ...
-    
+
     return jsonify({'session_data': session_data})
 ```
 
@@ -110,7 +110,7 @@ class SecurityWebSocketHandler:
         self.redis_manager = redis_manager
         self.ws_broadcaster = ws_broadcaster
         self.audit_logger = AuditLogger(redis_manager, None)
-    
+
     async def handle_security_event(self, event_type, user_id, details):
         """Handle and broadcast security events."""
         # Log the event
@@ -119,7 +119,7 @@ class SecurityWebSocketHandler:
             user_id=user_id,
             details=details
         )
-        
+
         # Broadcast to relevant users
         security_alert = {
             'type': 'security_alert',
@@ -128,9 +128,9 @@ class SecurityWebSocketHandler:
             'message': self._format_security_message(event_type, details),
             'timestamp': datetime.utcnow().isoformat()
         }
-        
+
         await self.ws_broadcaster.broadcast_to_admins(security_alert)
-    
+
     def _get_event_severity(self, event_type):
         """Determine event severity level."""
         high_severity = [
@@ -139,7 +139,7 @@ class SecurityWebSocketHandler:
             'permission.escalation_attempt',
             'security.injection_attempt'
         ]
-        
+
         if event_type in high_severity:
             return 'high'
         elif 'failed' in event_type or 'denied' in event_type:
@@ -223,7 +223,7 @@ async def setup_default_permissions():
     redis_manager = RedisStateManager()
     user_manager = UserManager(redis_manager)
     permission_manager = PermissionManager(redis_manager, user_manager)
-    
+
     # Define role-based permissions
     role_permissions = {
         UserRole.ADMIN: [
@@ -238,7 +238,7 @@ async def setup_default_permissions():
             'session.view', 'data.view'
         ]
     }
-    
+
     # Apply permissions to existing users
     # Note: This would require implementing user enumeration
     # users = user_manager.list_users()  # Need to implement this
@@ -264,7 +264,7 @@ class SecurityMonitor:
         self.redis_manager = redis_manager
         self.performance_monitor = performance_monitor
         self.audit_logger = AuditLogger(redis_manager, None)
-    
+
     async def collect_security_metrics(self):
         """Collect security-related metrics."""
         with self.performance_monitor.track_operation("security.metrics_collection"):
@@ -274,35 +274,35 @@ class SecurityMonitor:
                 'rate_limit_violations': await self._count_rate_limit_violations(),
                 'suspicious_activities': await self._count_suspicious_activities()
             }
-            
+
             # Store metrics for dashboard
             self.redis_manager.store_agent_state(
                 f"security:metrics:{int(time.time())}",
                 metrics,
                 ttl=86400  # 24 hours
             )
-            
+
             # Check for alerts
             await self._check_security_alerts(metrics)
-    
+
     async def _check_security_alerts(self, metrics):
         """Check metrics against alert thresholds."""
         alerts = []
-        
+
         if metrics['failed_logins_last_hour'] > 50:
             alerts.append({
                 'type': 'high_failed_login_rate',
                 'severity': 'high',
                 'message': f"High failed login rate detected: {metrics['failed_logins_last_hour']} in last hour"
             })
-        
+
         if metrics['rate_limit_violations'] > 100:
             alerts.append({
                 'type': 'high_rate_limit_violations',
                 'severity': 'medium',
                 'message': f"High rate limit violations: {metrics['rate_limit_violations']}"
             })
-        
+
         # Send alerts via WebSocket or email
         for alert in alerts:
             await self._send_security_alert(alert)
@@ -325,7 +325,7 @@ from security import PermissionManager, AuditLogger
 async def test_session_creation_with_security():
     """Test session creation with enhanced security."""
     session_manager = SessionManager()
-    
+
     # Create test user
     success, message, user_id = session_manager.user_manager.create_user(
         username="testuser",
@@ -333,19 +333,19 @@ async def test_session_creation_with_security():
         password="TestPass123!",
         role=UserRole.RESEARCHER
     )
-    
+
     assert success, f"User creation failed: {message}"
-    
+
     # Create session with security
     success, message, session_id, jwt_token = await session_manager.create_session(
         user_id=user_id,
         session_type=SessionType.SINGLE_USER
     )
-    
+
     assert success, f"Session creation failed: {message}"
     assert jwt_token is not None
     assert session_id is not None
-    
+
     # Validate token
     valid, msg, token_user_id, token_session_id = session_manager.validate_session_token(jwt_token)
     assert valid, f"Token validation failed: {msg}"
@@ -358,7 +358,7 @@ async def test_permission_enforcement():
     redis_manager = RedisStateManager()
     user_manager = UserManager(redis_manager)
     permission_manager = PermissionManager(redis_manager, user_manager)
-    
+
     # Create test user
     success, message, user_id = user_manager.create_user(
         username="testuser2",
@@ -366,13 +366,13 @@ async def test_permission_enforcement():
         password="TestPass123!",
         role=UserRole.OBSERVER
     )
-    
+
     assert success
-    
+
     # Test permission check
     has_permission = await permission_manager.check_permission(user_id, "admin.access")
     assert not has_permission, "Observer should not have admin access"
-    
+
     # Grant permission
     await permission_manager.grant_permission(user_id, "admin.access")
     has_permission = await permission_manager.check_permission(user_id, "admin.access")
@@ -388,7 +388,7 @@ async def test_full_security_workflow():
     # Initialize components
     redis_manager = RedisStateManager()
     session_manager = SessionManager(redis_manager)
-    
+
     # Create user and session
     success, message, user_id = session_manager.user_manager.create_user(
         username="integrationtest",
@@ -396,20 +396,20 @@ async def test_full_security_workflow():
         password="IntegrationTest123!",
         role=UserRole.RESEARCHER
     )
-    
+
     # Create session
     success, message, session_id, jwt_token = await session_manager.create_session(
         user_id=user_id
     )
-    
+
     # Verify audit log entry
     audit_events = await session_manager.audit_logger.get_user_events(user_id, limit=1)
     assert len(audit_events) > 0
     assert audit_events[0]['event_type'] == 'session.created'
-    
+
     # Test token blacklisting
     await session_manager.token_blacklist.blacklist_token(jwt_token, "test_logout")
-    
+
     # Verify token is blacklisted
     valid, message, _ = session_manager.jwt_middleware.validate_token(jwt_token)
     assert not valid

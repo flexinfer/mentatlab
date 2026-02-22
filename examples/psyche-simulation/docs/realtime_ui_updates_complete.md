@@ -14,21 +14,21 @@ from utils.websocket_broadcaster import RealtimeUIUpdater, get_broadcaster
 def setup_realtime_ui():
     # Get broadcaster instance
     broadcaster = get_broadcaster()
-    
+
     # Create UI updater
     ui_updater = RealtimeUIUpdater(broadcaster)
-    
+
     # Register UI elements
     with ui.column() as conversation_area:
         conversation_display = ui.column().classes('conversation-container overflow-y-auto h-96')
         ui_updater.register_element('conversation_display', conversation_display)
-        
+
         status_label = ui.label('System Ready').classes('status-indicator')
         ui_updater.register_element('agent_status', status_label)
-        
+
         message_counter = ui.label('Messages: 0')
         ui_updater.register_element('message_counter', message_counter)
-    
+
     return ui_updater
 ```
 
@@ -86,32 +86,32 @@ from utils.websocket_broadcaster import RealtimeUIUpdater
 class PsycheSimulationUI:
     def __init__(self):
         self.ui_updater = None
-        
+
     def create_conversation_area(self):
         """Create the conversation display area with real-time updates."""
         with ui.card().classes('w-full'):
             ui.label('Agent Conversation').classes('text-xl font-bold mb-4')
-            
+
             # Status bar
             with ui.row().classes('w-full justify-between mb-2'):
                 self.status_label = ui.label('Ready').classes('agent-status')
                 self.message_counter = ui.label('Messages: 0')
-            
+
             # Conversation display
             self.conversation_display = ui.column().classes(
                 'conversation-container w-full h-96 overflow-y-auto bg-gray-50 p-4 rounded'
             )
-            
+
             # Register elements for real-time updates
             if self.ui_updater:
                 self.ui_updater.register_element('agent_status', self.status_label)
                 self.ui_updater.register_element('message_counter', self.message_counter)
                 self.ui_updater.register_element('conversation_display', self.conversation_display)
-    
+
     def setup_realtime_updates(self):
         """Initialize real-time update system."""
         from utils.websocket_broadcaster import get_broadcaster
-        
+
         broadcaster = get_broadcaster()
         self.ui_updater = RealtimeUIUpdater(broadcaster)
 ```

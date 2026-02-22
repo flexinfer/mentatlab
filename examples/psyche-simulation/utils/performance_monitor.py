@@ -105,18 +105,18 @@ class AggregatedMetric:
 
 class MetricCollector:
     """Thread-safe metric collector with bounded memory usage"""
-    
+
     def __init__(self, max_size: int = 10000):
         self.max_size = max_size
         self.metrics: Dict[str, deque] = defaultdict(lambda: deque(maxlen=max_size))
         self.lock = threading.RLock()
-        
+
     def add_metric(self, metric: Metric):
         """Add a metric to the collection"""
         with self.lock:
             self.metrics[metric.name].append(metric)
-    
-    def get_metrics(self, name: str, start_time: Optional[float] = None, 
+
+    def get_metrics(self, name: str, start_time: Optional[float] = None,
                     end_time: Optional[float] = None) -> List[Metric]:
         """Get metrics by name, optionally filtered by time range"""
         with self.lock:
@@ -126,12 +126,12 @@ class MetricCollector:
                 end_time = end_time or float('inf')
                 metrics = [m for m in metrics if start_time <= m.timestamp <= end_time]
             return metrics
-    
+
     def get_all_metrics(self) -> Dict[str, List[Metric]]:
         """Get all metrics"""
         with self.lock:
             return {name: list(metrics) for name, metrics in self.metrics.items()}
-    
+
     def clear_old_metrics(self, retention_seconds: int):
         """Remove metrics older than retention period"""
         cutoff_time = time.time() - retention_seconds
@@ -141,23 +141,23 @@ class MetricCollector:
                     (m for m in self.metrics[name] if m.timestamp >= cutoff_time),
                     maxlen=self.max_size
                 )
-    
+
     def aggregate_metrics(self, name: str, window_seconds: int = 60) -> Optional[AggregatedMetric]:
         """Calculate aggregated statistics for a metric"""
         window_end = time.time()
         window_start = window_end - window_seconds
-        
+
         metrics = self.get_metrics(name, start_time=window_start, end_time=window_end)
         if not metrics:
             return None
-        
+
         values = [m.value for m in metrics]
-        
+
         # Calculate percentiles
         p50 = np.percentile(values, 50) if len(values) > 0 else 0
         p95 = np.percentile(values, 95) if len(values) > 0 else 0
         p99 = np.percentile(values, 99) if len(values) > 0 else 0
-        
+
         return AggregatedMetric(
             name=name,
             count=len(values),
@@ -177,11 +177,11 @@ class MetricCollector:
 class PerformanceMonitor:
     """
     Enhanced Performance Monitoring System
-    
+
     Provides comprehensive metrics collection, aggregation, and broadcasting
     for the Psyche simulation system.
     """
-    
+
     def __init__(
         self,
         redis_manager: Optional[RedisStateManager] = None,
@@ -198,47 +198,47 @@ class PerformanceMonitor:
         self.broadcast_interval = broadcast_interval
         self.aggregation_window = aggregation_window
         self.enable_system_metrics = enable_system_metrics
-        
+
         # Metric collectors
         self.collector = MetricCollector(max_size=max_metrics_per_type)
         self.aggregation_lock = threading.RLock()
-        
+
         # Response time tracking
         self.active_timers: Dict[str, Dict[str, Any]] = {}
         self.timer_lock = threading.RLock()
-        
+
         # Throughput tracking
         self.throughput_counters: Dict[str, int] = defaultdict(int)
         self.throughput_window_start = time.time()
         self.throughput_lock = threading.RLock()
-        
+
         # WebSocket connection tracking
         self.websocket_connections: Dict[str, Dict[str, Any]] = {}
         self.websocket_lock = threading.RLock()
-        
+
         # Queue depth tracking
         self.queue_depths: Dict[str, int] = {}
         self.queue_lock = threading.RLock()
-        
+
         # Database pool tracking
         self.db_pool_stats: Dict[str, Dict[str, Any]] = {}
         self.db_pool_lock = threading.RLock()
-        
+
         # Thread pool for background tasks
         self.executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix="perf_monitor")
-        
+
         # Update throttling
         self.last_broadcast_time = 0
         self.update_queue = queue.Queue(maxsize=1000)
         self.chart_update_throttle: Dict[str, float] = {}
         self.throttle_interval = 0.1  # 100ms minimum between updates
-        
+
         # Start background tasks
         self._running = True
         self._start_background_tasks()
-        
+
         logger.info("Enhanced performance monitor initialized")
-    
+
     def _start_background_tasks(self):
         """Start background monitoring tasks"""
         self.executor.submit(self._broadcast_loop)
@@ -246,7 +246,7 @@ class PerformanceMonitor:
         self.executor.submit(self._aggregation_loop)
         if self.enable_system_metrics:
             self.executor.submit(self._system_metrics_loop)
-    
+
     def _broadcast_loop(self):
         """Background task to broadcast performance updates"""
         while self._running:
@@ -258,7 +258,7 @@ class PerformanceMonitor:
                 time.sleep(0.1)
             except Exception as e:
                 logger.error(f"Error in broadcast loop: {e}")
-    
+
     def _cleanup_loop(self):
         """Background task to clean up old metrics"""
         while self._running:
@@ -269,7 +269,7 @@ class PerformanceMonitor:
                 time.sleep(60)  # Clean up every minute
             except Exception as e:
                 logger.error(f"Error in cleanup loop: {e}")
-    
+
     def _aggregation_loop(self):
         """Background task to calculate and store aggregated metrics"""
         while self._running:
@@ -278,7 +278,7 @@ class PerformanceMonitor:
                 time.sleep(30)  # Aggregate every 30 seconds
             except Exception as e:
                 logger.error(f"Error in aggregation loop: {e}")
-    
+
     def _system_metrics_loop(self):
         """Background task to collect system metrics"""
         while self._running:
@@ -287,20 +287,20 @@ class PerformanceMonitor:
                 time.sleep(5)  # Collect every 5 seconds
             except Exception as e:
                 logger.error(f"Error collecting system metrics: {e}")
-    
+
     def _collect_system_metrics(self):
         """Collect system-wide performance metrics"""
         try:
             # CPU usage
             cpu_percent = psutil.cpu_percent(interval=0.1)
             self.record_metric("system.cpu_usage", cpu_percent, "percent")
-            
+
             # Memory usage
             memory = psutil.virtual_memory()
             self.record_metric("system.memory_used", memory.used / (1024**3), "GB")
             self.record_metric("system.memory_percent", memory.percent, "percent")
             self.record_metric("system.memory_available", memory.available / (1024**3), "GB")
-            
+
             # Process-specific metrics
             process = psutil.Process()
             process_info = process.memory_info()
@@ -308,24 +308,24 @@ class PerformanceMonitor:
             self.record_metric("process.memory_vms", process_info.vms / (1024**2), "MB")
             self.record_metric("process.num_threads", process.num_threads(), "count")
             self.record_metric("process.cpu_percent", process.cpu_percent(), "percent")
-            
+
             # Disk I/O
             if hasattr(psutil, 'disk_io_counters'):
                 disk_io = psutil.disk_io_counters()
                 if disk_io:
                     self.record_metric("system.disk_read_bytes", disk_io.read_bytes, "bytes")
                     self.record_metric("system.disk_write_bytes", disk_io.write_bytes, "bytes")
-            
+
             # Network I/O
             net_io = psutil.net_io_counters()
             self.record_metric("system.net_bytes_sent", net_io.bytes_sent, "bytes")
             self.record_metric("system.net_bytes_recv", net_io.bytes_recv, "bytes")
-            
+
         except Exception as e:
             logger.error(f"Error collecting system metrics: {e}")
-    
+
     # Core metric recording method
-    
+
     def record_metric(self, name: str, value: float, unit: str, metadata: Optional[Dict[str, Any]] = None):
         """Record a metric with minimal overhead"""
         try:
@@ -337,16 +337,16 @@ class PerformanceMonitor:
                 metadata=metadata or {}
             )
             self.collector.add_metric(metric)
-            
+
             # Store in Redis if available
             if self.redis_manager and name in ["system.cpu_usage", "system.memory_percent", "llm.response_time"]:
                 self._store_metric_in_redis(metric)
-                
+
         except Exception as e:
             logger.error(f"Error recording metric {name}: {e}")
-    
+
     # Response Time Tracking
-    
+
     def start_timer(self, operation: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         """Start a timer for an operation"""
         timer_id = f"{operation}_{time.time_ns()}"
@@ -357,25 +357,25 @@ class PerformanceMonitor:
                 'metadata': metadata or {}
             }
         return timer_id
-    
+
     def end_timer(self, timer_id: str, success: bool = True):
         """End a timer and record the response time"""
         with self.timer_lock:
             timer_data = self.active_timers.pop(timer_id, None)
-        
+
         if timer_data:
             elapsed = (time.time() - timer_data['start_time']) * 1000  # Convert to milliseconds
             operation = timer_data['operation']
             metadata = timer_data['metadata']
             metadata['success'] = success
-            
+
             self.record_metric(
                 f"response_time.{operation}",
                 elapsed,
                 "ms",
                 metadata
             )
-            
+
             # Track success rate
             self.record_metric(
                 f"success_rate.{operation}",
@@ -383,20 +383,20 @@ class PerformanceMonitor:
                 "ratio",
                 metadata
             )
-    
+
     # Throughput Tracking
-    
+
     def increment_throughput(self, operation: str, count: int = 1):
         """Increment throughput counter"""
         with self.throughput_lock:
             self.throughput_counters[operation] += count
-            
+
             # Check if we need to record throughput
             current_time = time.time()
             if current_time - self.throughput_window_start >= 1.0:  # Record every second
                 self._record_throughput()
                 self.throughput_window_start = current_time
-    
+
     def _record_throughput(self):
         """Record throughput metrics"""
         with self.throughput_lock:
@@ -407,43 +407,43 @@ class PerformanceMonitor:
                     "ops/sec"
                 )
             self.throughput_counters.clear()
-    
+
     # Memory Usage Monitoring
-    
+
     def track_memory_usage(self, component: str, include_tracemalloc: bool = False):
         """Track memory usage for a specific component"""
         try:
             # Get process memory
             process = psutil.Process()
             memory_info = process.memory_info()
-            
+
             self.record_metric(f"memory.{component}.rss", memory_info.rss / (1024**2), "MB")
             self.record_metric(f"memory.{component}.vms", memory_info.vms / (1024**2), "MB")
-            
+
             # Track Python memory allocation if requested
             if include_tracemalloc:
                 import tracemalloc
                 if not tracemalloc.is_tracing():
                     tracemalloc.start()
-                
+
                 current, peak = tracemalloc.get_traced_memory()
                 self.record_metric(f"memory.{component}.current_traced", current / (1024**2), "MB")
                 self.record_metric(f"memory.{component}.peak_traced", peak / (1024**2), "MB")
-                
+
         except Exception as e:
             logger.error(f"Error tracking memory usage for {component}: {e}")
-    
+
     # Thread Pool Monitoring
-    
+
     def track_thread_pool(self, pool_name: str, active: int, total: int):
         """Track thread pool utilization"""
         utilization = (active / total * 100) if total > 0 else 0
         self.record_metric(f"thread_pool.{pool_name}.active", active, "count")
         self.record_metric(f"thread_pool.{pool_name}.total", total, "count")
         self.record_metric(f"thread_pool.{pool_name}.utilization", utilization, "percent")
-    
+
     # LLM API Monitoring
-    
+
     def track_llm_call(
         self,
         model: str,
@@ -455,15 +455,15 @@ class PerformanceMonitor:
         """Track LLM API call performance"""
         self.record_metric(f"llm.{model}.latency", latency, "ms")
         self.record_metric(f"llm.{model}.success_rate", 1 if success else 0, "ratio")
-        
+
         if tokens_used:
             self.record_metric(f"llm.{model}.tokens", tokens_used, "count")
-        
+
         if error:
             self.record_metric(f"llm.{model}.errors", 1, "count", {"error": error})
-    
+
     # WebSocket Monitoring
-    
+
     def track_websocket_metrics(
         self,
         active_connections: int,
@@ -476,7 +476,7 @@ class PerformanceMonitor:
         self.record_metric("websocket.messages_sent", messages_sent, "count")
         self.record_metric("websocket.messages_received", messages_received, "count")
         self.record_metric("websocket.message_throughput", message_throughput, "msgs/sec")
-    
+
     def add_websocket_connection(self, connection_id: str, metadata: Optional[Dict[str, Any]] = None):
         """Track a new WebSocket connection"""
         with self.websocket_lock:
@@ -486,7 +486,7 @@ class PerformanceMonitor:
                 'messages_received': 0,
                 'metadata': metadata or {}
             }
-    
+
     def remove_websocket_connection(self, connection_id: str):
         """Remove a WebSocket connection"""
         with self.websocket_lock:
@@ -515,7 +515,7 @@ class PerformanceMonitor:
                 'idle': idle,
                 'utilization': utilization
             }
-            
+
             self.record_metric(f"db_pool.{pool_name}.active", active, "count")
             self.record_metric(f"db_pool.{pool_name}.total", total, "count")
             self.record_metric(f"db_pool.{pool_name}.idle", idle, "count")
@@ -531,7 +531,7 @@ class PerformanceMonitor:
         try:
             # Get current performance snapshot
             snapshot = self.get_performance_snapshot()
-            
+
             # Create system status event
             if self.websocket_manager:
                 from utils.websocket_events import broadcast_system_status
@@ -553,7 +553,7 @@ class PerformanceMonitor:
         try:
             key = f"metrics:{metric.name}"
             data = metric.to_dict()
-            
+
             # Use Redis to store with TTL
             self.redis_manager.store_agent_state(
                 f"metric_{metric.name}",
@@ -576,7 +576,7 @@ class PerformanceMonitor:
             try:
                 # Get all metric names
                 all_metrics = self.collector.get_all_metrics()
-                
+
                 for name in all_metrics.keys():
                     # Calculate aggregations for each metric
                     aggregated = self.collector.aggregate_metrics(name, self.aggregation_window)
@@ -596,7 +596,7 @@ class PerformanceMonitor:
         """Check if chart should be updated based on throttling"""
         current_time = time.time()
         last_update = self.chart_update_throttle.get(chart_id, 0)
-        
+
         if current_time - last_update >= self.throttle_interval:
             self.chart_update_throttle[chart_id] = current_time
             return True
@@ -604,7 +604,7 @@ class PerformanceMonitor:
 
     # JSON Export
 
-    def export_metrics_json(self, start_time: Optional[float] = None, 
+    def export_metrics_json(self, start_time: Optional[float] = None,
                           end_time: Optional[float] = None) -> str:
         """Export metrics as JSON"""
         try:
@@ -615,19 +615,19 @@ class PerformanceMonitor:
                 'end_time': end_time,
                 'metrics': {}
             }
-            
+
             for name, metrics in all_metrics.items():
                 filtered_metrics = metrics
                 if start_time or end_time:
                     start_time = start_time or 0
                     end_time = end_time or float('inf')
                     filtered_metrics = [
-                        m for m in metrics 
+                        m for m in metrics
                         if start_time <= m.timestamp <= end_time
                     ]
-                
+
                 export_data['metrics'][name] = [m.to_dict() for m in filtered_metrics]
-            
+
             return json.dumps(export_data, indent=2)
         except Exception as e:
             logger.error(f"Error exporting metrics: {e}")
@@ -639,7 +639,7 @@ class PerformanceMonitor:
             # Get system metrics
             cpu_usage = 0
             memory_percent = 0
-            
+
             cpu_metrics = self.collector.get_metrics("system.cpu_usage")
             if cpu_metrics:
                 cpu_usage = cpu_metrics[-1].value
@@ -650,7 +650,7 @@ class PerformanceMonitor:
 
             # Get aggregated LLM metrics
             llm_aggregated = self.collector.aggregate_metrics("llm.response_time", 300)  # 5 minutes
-            
+
             # Get error counts
             error_count = 0
             error_metrics = self.collector.get_metrics("error_rate")
@@ -718,11 +718,11 @@ class PerformanceMonitor:
     def stop(self):
         """Stop the performance monitor and cleanup resources"""
         self._running = False
-        
+
         # Wait for background tasks to complete
         if self.executor:
             self.executor.shutdown(wait=True, timeout=5)
-        
+
         logger.info("Performance monitor stopped")
 
     def __enter__(self):
@@ -745,14 +745,14 @@ def get_performance_monitor(
 ) -> PerformanceMonitor:
     """Get or create the global performance monitor instance"""
     global _global_monitor
-    
+
     with _monitor_lock:
         if _global_monitor is None:
             _global_monitor = PerformanceMonitor(
                 redis_manager=redis_manager,
                 websocket_manager=websocket_manager
             )
-    
+
     return _global_monitor
 
 
@@ -789,36 +789,36 @@ def record_agent_performance(agent_type: str, action: str, duration_ms: float, s
 if __name__ == "__main__":
     # Set up logging
     logging.basicConfig(level=logging.INFO)
-    
+
     # Create performance monitor
     monitor = PerformanceMonitor()
-    
+
     # Example usage
     print("Testing enhanced performance monitoring system...")
-    
+
     # Test timer
     with monitor.timer("test_operation"):
         time.sleep(0.1)
-    
+
     # Test metrics
     monitor.record_metric("test.cpu", 45.2, "percent")
     monitor.increment_throughput("test_messages", 10)
     monitor.track_llm_call("gpt-4", 1250, True, 150)
-    
+
     # Test WebSocket tracking
     monitor.track_websocket_metrics(5, 100, 95, 12.5)
-    
+
     # Test queue monitoring
     monitor.track_queue_depth("message_queue", 25)
-    
+
     # Get performance snapshot
     snapshot = monitor.get_performance_snapshot()
     print(f"Performance snapshot: {json.dumps(snapshot, indent=2)}")
-    
+
     # Export metrics
     exported = monitor.export_metrics_json()
     print(f"Exported metrics (truncated): {exported[:200]}...")
-    
+
     # Clean up
     monitor.stop()
     print("Performance monitoring test completed")

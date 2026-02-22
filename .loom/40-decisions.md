@@ -2,6 +2,41 @@
 
 Record decisions as they are made, with date, rationale, and sources.
 
+## 2026-02-20: Functional-first UX stabilization before visual redesign
+
+- Decision: Prioritize connection reliability and status consistency in Mission Control before broader visual polish.
+- Rationale: Current UX issues are primarily behavioral (duplicate banners, fragmented connection ownership, inconsistent endpoints). Visual cleanup without fixing runtime behavior would keep operator trust low.
+- Alternatives considered:
+  - Visual redesign first: Rejected because it does not address connection/state failure modes.
+  - Full frontend rewrite: Rejected as high risk with unnecessary scope expansion.
+- Consequences:
+  - M16 starts with transport unification and status normalization.
+  - Styling/token cleanup is gated behind functional acceptance criteria.
+- Sources:
+  - [S1] `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:250`
+  - [S2] `services/frontend/src/components/mission-control/layout/TopBar.tsx:107`
+  - [S3] `services/frontend/src/components/ui/ConnectionStatusBanner.tsx:36`
+  - [S4] `services/frontend/src/components/StreamingCanvas.tsx:42`
+  - [S5] `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:203`
+
+## 2026-02-20: Standardize on a single frontend connection authority
+
+- Decision: Consolidate live connection control through one transport authority (target: `useStreamingTransport`/connection-manager path) and remove duplicate ad-hoc connect logic.
+- Rationale: Mission Control currently has multiple independent connection entry points (`WorkspaceProvider`, `NetworkPanel`, `StreamingCanvas`) that can diverge in behavior and status reporting.
+- Alternatives considered:
+  - Keep multiple connect paths with shared helpers: Rejected because ownership remains ambiguous.
+  - Keep legacy `/streaming` and Mission Control connection stacks in parallel: Rejected due maintenance/behavior drift.
+- Consequences:
+  - `startLiveConnection` and panel-level connect actions must delegate to one shared transport path.
+  - URL default handling will be centralized around orchestrator/gateway config helpers.
+  - Legacy `localhost:8000` defaults in active paths should be removed.
+- Sources:
+  - [S1] `services/frontend/src/components/mission-control/layout/WorkspaceProvider.tsx:203`
+  - [S2] `services/frontend/src/components/mission-control/panels/NetworkPanel.tsx:609`
+  - [S3] `services/frontend/src/components/StreamingCanvas.tsx:89`
+  - [S4] `services/frontend/src/services/api/apiService.ts:113`
+  - [S5] `services/frontend/src/hooks/useStreamingTransport.ts:106`
+
 ## 2026-02-14: Adopt Go-first backend strategy
 
 - Decision: Use Go services (gateway-go, orchestrator-go) as the sole production backend. Deprecate Python gateway and orchestrator.

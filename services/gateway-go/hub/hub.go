@@ -80,54 +80,99 @@ type HubConfig struct {
 	PingPeriod     time.Duration // Send pings at this interval; must be < PongWait (default 90% of PongWait)
 }
 
-// NewHub creates a new Hub with the given configuration.
-func NewHub(redisAddr string) *Hub {
-	return NewHubWithConfig(&HubConfig{
-		RedisAddr: redisAddr,
-		Logger:    slog.Default(),
-	})
+// HubOption is a functional option for configuring the Hub.
+type HubOption func(*Hub)
+
+// WithLogger sets the logger for the hub.
+func WithLogger(logger *slog.Logger) HubOption {
+	return func(h *Hub) {
+		if logger != nil {
+			h.logger = logger
+		}
+	}
 }
 
-// NewHubWithConfig creates a new Hub with full configuration.
-func NewHubWithConfig(cfg *HubConfig) *Hub {
-	rdb := redis.NewClient(&redis.Options{
-		Addr: cfg.RedisAddr,
-	})
-
-	logger := cfg.Logger
-	if logger == nil {
-		logger = slog.Default()
+// WithAllowedOrigins sets the allowed WebSocket origins.
+func WithAllowedOrigins(origins []string) HubOption {
+	return func(h *Hub) {
+		h.allowedOrigins = make(map[string]bool)
+		for _, origin := range origins {
+			h.allowedOrigins[origin] = true
+		}
 	}
+}
 
-	// Build allowed origins map for O(1) lookup
-	allowedOrigins := make(map[string]bool)
-	for _, origin := range cfg.AllowedOrigins {
-		allowedOrigins[origin] = true
+// WithAuthValidator sets the authentication validator for WebSocket connections.
+func WithAuthValidator(validator AuthValidator) HubOption {
+	return func(h *Hub) {
+		h.authValidator = validator
 	}
+}
 
-	pongWait := cfg.PongWait
-	if pongWait == 0 {
-		pongWait = 60 * time.Second
+// WithPongWait sets the time allowed to read the next pong.
+func WithPongWait(d time.Duration) HubOption {
+	return func(h *Hub) {
+		if d > 0 {
+			h.pongWait = d
+			// Also update pingPeriod to 90% of pongWait if it was at default
+			h.pingPeriod = (d * 9) / 10
+		}
 	}
-	pingPeriod := cfg.PingPeriod
-	if pingPeriod == 0 {
-		pingPeriod = (pongWait * 9) / 10
-	}
+}
 
-	return &Hub{
-		clients:        make(map[string]map[*Client]bool),
-		globalClients:  make(map[*Client]bool),
-		messages:       make(chan *streamMessage, 256),
-		register:       make(chan *Client),
-		unregister:     make(chan *Client),
-		redisClient:    rdb,
-		logger:         logger,
-		allowedOrigins: allowedOrigins,
-		authValidator:  cfg.AuthValidator,
-		pongWait:       pongWait,
-		pingPeriod:     pingPeriod,
+// WithPingPeriod sets the interval at which pings are sent.
+func WithPingPeriod(d time.Duration) HubOption {
+	return func(h *Hub) {
+		if d > 0 {
+			h.pingPeriod = d
+		}
+	}
+}
+
+// NewHubWithAddress creates a new Hub with the given Redis address and options.
+func NewHubWithAddress(redisAddr string, opts ...HubOption) *Hub {
+	h := &Hub{
+		clients:       make(map[string]map[*Client]bool),
+		globalClients: make(map[*Client]bool),
+		messages:      make(chan *streamMessage, 256),
+		register:      make(chan *Client),
+		unregister:    make(chan *Client),
+		redisClient: redis.NewClient(&redis.Options{
+			Addr: redisAddr,
+		}),
+		logger:         slog.Default(),
+		allowedOrigins: make(map[string]bool),
+		pongWait:       60 * time.Second,
+		pingPeriod:     54 * time.Second, // 90% of pongWait
 		stopCh:         make(chan struct{}),
 	}
+
+	for _, opt := range opts {
+		opt(h)
+	}
+
+	return h
+}
+
+// NewHub creates a new Hub with the given Redis address and default configuration.
+// Deprecated: Use NewHubWithAddress with Options instead.
+func NewHub(redisAddr string) *Hub {
+	return NewHubWithAddress(redisAddr)
+}
+
+// NewHubWithConfig creates a new Hub with full configuration struct.
+// Deprecated: Use NewHubWithAddress with Options instead.
+func NewHubWithConfig(cfg *HubConfig) *Hub {
+	var opts []HubOption
+	if cfg != nil {
+		opts = append(opts, WithLogger(cfg.Logger))
+		opts = append(opts, WithAllowedOrigins(cfg.AllowedOrigins))
+		opts = append(opts, WithAuthValidator(cfg.AuthValidator))
+		opts = append(opts, WithPongWait(cfg.PongWait))
+		opts = append(opts, WithPingPeriod(cfg.PingPeriod))
+	}
+
+	return NewHubWithAddress(cfg.RedisAddr, opts...)
 }
 
 // Run starts the hub's main loop.
