@@ -13,7 +13,7 @@ import (
 )
 
 // executeGate blocks a node until external approval or rejection (or timeout).
-func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID string, spec *types.NodeSpec) {
+func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID string, spec *types.NodeSpec) int {
 	ctx, span := tracer.Start(ctx, "scheduler.executeGate",
 		trace.WithAttributes(
 			attribute.String("run_id", rctx.runID),
@@ -37,10 +37,6 @@ func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID st
 		rctx.gatesMu.Lock()
 		delete(rctx.gates, nodeID)
 		rctx.gatesMu.Unlock()
-
-		rctx.tasksMu.Lock()
-		delete(rctx.tasks, nodeID)
-		rctx.tasksMu.Unlock()
 	}()
 
 	// Update node state to waiting_approval
@@ -81,7 +77,7 @@ func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID st
 		)
 	case <-ctx.Done():
 		// Run cancelled or timed out
-		return
+		return 1
 	}
 
 	span.SetAttributes(attribute.String("decision", decision))
@@ -96,7 +92,7 @@ func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID st
 		"decision": decision,
 	}, nodeID, "")
 
-	s.onNodeFinished(ctx, rctx, nodeID, exitCode)
+	return exitCode
 }
 
 // ApproveGate sends an approval signal to a waiting gate node.

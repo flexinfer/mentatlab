@@ -118,18 +118,17 @@ func main() {
 	}, logger)
 
 	// Initialize Hub with structured logging, origin validation, and auth
-	wsHub := hub.NewHubWithConfig(&hub.HubConfig{
-		RedisAddr:      cfg.RedisAddr,
-		Logger:         logger,
-		AllowedOrigins: cfg.AllowedOrigins,
-		AuthValidator: func(r *http.Request) (string, string, error) {
+	wsHub := hub.NewHubWithAddress(cfg.RedisAddr,
+		hub.WithLogger(logger),
+		hub.WithAllowedOrigins(cfg.AllowedOrigins),
+		hub.WithAuthValidator(func(r *http.Request) (string, string, error) {
 			userInfo, err := authMiddleware.ValidateWebSocketToken(r)
 			if err != nil {
 				return "", "", err
 			}
 			return userInfo.Email, userInfo.Type, nil
-		},
-	})
+		}),
+	)
 	go wsHub.Run()
 
 	// Log warning if no origins configured (allows all)

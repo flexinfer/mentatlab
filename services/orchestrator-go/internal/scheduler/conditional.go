@@ -196,15 +196,3 @@ func (s *Scheduler) buildExprEnvironment(ctx context.Context, rctx *runContext, 
 
 	return BuildEnvironment(nodeOutputs, contextVars)
 }
-
-// onConditionalFinished is called when a conditional node completes.
-// It unlocks the selected branch targets for execution.
-func (s *Scheduler) onConditionalFinished(ctx context.Context, rctx *runContext, nodeID string) {
-	// The conditional node succeeded - its targets will be unlocked
-	// via the normal dependency resolution in onNodeFinished.
-	// No special handling needed here since skipBranch already
-	// decremented the remainingPreds for skipped paths.
-
-	// Emit node status succeeded
-	s.emitNodeStatus(ctx, rctx.runID, nodeID, "succeeded", nil)
-}

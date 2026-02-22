@@ -53,6 +53,12 @@ type Scheduler struct {
 	defaultRunTimeout  time.Duration
 	logger             *slog.Logger
 	exprEval           *ExprEvaluator // Expression evaluator for control flow
+	executors          map[string]nodeExecutor
+}
+
+// nodeExecutor defines the strategy for executing a specific type of node.
+type nodeExecutor interface {
+	Execute(ctx context.Context, s *Scheduler, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error)
 }
 
 // Config holds scheduler configuration.
@@ -80,32 +86,94 @@ func DefaultConfig() *Config {
 	}
 }
 
-// New creates a new scheduler.
-func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, cfg *Config, logger *slog.Logger) *Scheduler {
-	if cfg == nil {
-		cfg = DefaultConfig()
-	}
-	if logger == nil {
-		logger = slog.Default()
-	}
+// Option is a functional option for configuring the Scheduler.
+type Option func(*Scheduler)
 
-	var sem chan struct{}
-	if cfg.MaxParallelism > 0 {
-		sem = make(chan struct{}, cfg.MaxParallelism)
+// WithMaxParallelism sets the maximum number of concurrent node executions.
+func WithMaxParallelism(n int) Option {
+	return func(s *Scheduler) {
+		if n > 0 {
+			s.sem = make(chan struct{}, n)
+		} else {
+			s.sem = nil
+		}
 	}
+}
 
-	return &Scheduler{
+// WithDefaultMaxRetries sets the default maximum retry count for nodes.
+func WithDefaultMaxRetries(n int) Option {
+	return func(s *Scheduler) {
+		s.defaultMaxRetries = n
+	}
+}
+
+// WithDefaultBackoffSecs sets the initial backoff duration in seconds.
+func WithDefaultBackoffSecs(n int) Option {
+	return func(s *Scheduler) {
+		s.defaultBackoffSecs = n
+	}
+}
+
+// WithDefaultRunTimeout sets the default timeout for runs.
+func WithDefaultRunTimeout(d time.Duration) Option {
+	return func(s *Scheduler) {
+		s.defaultRunTimeout = d
+	}
+}
+
+// WithLogger sets the logger for the scheduler.
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *Scheduler) {
+		if logger != nil {
+			s.logger = logger
+		}
+	}
+}
+
+// NewScheduler creates a new scheduler with the provided options.
+func NewScheduler(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, opts ...Option) *Scheduler {
+	s := &Scheduler{
 		store:              store,
 		driver:             drv,
 		resolveCmd:         resolveCmd,
 		runs:               make(map[string]*runContext),
-		sem:                sem,
-		defaultMaxRetries:  cfg.DefaultMaxRetries,
-		defaultBackoffSecs: cfg.DefaultBackoffSecs,
-		defaultRunTimeout:  cfg.DefaultRunTimeout,
-		logger:             logger,
+		defaultMaxRetries:  0,
+		defaultBackoffSecs: 2,
+		defaultRunTimeout:  0,
+		logger:             slog.Default(),
 		exprEval:           NewExprEvaluator(),
 	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	// Initialize default executors
+	s.executors = map[string]nodeExecutor{
+		"gate":        &gateExecutor{},
+		"conditional": &conditionalExecutor{},
+		"foreach":     &forEachExecutor{},
+		"agent":       &agentExecutor{},
+	}
+
+	return s
+}
+
+// New creates a new scheduler using the legacy Config struct.
+// Deprecated: Use NewScheduler with Options instead.
+func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, cfg *Config, logger *slog.Logger) *Scheduler {
+	var opts []Option
+	if cfg != nil {
+		opts = append(opts, WithMaxParallelism(cfg.MaxParallelism))
+		opts = append(opts, WithDefaultMaxRetries(cfg.DefaultMaxRetries))
+		opts = append(opts, WithDefaultBackoffSecs(cfg.DefaultBackoffSecs))
+		opts = append(opts, WithDefaultRunTimeout(cfg.DefaultRunTimeout))
+	}
+	if logger != nil {
+		opts = append(opts, WithLogger(logger))
+	}
+
+	return NewScheduler(store, drv, resolveCmd, opts...)
 }
 
 // EnqueueRun registers a run with the scheduler. The run must already exist in the RunStore.

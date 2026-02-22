@@ -286,4 +286,3 @@ func (h *Handlers) CancelRun(w http.ResponseWriter, r *http.Request) {
 
 	h.respondJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
 }
-
