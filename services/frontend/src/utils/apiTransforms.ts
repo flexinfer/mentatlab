@@ -9,7 +9,7 @@ export const transformEdgeToApi = (edge: Edge): ApiEdge => {
   // For now, use default pin names if not specified
   const fromPin = edge.sourceHandle || 'output';
   const toPin = edge.targetHandle || 'input';
-  
+
   return {
     from_node: `${edge.from}.${fromPin}`,
     to_node: `${edge.to}.${toPin}`,
@@ -23,7 +23,7 @@ export const transformEdgeFromApi = (apiEdge: ApiEdge): Edge => {
   // Extract node IDs from the pin notation
   const [fromNode, sourceHandle] = apiEdge.from_node.split('.');
   const [toNode, targetHandle] = apiEdge.to_node.split('.');
-  
+
   return {
     from: fromNode,
     to: toNode,

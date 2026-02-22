@@ -8,20 +8,20 @@ import {
   Pin,
   PinData,
   MediaPinValue,
-  
+
   // Media types
   MediaType,
   MediaReference,
   ImageMetadata,
   MediaProcessingOptions,
-  
+
   // Node types
   Node,
   MediaNodeType,
   NodeCategory,
   NodeExecutionContext,
   NodeExecutionResult,
-  
+
   // Streaming types
   MediaStreamInitMessage,
   MediaChunkMessage,
@@ -47,7 +47,7 @@ export const createMediaUploadNode = (): Node => {
       acceptedFormats: ['image/jpeg', 'image/png', 'image/webp'],
     },
   };
-  
+
   return node;
 };
 
@@ -78,7 +78,7 @@ export const createImageResizeNode = (): Node => {
       },
     },
   };
-  
+
   return node;
 };
 
@@ -100,7 +100,7 @@ export const createImageInputPin = (): Pin => {
       },
     },
   };
-  
+
   return pin;
 };
 
@@ -117,7 +117,7 @@ export const createImageReference = (): MediaReference => {
     colorDepth: 24,
     colorSpace: 'RGB',
   };
-  
+
   const mediaRef: MediaReference = {
     type: MediaType.IMAGE,
     refId: 'ref-img-123',
@@ -139,7 +139,7 @@ export const createImageReference = (): MediaReference => {
       },
     },
   };
-  
+
   return mediaRef;
 };
 
@@ -164,7 +164,7 @@ export const createMediaPinData = (): PinData<MediaPinValue> => {
       status: 'ready',
     },
   };
-  
+
   return pinData;
 };
 
@@ -174,21 +174,21 @@ export const executeMediaNode = async (
 ): Promise<NodeExecutionResult> => {
   // Extract media from inputs
   const inputImage = context.inputs['imageInput'];
-  
+
   if (!inputImage.mediaRef) {
     throw new Error('No media reference found in input');
   }
-  
+
   // Simulate processing
   const startTime = Date.now();
-  
+
   // Create output media reference
   const outputRef: MediaReference = {
     ...inputImage.mediaRef,
     refId: `processed-${inputImage.mediaRef.refId}`,
     url: `s3://bucket/processed/${inputImage.mediaRef.refId}.jpg`,
   };
-  
+
   const result: NodeExecutionResult = {
     outputs: {
       'processedImage': {
@@ -212,14 +212,14 @@ export const executeMediaNode = async (
       filesCreated: [outputRef.url],
     },
   };
-  
+
   return result;
 };
 
 // Example 7: Streaming messages
 export const createStreamingMessages = (): StreamingMessage[] => {
   const messages: StreamingMessage[] = [];
-  
+
   // Initialize media stream
   const initMsg: MediaStreamInitMessage = {
     type: 'media:stream:init',
@@ -239,7 +239,7 @@ export const createStreamingMessages = (): StreamingMessage[] => {
     },
   };
   messages.push(initMsg);
-  
+
   // Send chunks
   for (let i = 0; i < 3; i++) {
     const chunkMsg: MediaChunkMessage = {
@@ -258,7 +258,7 @@ export const createStreamingMessages = (): StreamingMessage[] => {
     };
     messages.push(chunkMsg);
   }
-  
+
   // Text streaming for AI responses
   const textMsg: TextStreamMessage = {
     type: 'text:stream',
@@ -274,7 +274,7 @@ export const createStreamingMessages = (): StreamingMessage[] => {
     },
   };
   messages.push(textMsg);
-  
+
   return messages;
 };
 
@@ -296,7 +296,7 @@ export const createImageGenerationNode = (): Node => {
       supportsStreaming: true,
     },
   };
-  
+
   return node;
 };
 
@@ -321,7 +321,7 @@ export const createProcessingOptions = (): MediaProcessingOptions => {
       bitRate: 192,
     },
   };
-  
+
   return options;
 };
 
@@ -344,7 +344,7 @@ export const createSpeechToTextNode = (): Node => {
       maxFileSize: 25 * 1024 * 1024, // 25MB
     },
   };
-  
+
   return node;
 };
 
@@ -381,6 +381,6 @@ export const createVideoStreamNode = (): Node => {
       previewType: 'video',
     },
   };
-  
+
   return node;
 };

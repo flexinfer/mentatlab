@@ -81,12 +81,12 @@ export class AgentService extends BaseService {
    */
   async sendTask(agentId: string, task: Omit<AgentTask, 'taskId' | 'status' | 'createdAt'>): Promise<AgentTask> {
     const response = await this.post<AgentTask>(`/${agentId}/tasks`, task);
-    
+
     // Subscribe to task updates if streaming is available
     if (this.isStreamingAvailable && response.taskId) {
       this.subscribeToTaskUpdates(response.taskId);
     }
-    
+
     return response;
   }
 
@@ -187,7 +187,7 @@ export class AgentService extends BaseService {
       start: timeRange.start.toISOString(),
       end: timeRange.end.toISOString()
     } : undefined;
-    
+
     return this.get<{
       tasksCompleted: number;
       tasksFailed: number;
