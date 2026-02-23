@@ -119,7 +119,7 @@ export class ConnectionManager {
   /**
    * Connect to a run's event stream
    */
-  async connect(runId: string): Promise<void> {
+  async connect(runId: string, options: { isReconnect?: boolean } = {}): Promise<void> {
     if (this.state.status === StreamConnectionState.CONNECTED && this.state.runId === runId) {
       this.log('Already connected to this run');
       return;
@@ -129,7 +129,10 @@ export class ConnectionManager {
     this.disconnect();
 
     this.state.runId = runId;
-    this.state.reconnectAttempts = 0;
+    // Preserve attempt count across automatic reconnect loops.
+    if (!options.isReconnect) {
+      this.state.reconnectAttempts = 0;
+    }
     this.isManualDisconnect = false;
 
     this.setStatus(StreamConnectionState.CONNECTING, 'none');
@@ -159,6 +162,9 @@ export class ConnectionManager {
     this.setStatus(StreamConnectionState.ERROR, 'none');
     this.state.lastError = new Error('All transports failed');
     this.config.onError?.(this.state.lastError, 'none');
+    if (!this.isManualDisconnect && this.config.autoReconnect) {
+      this.scheduleReconnect('none');
+    }
   }
 
   /**
@@ -259,6 +265,7 @@ export class ConnectionManager {
 
         this.ws.onopen = () => {
           clearTimeout(timeoutId);
+          this.state.reconnectAttempts = 0;
           this.setStatus(StreamConnectionState.CONNECTED, 'websocket');
           this.state.connectedAt = Date.now();
           this.log('WebSocket connected');
@@ -300,7 +307,7 @@ export class ConnectionManager {
             this.setStatus(StreamConnectionState.DISCONNECTED, 'none');
 
             if (!this.isManualDisconnect && this.config.autoReconnect) {
-              this.scheduleReconnect();
+              this.scheduleReconnect('websocket');
             }
           }
         };
@@ -331,6 +338,7 @@ export class ConnectionManager {
       const handlers: OrchestratorSSEHandlers = {
         onOpen: () => {
           clearTimeout(timeoutId);
+          this.state.reconnectAttempts = 0;
           this.setStatus(StreamConnectionState.CONNECTED, 'sse');
           this.state.connectedAt = Date.now();
           this.log('SSE connected');
@@ -357,7 +365,7 @@ export class ConnectionManager {
             this.setStatus(StreamConnectionState.ERROR, 'sse');
 
             if (!this.isManualDisconnect && this.config.autoReconnect) {
-              this.scheduleReconnect();
+              this.scheduleReconnect('sse');
             }
           }
 
@@ -422,7 +430,12 @@ export class ConnectionManager {
   // Private: Reconnection
   // ─────────────────────────────────────────────────────────────────────────
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(transport: TransportType = this.state.transport): void {
+    if (this.reconnectTimeoutId) {
+      this.log('Reconnect already scheduled');
+      return;
+    }
+
     if (this.config.maxReconnectAttempts > 0 &&
         this.state.reconnectAttempts >= this.config.maxReconnectAttempts) {
       this.log('Max reconnect attempts reached');
@@ -437,12 +450,13 @@ export class ConnectionManager {
     const delay = Math.round(jitter);
 
     this.log(`Scheduling reconnect in ${delay}ms (attempt ${this.state.reconnectAttempts + 1})`);
-    this.setStatus(StreamConnectionState.RECONNECTING, this.state.transport);
+    this.setStatus(StreamConnectionState.RECONNECTING, transport);
 
     this.reconnectTimeoutId = setTimeout(() => {
       this.state.reconnectAttempts++;
+      this.reconnectTimeoutId = null;
       if (this.state.runId) {
-        this.connect(this.state.runId);
+        this.connect(this.state.runId, { isReconnect: true });
       }
     }, delay);
   }
