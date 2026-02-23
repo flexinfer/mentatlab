@@ -24,20 +24,25 @@ app = typer.Typer(
 )
 
 # Add subcommand groups
-app.add_command(agent, name="agent")
-app.add_command(runs, name="runs")
+app.add_typer(agent, name="agent")
+app.add_typer(runs, name="runs")
 
 # Development commands group
 dev_app = typer.Typer(
     name="dev", help="Development commands for local testing", no_args_is_help=True
 )
-app.add_command(dev_app, name="dev")
+app.add_typer(dev_app, name="dev")
 
 
 @dev_app.command("run")
 def dev_run(
     manifest_file: Path = typer.Argument(..., help="Path to agent manifest.yaml file"),
     input: List[str] = typer.Option([], "--input", "-i", help="Input key=value pairs"),
+    input_json: Optional[str] = typer.Option(
+        None,
+        "--input-json",
+        help="JSON object or @path/to/file.json to merge into agent input",
+    ),
     follow: bool = typer.Option(False, "--follow", help="Follow execution logs"),
     local: bool = typer.Option(
         False, "--local", help="Run agent as local subprocess (no orchestrator needed)"
@@ -50,11 +55,11 @@ def dev_run(
     ),
 ):
     """Execute an agent locally or via orchestrator for development testing"""
-    import json as json_mod
-    import subprocess
-    import time
-
     try:
+        if watch and not local:
+            typer.echo("Error: --watch requires --local", err=True)
+            raise typer.Exit(code=1)
+
         if not manifest_file.exists():
             typer.echo(f"Error: Manifest file not found at {manifest_file}", err=True)
             raise typer.Exit(code=1)
@@ -66,17 +71,8 @@ def dev_run(
                 typer.echo(f"Error: Invalid YAML in manifest file: {e}", err=True)
                 raise typer.Exit(code=1)
 
-        # Parse input parameters
-        inputs = {}
-        for inp in input:
-            if "=" in inp:
-                key, value = inp.split("=", 1)
-                inputs[key] = value
-            else:
-                typer.echo(
-                    f"Warning: Ignoring invalid input format '{inp}' (expected key=value)",
-                    err=True,
-                )
+        # Parse and merge input parameters
+        inputs = _build_dev_inputs(input, input_json)
 
         agent_id = manifest_data.get("id", "unknown")
         agent_ver = manifest_data.get("version", "?")
@@ -92,6 +88,56 @@ def dev_run(
     except Exception as e:
         typer.echo(f"Error executing agent: {e}", err=True)
         raise typer.Exit(code=1)
+
+
+def _parse_input_value(raw: str) -> Any:
+    """Parse JSON scalars/objects/arrays when possible, otherwise keep string."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def _load_input_json(input_json: str) -> Dict[str, Any]:
+    """Load JSON object from inline string or @file path."""
+    source = input_json.strip()
+    if source.startswith("@"):
+        file_path = Path(source[1:])
+        if not file_path.exists():
+            raise ValueError(f"Input JSON file not found: {file_path}")
+        content = file_path.read_text(encoding="utf-8")
+    else:
+        content = source
+
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON for --input-json: {exc}") from exc
+
+    if not isinstance(parsed, dict):
+        raise ValueError("--input-json must decode to a JSON object")
+
+    return parsed
+
+
+def _build_dev_inputs(input_pairs: List[str], input_json: Optional[str]) -> Dict[str, Any]:
+    """Merge --input-json base object with --input key=value pairs."""
+    inputs: Dict[str, Any] = {}
+
+    if input_json:
+        inputs.update(_load_input_json(input_json))
+
+    for inp in input_pairs:
+        if "=" not in inp:
+            typer.echo(
+                f"Warning: Ignoring invalid input format '{inp}' (expected key=value)",
+                err=True,
+            )
+            continue
+        key, value = inp.split("=", 1)
+        inputs[key] = _parse_input_value(value)
+
+    return inputs
 
 
 def _dev_run_local(
