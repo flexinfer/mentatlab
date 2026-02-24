@@ -11,6 +11,10 @@ const { mockStartLiveConnection } = vi.hoisted(() => ({
   mockStartLiveConnection: vi.fn().mockResolvedValue(undefined),
 }));
 
+const { mockStopLiveConnection } = vi.hoisted(() => ({
+  mockStopLiveConnection: vi.fn(),
+}));
+
 // Mock the streaming store
 vi.mock('@/stores', () => ({
   useStreamingStore: (selector: (s: any) => any) =>
@@ -20,6 +24,7 @@ vi.mock('@/stores', () => ({
 vi.mock('@/components/mission-control/layout/WorkspaceProvider', () => ({
   useWorkspace: () => ({
     startLiveConnection: mockStartLiveConnection,
+    stopLiveConnection: mockStopLiveConnection,
   }),
 }));
 
@@ -213,9 +218,14 @@ describe('NetworkPanel', () => {
   test('Connect Live button is disabled when connecting', () => {
     mockConnectionStatus.current = 'connecting';
     render(<NetworkPanel runId={null} />);
-    const btn = screen.getByTitle('Already connected/connecting');
-    expect(btn).toBeTruthy();
-    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Disconnect/)).toBeTruthy();
+  });
+
+  test('Disconnect button calls workspace stopLiveConnection when connected', () => {
+    mockConnectionStatus.current = 'connected';
+    render(<NetworkPanel runId={null} />);
+    fireEvent.click(screen.getByText(/Disconnect/));
+    expect(mockStopLiveConnection).toHaveBeenCalledTimes(1);
   });
 
   test('shows Agents API label after successful fetch', async () => {

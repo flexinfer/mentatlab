@@ -21,13 +21,19 @@ const mockWorkspace = vi.hoisted(() => ({
   setCommandPaletteOpen: vi.fn(),
   startDemoRun: vi.fn(),
   startLiveConnection: vi.fn(),
+  stopLiveConnection: vi.fn(),
   startOrchestratorRun: vi.fn(),
+}));
+
+const mockConnection = vi.hoisted(() => ({
+  status: 'disconnected' as string,
+  transport: 'none' as string,
 }));
 
 vi.mock('@/stores', () => ({
   useLayoutStore: () => mockLayoutStore,
   useStreamingStore: (selector?: (s: Record<string, unknown>) => unknown) => {
-    const state = { connectionStatus: 'disconnected' };
+    const state = { connectionStatus: mockConnection.status, transportType: mockConnection.transport };
     return typeof selector === 'function' ? selector(state) : state;
   },
 }));
@@ -67,6 +73,8 @@ describe('TopBar', () => {
     vi.clearAllMocks();
     mockLayoutStore.mainView = 'canvas';
     mockLayoutStore.darkMode = false;
+    mockConnection.status = 'disconnected';
+    mockConnection.transport = 'none';
     mockWorkspace.isEnabled.mockImplementation(() => true);
   });
 
@@ -138,6 +146,21 @@ describe('TopBar', () => {
     render(<TopBar />);
     fireEvent.click(screen.getByText('Live'));
     expect(mockWorkspace.startLiveConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows Disconnect button when connected', () => {
+    mockConnection.status = 'connected';
+    mockConnection.transport = 'websocket';
+    render(<TopBar />);
+    expect(screen.getByText('Disconnect')).toBeInTheDocument();
+  });
+
+  it('calls stopLiveConnection when Disconnect is clicked', () => {
+    mockConnection.status = 'connected';
+    mockConnection.transport = 'websocket';
+    render(<TopBar />);
+    fireEvent.click(screen.getByText('Disconnect'));
+    expect(mockWorkspace.stopLiveConnection).toHaveBeenCalledTimes(1);
   });
 
   it('toggles dark mode', () => {

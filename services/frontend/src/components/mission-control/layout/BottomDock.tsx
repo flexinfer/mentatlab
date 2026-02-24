@@ -116,12 +116,13 @@ export function BottomDock({ className = '' }: BottomDockProps) {
     isEnabled,
     startDemoRun,
     startLiveConnection,
+    stopLiveConnection,
     startOrchestratorRun,
   } = useWorkspace();
 
   // Connection status for live button state
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
-  const liveDisabled =
+  const liveConnected =
     connectionStatus === StreamConnectionState.CONNECTING ||
     connectionStatus === StreamConnectionState.RECONNECTING ||
     connectionStatus === StreamConnectionState.CONNECTED;
@@ -248,16 +249,10 @@ export function BottomDock({ className = '' }: BottomDockProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={startLiveConnection}
-                disabled={liveDisabled}
+                onClick={liveConnected ? stopLiveConnection : startLiveConnection}
                 className="h-7 text-xs"
               >
-                {connectionStatus === StreamConnectionState.CONNECTING ||
-                connectionStatus === StreamConnectionState.RECONNECTING
-                  ? 'Connecting...'
-                  : connectionStatus === StreamConnectionState.CONNECTED
-                    ? 'Live'
-                    : 'Connect'}
+                {liveConnected ? 'Disconnect' : 'Connect'}
               </Button>
             )}
             {isEnabled('NEW_STREAMING') && (

@@ -22,6 +22,7 @@ const mockWorkspace = vi.hoisted(() => ({
   isEnabled: vi.fn((_flag: string) => true),
   startDemoRun: vi.fn(),
   startLiveConnection: vi.fn(),
+  stopLiveConnection: vi.fn(),
   startOrchestratorRun: vi.fn(),
 }));
 
@@ -221,15 +222,20 @@ describe('BottomDock', () => {
   it('disables Connect button when connection is connecting', () => {
     mockStreamingStore.connectionStatus = StreamConnectionState.CONNECTING;
     render(<BottomDock />);
-    const connectBtn = screen.getByText('Connecting...');
-    expect(connectBtn.closest('button')).toBeDisabled();
+    expect(screen.getByText('Disconnect')).toBeInTheDocument();
   });
 
-  it('shows Live label when connected', () => {
+  it('shows Disconnect label when connected', () => {
     mockStreamingStore.connectionStatus = StreamConnectionState.CONNECTED;
     render(<BottomDock />);
-    // The button with "Live" text for the connected state
-    expect(screen.getAllByText('Live').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Disconnect').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('calls stopLiveConnection when connected and action button clicked', () => {
+    mockStreamingStore.connectionStatus = StreamConnectionState.CONNECTED;
+    render(<BottomDock />);
+    fireEvent.click(screen.getAllByText('Disconnect')[0]);
+    expect(mockWorkspace.stopLiveConnection).toHaveBeenCalledTimes(1);
   });
 
   it('renders Run Queue placeholder content', () => {

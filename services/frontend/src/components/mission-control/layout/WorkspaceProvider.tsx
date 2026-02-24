@@ -38,6 +38,7 @@ export interface WorkspaceContextValue {
   startDemoRun: () => void;
   startOrchestratorRun: () => Promise<void>;
   startLiveConnection: () => Promise<void>;
+  stopLiveConnection: () => void;
 
   // CogPak UI
   cogpakUi: CogpakUi | null;
@@ -102,7 +103,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const { connect: connectLiveTransport } = useStreamingTransport();
+  const { connect: connectLiveTransport, disconnect: disconnectLiveTransport } = useStreamingTransport();
 
   const startDemoRun = useCallback(() => {
     const id = `demo-${Date.now()}`;
@@ -210,6 +211,14 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
       console.error('[Workspace] Live connect failed', e);
     }
   }, [activeRunId, connectLiveTransport]);
+
+  const stopLiveConnection = useCallback(() => {
+    try {
+      disconnectLiveTransport();
+    } catch (e) {
+      console.error('[Workspace] Live disconnect failed', e);
+    }
+  }, [disconnectLiveTransport]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // CogPak UI
@@ -334,6 +343,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
       startDemoRun,
       startOrchestratorRun,
       startLiveConnection,
+      stopLiveConnection,
       cogpakUi,
       setCogpakUi,
       isEnabled,
@@ -356,6 +366,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
       startDemoRun,
       startOrchestratorRun,
       startLiveConnection,
+      stopLiveConnection,
       cogpakUi,
       isEnabled,
       setFeatureOverride,

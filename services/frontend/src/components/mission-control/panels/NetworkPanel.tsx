@@ -172,12 +172,12 @@ function useThroughputMeter(windowMs = 5000) {
 }
 
 export default function NetworkPanel({ runId }: Props) {
-  const { startLiveConnection } = useWorkspace();
+  const { startLiveConnection, stopLiveConnection } = useWorkspace();
 
   // Streaming connection status
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
   const cs = String(connectionStatus);
-  const liveDisabled = cs === 'connecting' || cs === 'reconnecting' || cs === 'connected';
+  const liveConnected = cs === 'connecting' || cs === 'reconnecting' || cs === 'connected';
 
   // Nodes/Edges state (generic is the data type, not Node<>)
   const [nodes, setNodes, onNodesChange] = useNodesState<AgentNodeData>([] as RFNode[]);
@@ -676,14 +676,13 @@ export default function NetworkPanel({ runId }: Props) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {cs !== 'connected' && FeatureFlags.CONNECT_WS && (
+          {FeatureFlags.CONNECT_WS && (
             <button
               className="h-6 px-2 rounded border border-white/10 bg-white/5 hover:bg-white/10 text-[11px] disabled:opacity-60 transition-colors"
-              onClick={startLiveConnection}
-              disabled={liveDisabled}
-              title={liveDisabled ? 'Already connected/connecting' : 'Connect live stream'}
+              onClick={liveConnected ? stopLiveConnection : startLiveConnection}
+              title={liveConnected ? 'Disconnect live stream' : 'Connect live stream'}
             >
-              {cs === 'connecting' || cs === 'reconnecting' ? '🔄 Connecting…' : '🔌 Connect Live'}
+              {liveConnected ? '🛑 Disconnect' : '🔌 Connect Live'}
             </button>
           )}
         </div>

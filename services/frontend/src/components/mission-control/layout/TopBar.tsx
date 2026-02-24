@@ -66,8 +66,14 @@ export function TopBar({ className = '' }: TopBarProps) {
     setCommandPaletteOpen,
     startDemoRun,
     startLiveConnection,
+    stopLiveConnection,
     startOrchestratorRun,
   } = useWorkspace();
+  const connectionStatus = useStreamingStore((s) => s.connectionStatus);
+  const liveConnected =
+    connectionStatus === StreamConnectionState.CONNECTED ||
+    connectionStatus === StreamConnectionState.CONNECTING ||
+    connectionStatus === StreamConnectionState.RECONNECTING;
 
   const viewModes: { mode: MainViewMode; label: string }[] = [
     { mode: 'canvas', label: 'Canvas' },
@@ -128,11 +134,11 @@ export function TopBar({ className = '' }: TopBarProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={startLiveConnection}
+              onClick={liveConnected ? stopLiveConnection : startLiveConnection}
               className="text-xs h-7"
-              title="Connect live"
+              title={liveConnected ? 'Disconnect live' : 'Connect live'}
             >
-              Live
+              {liveConnected ? 'Disconnect' : 'Live'}
             </Button>
           )}
           <Button
