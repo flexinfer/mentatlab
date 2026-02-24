@@ -35,11 +35,16 @@ export default function RunsPanel(): JSX.Element {
   // Simple toast state
   const [toasts, setToasts] = useState<{ id: number; text: string; tone?: 'info' | 'error' | 'success' }[]>([]);
   const toastSeq = useRef(1);
+  const toastTimersRef = useRef<number[]>([]);
 
   function showToast(text: string, tone: 'info' | 'error' | 'success' = 'info') {
     const id = toastSeq.current++;
     setToasts((t) => [...t, { id, text, tone }]);
-    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
+    const timeoutId = window.setTimeout(() => {
+      setToasts((t) => t.filter((x) => x.id !== id));
+      toastTimersRef.current = toastTimersRef.current.filter((timerId) => timerId !== timeoutId);
+    }, 5000);
+    toastTimersRef.current.push(timeoutId);
   }
 
   // Auto-scroll timeline
@@ -54,6 +59,8 @@ export default function RunsPanel(): JSX.Element {
   useEffect(() => {
     return () => {
       sseRef.current?.close();
+      toastTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      toastTimersRef.current = [];
     };
   }, []);
 
