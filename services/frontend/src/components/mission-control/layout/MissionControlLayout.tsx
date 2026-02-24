@@ -177,6 +177,9 @@ function MissionControlInner() {
       {/* Top Bar */}
       <TopBar />
 
+      {/* Canonical, layout-aware connection status surface */}
+      <ConnectionStatusBanner onRetry={startLiveConnection} className="mx-4 mt-2" />
+
       {/* Main Content Area - Horizontal PanelGroup */}
       <PanelGroup direction="horizontal" className="flex-1">
         {/* Left Sidebar */}
@@ -245,9 +248,6 @@ function MissionControlInner() {
 
       {/* Settings Drawer */}
       {settingsOpen && <SettingsDrawer onClose={() => setSettingsOpen(false)} />}
-
-      {/* Connection Status Banner */}
-      <ConnectionStatusBanner onRetry={startLiveConnection} />
 
       {/* Node Context Menu */}
       <NodeContextMenu />

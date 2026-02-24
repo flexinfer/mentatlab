@@ -75,6 +75,15 @@ describe('ConnectionStatusBanner', () => {
     expect(bannerDivs).toHaveLength(1);
   });
 
+  it('supports layout-aware placement classes and avoids fixed positioning', () => {
+    mockConnectionStatus = 'error';
+    render(<ConnectionStatusBanner className="mx-4 mt-2" />);
+    const banner = screen.getByTestId('connection-status-banner');
+    expect(banner.className).toContain('mx-4');
+    expect(banner.className).toContain('mt-2');
+    expect(banner.className).not.toContain('fixed');
+  });
+
   // ── Retry button ────────────────────────────────────────────────────────
 
   it('shows retry button in error state when onRetry provided', () => {

@@ -1,12 +1,15 @@
 import React from 'react';
 import { useStreamingStore } from '@/stores';
 import { StreamConnectionState } from '../../types/streaming';
+import { cn } from '@/lib/utils';
 
 interface ConnectionStatusBannerProps {
   /** Called when user clicks retry */
   onRetry?: () => void;
   /** Show only when disconnected/error (hide when connected) */
   hideWhenConnected?: boolean;
+  /** Optional className for layout-aware placement */
+  className?: string;
 }
 
 /**
@@ -16,6 +19,7 @@ interface ConnectionStatusBannerProps {
 export function ConnectionStatusBanner({
   onRetry,
   hideWhenConnected = true,
+  className,
 }: ConnectionStatusBannerProps) {
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
 
@@ -32,13 +36,12 @@ export function ConnectionStatusBanner({
 
   return (
     <div
-      className={`
-        fixed top-20 left-1/2 -translate-x-1/2 z-[200]
-        flex items-center gap-3 px-4 py-2.5
-        rounded-md border shadow-lg backdrop-blur
-        animate-in slide-in-from-top-2 duration-300
-        ${statusConfig.bgClass}
-      `}
+      className={cn(
+        'relative z-20 flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-md border shadow-lg backdrop-blur animate-in slide-in-from-top-2 duration-300',
+        statusConfig.bgClass,
+        className,
+      )}
+      data-testid="connection-status-banner"
     >
       {/* Status indicator */}
       <div className="flex items-center gap-2">

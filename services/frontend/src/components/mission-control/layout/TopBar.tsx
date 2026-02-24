@@ -268,6 +268,9 @@ const TRANSPORT_LABELS: Record<string, string> = {
 function ConnectionStatusIndicator() {
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
   const transportType = useStreamingStore((s) => s.transportType ?? 'none');
+  if (connectionStatus !== StreamConnectionState.CONNECTED) {
+    return null;
+  }
   const style = STATUS_STYLES[connectionStatus] ?? STATUS_STYLES[StreamConnectionState.DISCONNECTED];
   const transportLabel = connectionStatus === StreamConnectionState.CONNECTED
     ? TRANSPORT_LABELS[transportType] ?? ''

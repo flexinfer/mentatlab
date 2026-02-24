@@ -202,10 +202,17 @@ describe('TopBar', () => {
     expect(screen.getByTestId('save-status')).toBeInTheDocument();
   });
 
-  it('renders connection status indicator', () => {
+  it('hides connection status indicator when not connected', () => {
+    render(<TopBar />);
+    expect(screen.queryByTestId('connection-indicator')).not.toBeInTheDocument();
+  });
+
+  it('renders compact connection status indicator when connected', () => {
+    mockConnection.status = 'connected';
+    mockConnection.transport = 'websocket';
     render(<TopBar />);
     expect(screen.getByTestId('connection-indicator')).toBeInTheDocument();
-    expect(screen.getByText('Offline')).toBeInTheDocument();
+    expect(screen.getByText('Connected (WS)')).toBeInTheDocument();
   });
 
   it('applies custom className', () => {
