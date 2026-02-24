@@ -183,6 +183,81 @@ func TestExecuteForEach_Parallel(t *testing.T) {
 	}
 }
 
+func TestExecuteForEach_AppliesRuntimeSafetyCap(t *testing.T) {
+	store := runstore.NewMemoryStore(nil)
+
+	var concurrentMax int32
+	var current int32
+
+	driver := &mockDriver{
+		runNodeFunc: func(ctx context.Context, runID, nodeID string, cmd []string, env map[string]string, timeout float64) (int, error) {
+			curr := atomic.AddInt32(&current, 1)
+			for {
+				max := atomic.LoadInt32(&concurrentMax)
+				if curr <= max || atomic.CompareAndSwapInt32(&concurrentMax, max, curr) {
+					break
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+			atomic.AddInt32(&current, -1)
+			return 0, nil
+		},
+	}
+	logger := slog.Default()
+
+	s := New(store, driver, testCommandResolver, nil, logger)
+	ctx := context.Background()
+
+	plan := &types.Plan{
+		Nodes: []types.NodeSpec{
+			{ID: "input", Type: "agent"},
+			{
+				ID:   "loop",
+				Type: types.NodeTypeForEach,
+				ForEach: &types.ForEachConfig{
+					Collection:  "inputs.input.items",
+					ItemVar:     "item",
+					MaxParallel: types.MaxForEachParallelSafetyCap * 2, // Intentionally above cap
+					Body:        []string{"process"},
+				},
+				Inputs: []string{"input"},
+			},
+			{ID: "process", Type: "agent", Command: []string{"echo"}},
+		},
+	}
+
+	runID, err := store.CreateRun(ctx, "test-foreach-cap", plan, "")
+	if err != nil {
+		t.Fatalf("Failed to create run: %v", err)
+	}
+
+	items := make([]interface{}, types.MaxForEachParallelSafetyCap*3)
+	for i := range items {
+		items[i] = i
+	}
+	if err := store.SetNodeOutputs(ctx, runID, "input", map[string]interface{}{"items": items}); err != nil {
+		t.Fatalf("Failed to set outputs: %v", err)
+	}
+
+	rctx := &runContext{
+		runID:      runID,
+		nodeSpecs:  make(map[string]*types.NodeSpec),
+		dependents: make(map[string]map[string]bool),
+	}
+	for i := range plan.Nodes {
+		rctx.nodeSpecs[plan.Nodes[i].ID] = &plan.Nodes[i]
+	}
+
+	node := rctx.nodeSpecs["loop"]
+	if err := s.executeForEach(ctx, rctx, node); err != nil {
+		t.Fatalf("executeForEach failed: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&concurrentMax); got > int32(types.MaxForEachParallelSafetyCap) {
+		t.Fatalf("max concurrency %d exceeded runtime safety cap %d", got, types.MaxForEachParallelSafetyCap)
+	}
+}
+
 func TestExecuteForEach_EmptyCollection(t *testing.T) {
 	store := runstore.NewMemoryStore(nil)
 

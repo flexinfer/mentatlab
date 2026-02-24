@@ -22,9 +22,9 @@ import (
 type CreateRunRequest struct {
 	Name          string      `json:"name"`
 	Plan          *types.Plan `json:"plan"`
-	AutoStart     bool        `json:"auto_start,omitempty"`      // Start execution immediately
-	WebhookURL    string      `json:"webhook_url,omitempty"`     // URL to POST on completion
-	WebhookSecret string      `json:"webhook_secret,omitempty"`  // HMAC-SHA256 signing secret
+	AutoStart     bool        `json:"auto_start,omitempty"`     // Start execution immediately
+	WebhookURL    string      `json:"webhook_url,omitempty"`    // URL to POST on completion
+	WebhookSecret string      `json:"webhook_secret,omitempty"` // HMAC-SHA256 signing secret
 }
 
 // CreateRunResponse is the response body after creating a run.
@@ -34,6 +34,14 @@ type CreateRunResponse struct {
 	SSEURL string `json:"sse_url,omitempty"`
 }
 
+func graphValidationMessage(result *validator.ValidationResult) string {
+	msgs := make([]string, len(result.Errors))
+	for i, e := range result.Errors {
+		msgs[i] = e.Message
+	}
+	return strings.Join(msgs, "; ")
+}
+
 // CreateRun handles POST /api/v1/runs
 func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 	ctx, span := apiTracer.Start(r.Context(), "api.CreateRun")
@@ -41,18 +49,14 @@ func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 
 	var req CreateRunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	// Validate plan graph structure (cycles, dangling edges, duplicate IDs)
 	if req.Plan != nil {
 		if result := validator.ValidatePlanGraph(req.Plan); !result.Valid {
-			msgs := make([]string, len(result.Errors))
-			for i, e := range result.Errors {
-				msgs[i] = e.Message
-			}
-			h.respondError(w, r, http.StatusBadRequest, strings.Join(msgs, "; "), nil)
+			h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
 			return
 		}
 	}
@@ -102,7 +106,7 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.scheduler == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "scheduler not available", errors.New("scheduler not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "scheduler not available", errors.New("scheduler not configured"))
 		return
 	}
 
@@ -110,21 +114,31 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 	run, err := h.store.GetRun(ctx, runID)
 	if err != nil {
 		if errors.Is(err, runstore.ErrRunNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "run not found", err)
+			h.respondError(w, r, http.StatusNotFound, "run not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to get run", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to get run", err)
+		return
+	}
+
+	if run.Plan == nil {
+		h.respondError(w, r, http.StatusBadRequest, "run has no plan to execute", errors.New("missing plan"))
+		return
+	}
+
+	if result := validator.ValidatePlanGraph(run.Plan); !result.Valid {
+		h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
 		return
 	}
 
 	// Enqueue and start via scheduler
 	if err := h.scheduler.EnqueueRun(ctx, runID, run.Name, run.Plan); err != nil {
-		h.respondError(w, r,http.StatusInternalServerError, "failed to enqueue run", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to enqueue run", err)
 		return
 	}
 
 	if err := h.scheduler.StartRun(ctx, runID); err != nil {
-		h.respondError(w, r,http.StatusInternalServerError, "failed to start run", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to start run", err)
 		return
 	}
 
@@ -226,10 +240,10 @@ func (h *Handlers) GetRun(w http.ResponseWriter, r *http.Request) {
 	run, err := h.store.GetRun(ctx, runID)
 	if err != nil {
 		if errors.Is(err, runstore.ErrRunNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "run not found", err)
+			h.respondError(w, r, http.StatusNotFound, "run not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to get run", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to get run", err)
 		return
 	}
 
@@ -248,10 +262,10 @@ func (h *Handlers) DeleteRun(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.store.CancelRun(ctx, runID); err != nil {
 		if errors.Is(err, runstore.ErrRunNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "run not found", err)
+			h.respondError(w, r, http.StatusNotFound, "run not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to delete run", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to delete run", err)
 		return
 	}
 
@@ -276,10 +290,10 @@ func (h *Handlers) CancelRun(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if err := h.store.CancelRun(ctx, runID); err != nil {
 			if errors.Is(err, runstore.ErrRunNotFound) {
-				h.respondError(w, r,http.StatusNotFound, "run not found", err)
+				h.respondError(w, r, http.StatusNotFound, "run not found", err)
 				return
 			}
-			h.respondError(w, r,http.StatusInternalServerError, "failed to cancel run", err)
+			h.respondError(w, r, http.StatusInternalServerError, "failed to cancel run", err)
 			return
 		}
 	}

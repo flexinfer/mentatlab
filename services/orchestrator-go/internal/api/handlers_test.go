@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -14,6 +15,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
@@ -39,6 +41,32 @@ func newTestHandlers(t *testing.T) *Handlers {
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	h := newTestHandlers(t)
+	return NewServer(h, nil, 0, 0)
+}
+
+// newTestHandlersWithScheduler creates Handlers with in-memory backends and scheduler.
+func newTestHandlersWithScheduler(t *testing.T) *Handlers {
+	t.Helper()
+	store := runstore.NewMemoryStore(&runstore.Config{
+		EventMaxLen: 1000,
+		TTLSeconds:  3600,
+	})
+	reg := registry.NewMemoryRegistryWithDefaults()
+	flows := flowstore.NewMemoryStore()
+	cfg := config.Load()
+	sched := scheduler.New(store, nil, nil, nil, nil)
+
+	opts := &HandlerOptions{
+		Registry:  reg,
+		FlowStore: flows,
+	}
+	return NewHandlers(store, sched, nil, cfg, nil, opts)
+}
+
+// newTestServerWithScheduler creates a Server with in-memory backends and scheduler.
+func newTestServerWithScheduler(t *testing.T) *Server {
+	t.Helper()
+	h := newTestHandlersWithScheduler(t)
 	return NewServer(h, nil, 0, 0)
 }
 
@@ -391,5 +419,68 @@ func TestStartRunNoScheduler(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 for start without scheduler, got %d", w.Code)
+	}
+}
+
+func TestStartRunRejectsInvalidPlan(t *testing.T) {
+	srv := newTestServerWithScheduler(t)
+	store := srv.handlers.store
+	ctx := t.Context()
+
+	runID, err := store.CreateRun(ctx, "invalid-plan", &types.Plan{
+		Nodes: []types.NodeSpec{
+			{ID: "a", Type: "agent"},
+			{ID: "b", Type: "agent"},
+		},
+		Edges: []types.EdgeSpec{
+			{From: "a", To: "b"},
+			{From: "b", To: "a"},
+		},
+	}, "")
+	if err != nil {
+		t.Fatalf("failed to create run: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/api/v1/runs/"+runID+"/start", nil)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid run plan, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "cycle detected") {
+		t.Fatalf("expected cycle validation error, got: %s", w.Body.String())
+	}
+}
+
+func TestCloneRunRejectsInvalidPlan(t *testing.T) {
+	srv := newTestServer(t)
+	store := srv.handlers.store
+	ctx := t.Context()
+
+	runID, err := store.CreateRun(ctx, "invalid-plan-clone", &types.Plan{
+		Nodes: []types.NodeSpec{
+			{ID: "a", Type: "agent"},
+			{ID: "b", Type: "agent"},
+		},
+		Edges: []types.EdgeSpec{
+			{From: "a", To: "b"},
+			{From: "b", To: "a"},
+		},
+	}, "")
+	if err != nil {
+		t.Fatalf("failed to create run: %v", err)
+	}
+
+	req := httptest.NewRequest("POST", "/api/v1/runs/"+runID+"/clone", bytes.NewReader([]byte(`{"auto_start":false}`)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid run plan clone, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "cycle detected") {
+		t.Fatalf("expected cycle validation error, got: %s", w.Body.String())
 	}
 }

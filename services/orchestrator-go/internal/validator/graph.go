@@ -7,7 +7,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
-const maxForEachParallel = 32
+const maxForEachParallel = types.MaxForEachParallelSafetyCap
 
 // ValidatePlanGraph performs structural validation of the plan's DAG beyond
 // what JSON schema can express: duplicate node IDs, dangling edge references,

@@ -94,7 +94,7 @@ func (h *Handlers) Ready(w http.ResponseWriter, r *http.Request) {
 	// Check RunStore health
 	info, err := h.store.AdapterInfo(ctx)
 	if err != nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "runstore unhealthy", err)
+		h.respondError(w, r, http.StatusServiceUnavailable, "runstore unhealthy", err)
 		return
 	}
 
@@ -119,8 +119,9 @@ func (h *Handlers) respondJSON(w http.ResponseWriter, status int, data interface
 func (h *Handlers) respondError(w http.ResponseWriter, r *http.Request, status int, message string, err error) {
 	h.logger.Error(message, "error", err, "status", status)
 	code := HTTPStatusToErrorCode(status)
-	details := map[string]interface{}{
-		"reason": err.Error(),
+	details := map[string]interface{}{}
+	if err != nil {
+		details["reason"] = err.Error()
 	}
 	writeErrorResponse(w, r, status, code, message, details)
 }

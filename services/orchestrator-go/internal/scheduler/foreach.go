@@ -38,16 +38,33 @@ func (s *Scheduler) executeForEach(ctx context.Context, rctx *runContext, node *
 		return fmt.Errorf("evaluate collection for node %s: %w", node.ID, err)
 	}
 
+	// Determine effective parallelism with a runtime safety cap.
+	maxParallel := config.MaxParallel
+	if maxParallel <= 0 {
+		maxParallel = 1 // Sequential by default
+	}
+	if maxParallel > types.MaxForEachParallelSafetyCap {
+		s.logger.Warn("for_each max_parallel exceeds safety cap; capping",
+			"run_id", rctx.runID,
+			"node_id", node.ID,
+			"configured", config.MaxParallel,
+			"effective", types.MaxForEachParallelSafetyCap,
+		)
+		maxParallel = types.MaxForEachParallelSafetyCap
+	}
+
 	span.SetAttributes(
 		attribute.Int("collection_size", len(items)),
-		attribute.Int("max_parallel", config.MaxParallel),
+		attribute.Int("configured_max_parallel", config.MaxParallel),
+		attribute.Int("effective_max_parallel", maxParallel),
 	)
 
 	// Emit loop_started event
 	s.emitEvent(ctx, rctx.runID, string(types.EventTypeLoopStarted), map[string]interface{}{
-		"collection":  config.Collection,
-		"item_count":  len(items),
-		"max_parallel": config.MaxParallel,
+		"collection":    config.Collection,
+		"item_count":    len(items),
+		"max_parallel":  maxParallel,
+		"configured_mp": config.MaxParallel,
 	}, node.ID, "")
 
 	// Handle empty collection
@@ -57,12 +74,6 @@ func (s *Scheduler) executeForEach(ctx context.Context, rctx *runContext, node *
 			"skipped":    true,
 		}, node.ID, "")
 		return nil
-	}
-
-	// Determine parallelism
-	maxParallel := config.MaxParallel
-	if maxParallel <= 0 {
-		maxParallel = 1 // Sequential by default
 	}
 
 	// Execute iterations
@@ -161,8 +172,8 @@ func (s *Scheduler) executeLoopBody(ctx context.Context, rctx *runContext, loopN
 
 	// Build sub-DAG dependency graph from the main plan's edges,
 	// filtered to only body nodes within this iteration.
-	subDeps := make(map[string]map[string]bool)    // node -> set of downstream body nodes
-	subRemaining := make(map[string]int)            // node -> count of unresolved body predecessors
+	subDeps := make(map[string]map[string]bool) // node -> set of downstream body nodes
+	subRemaining := make(map[string]int)        // node -> count of unresolved body predecessors
 
 	for id := range bodySet {
 		subDeps[id] = make(map[string]bool)
