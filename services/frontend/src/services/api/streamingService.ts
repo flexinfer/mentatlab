@@ -2,19 +2,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { EnhancedStream } from '../streamingService.enhanced';
 import { StreamingMessage, StreamConnectionState, StreamMessageHandler, ConnectionStateHandler } from '../../types/streaming'; // All imported from types/streaming
 import { MediaType, MediaChunk, MediaReference } from '../../types/media'; // Corrected import for MediaType and MediaChunk
-import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
+import { getGatewayBaseUrl, getGatewayWsUrl } from '@/config/orchestrator';
 import { streamRegistry } from '@/services/streaming/streamRegistry';
-
-function httpToWs(u: string): string {
-  try {
-    const url = new URL(u);
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    return url.toString();
-  } catch {
-    // Fallback: naive replace keeps relative quirks out of the way
-    return u.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
-  }
-}
 
 /**
  * Service for interacting with multimodal streaming endpoints.
@@ -130,22 +119,16 @@ export class StreamingService {
 }
 
 // Export a singleton instance for convenience
-// Prefer Gateway base URL for streaming transports. Fall back to orchestrator only if explicitly configured.
-const gatewayBase =
-  (import.meta.env.VITE_GATEWAY_BASE_URL as string) ||
-  (import.meta.env.VITE_GATEWAY_URL as string) ||
-  getGatewayBaseUrl();
-const normalizedGateway = String(gatewayBase || getOrchestratorBaseUrl()).replace(/\/+$/, '');
-// Build a ws(s) URL that matches the http(s) scheme
-const wsBase = (import.meta.env.VITE_WS_URL as string) || httpToWs(normalizedGateway);
+const gatewayBase = getGatewayBaseUrl().replace(/\/+$/, '');
+const wsHubUrl = getGatewayWsUrl().replace(/\/+$/, '');
 
 // Default endpoints point at Gateway streaming paths for local-dev.
 // SSE for run events uses orchestratorSSE.ts with /api/v1/runs/{id}/events.
 // This service handles general WebSocket streaming via the gateway hub.
 export const streamingService = new StreamingService(
   'default-stream-id',
-  `${wsBase}/ws/streams/default-stream-id`,
-  `${normalizedGateway}/api/v1/runs/default/events`
+  `${wsHubUrl}/streams/default-stream-id`,
+  `${gatewayBase}/api/v1/runs/default/events`
 );
 
 // Register default client so it can be closed when user cancels/stops

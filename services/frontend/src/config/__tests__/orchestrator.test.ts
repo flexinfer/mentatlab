@@ -92,9 +92,43 @@ describe('config/orchestrator URL resolvers', () => {
     });
   });
 
+  // ── getApiBaseUrl ─────────────────────────────────────────────────────
+
+  describe('getApiBaseUrl', () => {
+    it('returns VITE_API_URL when set', async () => {
+      vi.stubEnv('VITE_API_URL', 'http://api:9999');
+      const { getApiBaseUrl } = await loadModule();
+      expect(getApiBaseUrl()).toBe('http://api:9999');
+    });
+
+    it('falls back to gateway base URL when VITE_API_URL is unset', async () => {
+      vi.stubEnv('VITE_GATEWAY_BASE_URL', 'http://gw:8080');
+      const { getApiBaseUrl } = await loadModule();
+      expect(getApiBaseUrl()).toBe('http://gw:8080');
+    });
+  });
+
   // ── getGatewayWsUrl ───────────────────────────────────────────────────
 
   describe('getGatewayWsUrl', () => {
+    it('honors explicit VITE_WS_URL value', async () => {
+      vi.stubEnv('VITE_WS_URL', 'ws://ws-host:9001/ws');
+      const { getGatewayWsUrl } = await loadModule();
+      expect(getGatewayWsUrl()).toBe('ws://ws-host:9001/ws');
+    });
+
+    it('converts http VITE_WS_URL to ws protocol', async () => {
+      vi.stubEnv('VITE_WS_URL', 'http://ws-host:9001/ws');
+      const { getGatewayWsUrl } = await loadModule();
+      expect(getGatewayWsUrl()).toBe('ws://ws-host:9001/ws');
+    });
+
+    it('appends /ws when VITE_WS_URL omits path', async () => {
+      vi.stubEnv('VITE_WS_URL', 'ws://ws-host:9001');
+      const { getGatewayWsUrl } = await loadModule();
+      expect(getGatewayWsUrl()).toBe('ws://ws-host:9001/ws');
+    });
+
     it('derives ws:// URL from http gateway base', async () => {
       vi.stubEnv('VITE_GATEWAY_BASE_URL', 'http://gw:8080');
       const { getGatewayWsUrl } = await loadModule();
@@ -117,6 +151,12 @@ describe('config/orchestrator URL resolvers', () => {
   // ── getGatewaySseUrl ──────────────────────────────────────────────────
 
   describe('getGatewaySseUrl', () => {
+    it('derives SSE URL from explicit VITE_WS_URL', async () => {
+      vi.stubEnv('VITE_WS_URL', 'ws://gw:8080/ws');
+      const { getGatewaySseUrl } = await loadModule();
+      expect(getGatewaySseUrl()).toBe('http://gw:8080/ws/sse');
+    });
+
     it('derives SSE URL from gateway base', async () => {
       vi.stubEnv('VITE_GATEWAY_BASE_URL', 'http://gw:8080');
       const { getGatewaySseUrl } = await loadModule();
@@ -142,6 +182,7 @@ describe('config/orchestrator URL resolvers', () => {
     it('no URL resolver returns port 8000 with defaults', async () => {
       const mod = await loadModule();
       const urls = [
+        mod.getApiBaseUrl(),
         mod.getOrchestratorBaseUrl(),
         mod.getGatewayBaseUrl(),
         mod.getGatewayWsUrl(),

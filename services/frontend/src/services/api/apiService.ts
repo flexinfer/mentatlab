@@ -3,7 +3,7 @@ import { httpClient, HttpClient } from "./httpClient";
 import { AgentService, getAgentService } from "./agentService";
 import { MediaService, getMediaService } from "./mediaService";
 import { StreamingService } from "./streamingService"; // Only import the class, not the singleton
-import { getGatewayBaseUrl, getGatewayWsUrl, getGatewaySseUrl } from "@/config/orchestrator";
+import { getApiBaseUrl, getGatewayWsUrl, getGatewaySseUrl } from "@/config/orchestrator";
 
 /**
  * Configuration for the API service
@@ -111,11 +111,9 @@ export class ApiService {
  * Default API service instance
  */
 export const apiService = new ApiService({
-  baseUrl: (import.meta.env.VITE_API_URL as string) || getGatewayBaseUrl(),
-  wsUrl: (import.meta.env.VITE_WS_URL as string) || getGatewayWsUrl(),
-  sseUrl: import.meta.env.VITE_WS_URL
-    ? (import.meta.env.VITE_WS_URL as string) + "/sse"
-    : getGatewaySseUrl(),
+  baseUrl: getApiBaseUrl(),
+  wsUrl: getGatewayWsUrl(),
+  sseUrl: getGatewaySseUrl(),
   debug: import.meta.env.DEV,
 });
 
