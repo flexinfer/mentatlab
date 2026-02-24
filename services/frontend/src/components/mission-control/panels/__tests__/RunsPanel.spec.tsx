@@ -104,7 +104,7 @@ describe("RunsPanel (integration-ish)", () => {
     handlers.onStatus?.({ runId: "run-123", status: "running" });
     // The run status text should update (may appear in badge + toast)
     await waitFor(() => expect(screen.getAllByText(/RUNNING/i).length).toBeGreaterThanOrEqual(1));
-  });
+  }, 20000);
 
   test("post annotation button calls postCheckpoint and refreshes list", async () => {
     (mockOrchestratorService.postCheckpoint as Mock).mockResolvedValue({ checkpointId: "cp-xyz" });

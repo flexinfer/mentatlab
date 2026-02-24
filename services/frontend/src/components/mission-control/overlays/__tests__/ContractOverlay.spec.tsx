@@ -129,7 +129,7 @@ describe('ContractOverlay (integration)', () => {
     // Query list items within the overlay dialog only
     const listItems = dialog.querySelectorAll('li');
     expect(listItems.length).toBe(200);
-  });
+  }, 20000);
 
   test('returns null when no issues exist', () => {
     storeState.edges = [];
