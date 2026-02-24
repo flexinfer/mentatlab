@@ -7,6 +7,8 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
+const maxForEachParallel = 32
+
 // ValidatePlanGraph performs structural validation of the plan's DAG beyond
 // what JSON schema can express: duplicate node IDs, dangling edge references,
 // and cycle detection.
@@ -58,7 +60,10 @@ func ValidatePlanGraph(plan *types.Plan) *ValidationResult {
 		}
 	}
 
-	// 4. Detect cycles using DFS topological sort (Kahn's would also work,
+	// 4. Validate control-flow configuration references and safety bounds.
+	errs = append(errs, validateControlFlowNodes(plan, nodeSet)...)
+
+	// 5. Detect cycles using DFS topological sort (Kahn's would also work,
 	//    but DFS gives us the cycle path for a better error message).
 	if cycleErr := detectCycle(plan); cycleErr != nil {
 		errs = append(errs, *cycleErr)
@@ -145,4 +150,134 @@ func detectCycle(plan *types.Plan) *ValidationError {
 	}
 
 	return nil
+}
+
+func validateControlFlowNodes(plan *types.Plan, nodeSet map[string]int) []ValidationError {
+	var errs []ValidationError
+
+	for i, node := range plan.Nodes {
+		if node.Type == types.NodeTypeConditional && node.Conditional == nil {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("$.nodes[%d].conditional", i),
+				Message: fmt.Sprintf("conditional node %q requires conditional config", node.ID),
+			})
+		}
+		if node.Type == types.NodeTypeForEach && node.ForEach == nil {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("$.nodes[%d].for_each", i),
+				Message: fmt.Sprintf("for_each node %q requires for_each config", node.ID),
+			})
+		}
+		if node.Conditional != nil {
+			errs = append(errs, validateConditionalNode(node, i, nodeSet)...)
+		}
+		if node.ForEach != nil {
+			errs = append(errs, validateForEachNode(node, i, nodeSet)...)
+		}
+	}
+
+	return errs
+}
+
+func validateConditionalNode(node types.NodeSpec, nodeIndex int, nodeSet map[string]int) []ValidationError {
+	var errs []ValidationError
+	cfg := node.Conditional
+
+	if strings.TrimSpace(cfg.Expression) == "" {
+		errs = append(errs, ValidationError{
+			Path:    fmt.Sprintf("$.nodes[%d].conditional.expression", nodeIndex),
+			Message: fmt.Sprintf("conditional node %q requires a non-empty expression", node.ID),
+		})
+	}
+
+	switch cfg.Type {
+	case "if":
+		if _, ok := cfg.Branches["true"]; !ok {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("$.nodes[%d].conditional.branches", nodeIndex),
+				Message: fmt.Sprintf("conditional node %q with type \"if\" requires \"true\" branch", node.ID),
+			})
+		}
+		if _, ok := cfg.Branches["false"]; !ok {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("$.nodes[%d].conditional.branches", nodeIndex),
+				Message: fmt.Sprintf("conditional node %q with type \"if\" requires \"false\" branch", node.ID),
+			})
+		}
+	case "switch":
+		if cfg.Default != "" {
+			if _, ok := cfg.Branches[cfg.Default]; !ok {
+				errs = append(errs, ValidationError{
+					Path:    fmt.Sprintf("$.nodes[%d].conditional.default", nodeIndex),
+					Message: fmt.Sprintf("conditional node %q default branch %q is not defined", node.ID, cfg.Default),
+				})
+			}
+		}
+	default:
+		errs = append(errs, ValidationError{
+			Path:    fmt.Sprintf("$.nodes[%d].conditional.type", nodeIndex),
+			Message: fmt.Sprintf("conditional node %q has unsupported type %q", node.ID, cfg.Type),
+		})
+	}
+
+	if len(cfg.Branches) == 0 {
+		errs = append(errs, ValidationError{
+			Path:    fmt.Sprintf("$.nodes[%d].conditional.branches", nodeIndex),
+			Message: fmt.Sprintf("conditional node %q must define at least one branch", node.ID),
+		})
+	}
+
+	for branchID, branch := range cfg.Branches {
+		for targetIndex, targetID := range branch.Targets {
+			if _, ok := nodeSet[targetID]; !ok {
+				errs = append(errs, ValidationError{
+					Path:    fmt.Sprintf("$.nodes[%d].conditional.branches[%q].targets[%d]", nodeIndex, branchID, targetIndex),
+					Message: fmt.Sprintf("conditional node %q branch %q references non-existent target %q", node.ID, branchID, targetID),
+				})
+			}
+		}
+	}
+
+	return errs
+}
+
+func validateForEachNode(node types.NodeSpec, nodeIndex int, nodeSet map[string]int) []ValidationError {
+	var errs []ValidationError
+	cfg := node.ForEach
+
+	if strings.TrimSpace(cfg.Collection) == "" {
+		errs = append(errs, ValidationError{
+			Path:    fmt.Sprintf("$.nodes[%d].for_each.collection", nodeIndex),
+			Message: fmt.Sprintf("for_each node %q requires a non-empty collection expression", node.ID),
+		})
+	}
+	if strings.TrimSpace(cfg.ItemVar) == "" {
+		errs = append(errs, ValidationError{
+			Path:    fmt.Sprintf("$.nodes[%d].for_each.item_var", nodeIndex),
+			Message: fmt.Sprintf("for_each node %q requires a non-empty item_var", node.ID),
+		})
+	}
+	if cfg.MaxParallel < 0 {
+		errs = append(errs, ValidationError{
+			Path:    fmt.Sprintf("$.nodes[%d].for_each.max_parallel", nodeIndex),
+			Message: fmt.Sprintf("for_each node %q max_parallel must be >= 0", node.ID),
+		})
+	}
+	if cfg.MaxParallel > maxForEachParallel {
+		errs = append(errs, ValidationError{
+			Path:    fmt.Sprintf("$.nodes[%d].for_each.max_parallel", nodeIndex),
+			Message: fmt.Sprintf("for_each node %q max_parallel %d exceeds safety cap %d", node.ID, cfg.MaxParallel, maxForEachParallel),
+		})
+	}
+
+	for bodyIndex, bodyNodeID := range cfg.Body {
+		if _, ok := nodeSet[bodyNodeID]; !ok {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("$.nodes[%d].for_each.body[%d]", nodeIndex, bodyIndex),
+				Message: fmt.Sprintf("for_each node %q body references non-existent node %q", node.ID, bodyNodeID),
+			})
+		}
+	}
+
+	return errs
 }
