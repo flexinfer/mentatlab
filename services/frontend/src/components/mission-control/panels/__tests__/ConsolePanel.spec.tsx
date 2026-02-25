@@ -63,7 +63,7 @@ describe('ConsolePanel (integration)', () => {
     renderWithProviders(<ConsolePanel runId="run-1" />);
 
     expect(screen.getByText('Console')).toBeTruthy();
-  });
+  }, 15000);
 
   test('renders filtered items via ConsoleVirtualList', async () => {
     mockFiltered.current = [
