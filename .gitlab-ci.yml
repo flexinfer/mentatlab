@@ -381,7 +381,7 @@ e2e-test:
 deploy:
   stage: deploy
   image: alpine/k8s:1.31.0
-  needs: [build-go, build-frontend, build-agents]
+  needs: [build-go, build-frontend, build-agents, e2e-test]
   variables:
     NAMESPACE: mentatlab
   before_script:
@@ -437,4 +437,4 @@ deploy:
       kubectl get pods -n ${NAMESPACE}
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-      when: manual
+      when: on_success
