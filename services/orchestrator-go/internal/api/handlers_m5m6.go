@@ -260,6 +260,10 @@ func (h *Handlers) CloneRun(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, r, http.StatusBadRequest, "run has no plan to clone", errors.New("missing plan"))
 		return
 	}
+	if result := validator.ValidatePlanGraph(run.Plan); !result.Valid {
+		h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
+		return
+	}
 
 	var req struct {
 		AutoStart bool `json:"auto_start"`

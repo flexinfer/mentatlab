@@ -322,6 +322,186 @@ func TestValidatePlanGraph_MixedEdgesAndInputs(t *testing.T) {
 	}
 }
 
+func TestValidatePlanGraph_ConditionalIfMissingFalseBranch(t *testing.T) {
+	plan := &types.Plan{
+		Nodes: []types.NodeSpec{
+			{
+				ID:   "cond",
+				Type: types.NodeTypeConditional,
+				Conditional: &types.ConditionalConfig{
+					Type:       "if",
+					Expression: "inputs.score > 0",
+					Branches: map[string]types.ConditionalBranch{
+						"true": {Targets: []string{"ok"}},
+					},
+				},
+			},
+			{ID: "ok"},
+		},
+	}
+
+	result := ValidatePlanGraph(plan)
+	if result.Valid {
+		t.Fatal("conditional missing false branch should be invalid")
+	}
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e.Message, "requires \"false\" branch") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected missing false branch error, got: %v", result.Errors)
+	}
+}
+
+func TestValidatePlanGraph_ConditionalBranchTargetMissingNode(t *testing.T) {
+	plan := &types.Plan{
+		Nodes: []types.NodeSpec{
+			{
+				ID:   "cond",
+				Type: types.NodeTypeConditional,
+				Conditional: &types.ConditionalConfig{
+					Type:       "if",
+					Expression: "inputs.score > 0",
+					Branches: map[string]types.ConditionalBranch{
+						"true":  {Targets: []string{"ok"}},
+						"false": {Targets: []string{"missing"}},
+					},
+				},
+			},
+			{ID: "ok"},
+		},
+	}
+
+	result := ValidatePlanGraph(plan)
+	if result.Valid {
+		t.Fatal("conditional branch with missing target should be invalid")
+	}
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e.Message, `references non-existent target "missing"`) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected missing conditional target error, got: %v", result.Errors)
+	}
+}
+
+func TestValidatePlanGraph_ConditionalTypeRequiresConfig(t *testing.T) {
+	plan := &types.Plan{
+		Nodes: []types.NodeSpec{
+			{ID: "cond", Type: types.NodeTypeConditional},
+		},
+	}
+
+	result := ValidatePlanGraph(plan)
+	if result.Valid {
+		t.Fatal("conditional node without config should be invalid")
+	}
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e.Message, "requires conditional config") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected missing conditional config error, got: %v", result.Errors)
+	}
+}
+
+func TestValidatePlanGraph_ForEachBodyMissingNode(t *testing.T) {
+	plan := &types.Plan{
+		Nodes: []types.NodeSpec{
+			{
+				ID:   "loop",
+				Type: types.NodeTypeForEach,
+				ForEach: &types.ForEachConfig{
+					Collection:  "inputs.items",
+					ItemVar:     "item",
+					MaxParallel: 1,
+					Body:        []string{"missing"},
+				},
+			},
+		},
+	}
+
+	result := ValidatePlanGraph(plan)
+	if result.Valid {
+		t.Fatal("for_each body referencing missing node should be invalid")
+	}
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e.Message, `body references non-existent node "missing"`) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected missing for_each body node error, got: %v", result.Errors)
+	}
+}
+
+func TestValidatePlanGraph_ForEachMaxParallelSafetyCap(t *testing.T) {
+	plan := &types.Plan{
+		Nodes: []types.NodeSpec{
+			{
+				ID:   "loop",
+				Type: types.NodeTypeForEach,
+				ForEach: &types.ForEachConfig{
+					Collection:  "inputs.items",
+					ItemVar:     "item",
+					MaxParallel: maxForEachParallel + 1,
+					Body:        []string{"body"},
+				},
+			},
+			{ID: "body"},
+		},
+	}
+
+	result := ValidatePlanGraph(plan)
+	if result.Valid {
+		t.Fatal("for_each max_parallel above cap should be invalid")
+	}
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e.Message, "exceeds safety cap") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected max_parallel cap error, got: %v", result.Errors)
+	}
+}
+
+func TestValidatePlanGraph_ForEachTypeRequiresConfig(t *testing.T) {
+	plan := &types.Plan{
+		Nodes: []types.NodeSpec{
+			{ID: "loop", Type: types.NodeTypeForEach},
+		},
+	}
+
+	result := ValidatePlanGraph(plan)
+	if result.Valid {
+		t.Fatal("for_each node without config should be invalid")
+	}
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e.Message, "requires for_each config") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected missing for_each config error, got: %v", result.Errors)
+	}
+}
+
 func TestValidatePlanGraph_LargeFanOut(t *testing.T) {
 	nodes := []types.NodeSpec{{ID: "root"}}
 	edges := []types.EdgeSpec{}

@@ -82,6 +82,10 @@ type GateConfig struct {
 
 // NodeType constants for control flow nodes.
 const (
+	// MaxForEachParallelSafetyCap bounds for_each runtime concurrency to avoid
+	// unbounded goroutine/memory growth from misconfigured plans.
+	MaxForEachParallelSafetyCap = 32
+
 	NodeTypeAgent       = "agent"
 	NodeTypeConditional = "conditional"
 	NodeTypeForEach     = "for_each"
