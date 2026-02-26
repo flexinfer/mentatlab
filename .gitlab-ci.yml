@@ -60,8 +60,19 @@ variables:
     fi
     echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
     git init -q .
+    git remote remove origin >/dev/null 2>&1 || true
     git remote add origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git"
-    git fetch -q --depth "${GIT_DEPTH:-20}" origin "${CI_COMMIT_SHA}"
+    for i in 1 2 3 4 5; do
+      if git fetch -q --depth "${GIT_DEPTH:-20}" origin "${CI_COMMIT_SHA}"; then
+        break
+      fi
+      if [ "$i" -eq 5 ]; then
+        echo "ERROR: git fetch failed after ${i} attempts"
+        exit 1
+      fi
+      echo "git fetch failed (attempt ${i}/5); retrying..."
+      sleep $((i * 2))
+    done
     git checkout -q -f "${CI_COMMIT_SHA}"
 
 # Cache settings
@@ -269,13 +280,7 @@ e2e-test:
     FRONTEND_IMAGE: "${REGISTRY}/mentatlab-frontend:latest"
   before_script:
     - apk add --no-cache curl jq git
-    # Clone repo (global GIT_STRATEGY is none)
-    - |
-      echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
-      git init -q .
-      git remote add origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git"
-      git fetch -q --depth 20 origin "${CI_COMMIT_SHA}"
-      git checkout -q -f "${CI_COMMIT_SHA}"
+    - *clone_repo
     - |
       echo "Waiting for Docker daemon..."
       for i in $(seq 1 30); do
@@ -386,13 +391,7 @@ deploy:
     NAMESPACE: mentatlab
   before_script:
     - apk add --no-cache git
-    # Clone repo (global GIT_STRATEGY is none)
-    - |
-      echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
-      git init -q .
-      git remote add origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git"
-      git fetch -q --depth 20 origin "${CI_COMMIT_SHA}"
-      git checkout -q -f "${CI_COMMIT_SHA}"
+    - *clone_repo
     - |
       mkdir -p ~/.kube
       echo "${KUBECONFIG_K3S}" > ~/.kube/config
