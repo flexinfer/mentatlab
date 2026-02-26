@@ -393,13 +393,22 @@ deploy:
     - apk add --no-cache git
     - *clone_repo
     - |
-      mkdir -p ~/.kube
-      echo "${KUBECONFIG_K3S}" > ~/.kube/config
-      chmod 600 ~/.kube/config
-    - kubectl version --client
-    - kubectl cluster-info
+      if [ -n "${KUBECONFIG_K3S:-}" ]; then
+        mkdir -p ~/.kube
+        printf '%s' "${KUBECONFIG_K3S}" > ~/.kube/config
+        chmod 600 ~/.kube/config
+        kubectl version --client
+        kubectl cluster-info
+      else
+        echo "KUBECONFIG_K3S is not set; direct kubectl deploy will be skipped (Flux GitOps remains active)."
+      fi
   script:
     - |
+      if [ -z "${KUBECONFIG_K3S:-}" ]; then
+        echo "Skipping direct kubectl deployment because KUBECONFIG_K3S is unset."
+        exit 0
+      fi
+
       echo "=== Deploying MentatLab to ${NAMESPACE} ==="
       cd k8s
 
