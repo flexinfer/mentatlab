@@ -106,6 +106,20 @@ describe('ConnectionManager reconnect loop', () => {
     expect(reconnectDelays(setTimeoutSpy)).toEqual([1000, 2000]);
   });
 
+  it('uses a run-scoped websocket path by default', async () => {
+    const manager = new ConnectionManager({
+      timeout: 100,
+      autoReconnect: false,
+      onMessage: vi.fn(),
+    });
+
+    const connectPromise = manager.connect('run-123');
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect(MockWebSocket.instances[0]?.url).toContain('/ws/streams/run-123');
+    await Promise.resolve();
+    await connectPromise;
+  });
+
   it('stops reconnecting after max reconnect attempts are exhausted', async () => {
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     const manager = new ConnectionManager({

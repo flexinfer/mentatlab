@@ -9,7 +9,7 @@
  *
  * Usage:
  *   const manager = new ConnectionManager({
- *     wsUrl: 'ws://localhost:8080/ws',
+ *     wsUrl: 'ws://localhost:8080/ws/streams/{runId}',
  *     sseUrl: 'http://localhost:7070/runs/{runId}/events',
  *     onMessage: (msg) => pipeline.push(msg),
  *     onStateChange: (state) => store.setConnectionStatus(state),
@@ -102,7 +102,7 @@ export class ConnectionManager {
 
   constructor(config: ConnectionManagerConfig) {
     this.config = {
-      wsUrl: config.wsUrl ?? `${getGatewayBaseUrl().replace(/^http/, 'ws')}/ws`,
+      wsUrl: config.wsUrl ?? `${getGatewayBaseUrl().replace(/^http/, 'ws')}/ws/streams/{runId}`,
       sseUrl: config.sseUrl ?? getOrchestratorBaseUrl(),
       timeout: config.timeout ?? 5000,
       autoReconnect: config.autoReconnect ?? true,
@@ -250,7 +250,7 @@ export class ConnectionManager {
 
   private tryWebSocket(runId: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const url = this.config.wsUrl.replace('{runId}', runId);
+      const url = this.resolveWsUrl(runId);
       this.log('Connecting WebSocket:', url);
 
       const timeoutId = setTimeout(() => {
@@ -316,6 +316,18 @@ export class ConnectionManager {
         reject(error);
       }
     });
+  }
+
+  private resolveWsUrl(runId: string): string {
+    const raw = this.config.wsUrl;
+    const resolved = raw.includes('{runId}') ? raw.replace('{runId}', runId) : raw;
+    if (/\/ws\/streams\//.test(resolved)) {
+      return resolved;
+    }
+    if (/\/ws\/?$/.test(resolved)) {
+      return `${resolved.replace(/\/+$/, '')}/streams/${runId}`;
+    }
+    return `${resolved.replace(/\/+$/, '')}/streams/${runId}`;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
