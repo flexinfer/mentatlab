@@ -20,6 +20,7 @@ class MockWebSocket {
   static CLOSED = 3;
 
   static instances: MockWebSocket[] = [];
+  static autoFail = true;
 
   readonly url: string;
   readyState = MockWebSocket.CONNECTING;
@@ -33,7 +34,7 @@ class MockWebSocket {
     MockWebSocket.instances.push(this);
     // Simulate a backend-down handshake failure after handlers are registered.
     queueMicrotask(() => {
-      if (this.readyState === MockWebSocket.CONNECTING) {
+      if (MockWebSocket.autoFail && this.readyState === MockWebSocket.CONNECTING) {
         this.triggerError();
       }
     });
@@ -53,6 +54,11 @@ class MockWebSocket {
   triggerError(): void {
     this.onerror?.(new Event('error'));
   }
+
+  triggerOpen(): void {
+    this.readyState = MockWebSocket.OPEN;
+    this.onopen?.(new Event('open'));
+  }
 }
 
 function reconnectDelays(setTimeoutSpy: ReturnType<typeof vi.spyOn>): number[] {
@@ -67,6 +73,7 @@ describe('ConnectionManager reconnect loop', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     vi.stubGlobal('WebSocket', MockWebSocket as unknown as typeof WebSocket);
     MockWebSocket.instances = [];
+    MockWebSocket.autoFail = true;
     sseConnectMock.mockReset();
     sseConnectMock.mockRejectedValue(new Error('SSE unavailable'));
   });
@@ -145,5 +152,51 @@ describe('ConnectionManager reconnect loop', () => {
 
     expect(manager.getState().status).toBe(StreamConnectionState.ERROR);
     expect(reconnectDelays(setTimeoutSpy)).toEqual([1000]);
+  });
+
+  it('does not reconnect after a clean websocket close', async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    MockWebSocket.autoFail = false;
+    const manager = new ConnectionManager({
+      timeout: 100,
+      autoReconnect: true,
+      onMessage: vi.fn(),
+    });
+
+    const connectPromise = manager.connect('run-clean-close');
+    expect(MockWebSocket.instances).toHaveLength(1);
+    const ws = MockWebSocket.instances[0]!;
+    ws.triggerOpen();
+    await connectPromise;
+
+    ws.close(1000, 'normal close');
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(manager.getState().status).toBe(StreamConnectionState.DISCONNECTED);
+    expect(reconnectDelays(setTimeoutSpy)).toEqual([]);
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it('sends websocket heartbeats on an interval while connected', async () => {
+    MockWebSocket.autoFail = false;
+    const manager = new ConnectionManager({
+      timeout: 100,
+      autoReconnect: true,
+      heartbeatIntervalMs: 2_000,
+      onMessage: vi.fn(),
+    });
+
+    const connectPromise = manager.connect('run-heartbeat');
+    expect(MockWebSocket.instances).toHaveLength(1);
+    const ws = MockWebSocket.instances[0]!;
+    ws.triggerOpen();
+    await connectPromise;
+
+    const initialSends = ws.send.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(4_100);
+
+    expect(ws.send.mock.calls.length).toBeGreaterThan(initialSends);
+    manager.disconnect();
   });
 });

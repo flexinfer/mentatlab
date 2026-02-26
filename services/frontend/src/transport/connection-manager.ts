@@ -55,6 +55,8 @@ export interface ConnectionManagerConfig {
   initialBackoffMs?: number;
   /** Maximum backoff delay in ms (default: 30000) */
   maxBackoffMs?: number;
+  /** WebSocket heartbeat interval in ms (default: 20000, 0 disables) */
+  heartbeatIntervalMs?: number;
   /** Callback for incoming messages */
   onMessage: (message: TransportEvent) => void;
   /** Callback for connection state changes */
@@ -95,6 +97,7 @@ export class ConnectionManager {
   private ws: WebSocket | null = null;
   private sse: OrchestratorSSE | null = null;
   private simIntervalId: ReturnType<typeof setInterval> | null = null;
+  private wsHeartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
 
   // Reconnection
   private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -109,6 +112,7 @@ export class ConnectionManager {
       maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
       initialBackoffMs: config.initialBackoffMs ?? 1000,
       maxBackoffMs: config.maxBackoffMs ?? 30000,
+      heartbeatIntervalMs: config.heartbeatIntervalMs ?? 20_000,
       onMessage: config.onMessage,
       onStateChange: config.onStateChange,
       onError: config.onError,
@@ -199,6 +203,7 @@ export class ConnectionManager {
       clearInterval(this.simIntervalId);
       this.simIntervalId = null;
     }
+    this.clearWsHeartbeat();
 
     this.setStatus(StreamConnectionState.DISCONNECTED, 'none');
     this.state.runId = null;
@@ -268,6 +273,7 @@ export class ConnectionManager {
           this.state.reconnectAttempts = 0;
           this.setStatus(StreamConnectionState.CONNECTED, 'websocket');
           this.state.connectedAt = Date.now();
+          this.startWsHeartbeat();
           this.log('WebSocket connected');
 
           // Send initial heartbeat/subscription message
@@ -301,12 +307,13 @@ export class ConnectionManager {
 
         this.ws.onclose = (event) => {
           clearTimeout(timeoutId);
+          this.clearWsHeartbeat();
           this.log('WebSocket closed:', event.code, event.reason);
 
           if (this.state.transport === 'websocket') {
             this.setStatus(StreamConnectionState.DISCONNECTED, 'none');
 
-            if (!this.isManualDisconnect && this.config.autoReconnect) {
+            if (this.shouldReconnectAfterWebSocketClose(event)) {
               this.scheduleReconnect('websocket');
             }
           }
@@ -316,6 +323,49 @@ export class ConnectionManager {
         reject(error);
       }
     });
+  }
+
+  private shouldReconnectAfterWebSocketClose(event: CloseEvent): boolean {
+    if (this.isManualDisconnect || !this.config.autoReconnect) {
+      return false;
+    }
+
+    // Avoid reconnect loops after graceful shutdowns (normal close / going away).
+    if (event.code === 1000 || event.code === 1001) {
+      this.log('Skipping reconnect after clean close', event.code, event.reason);
+      return false;
+    }
+
+    return true;
+  }
+
+  private startWsHeartbeat(): void {
+    this.clearWsHeartbeat();
+
+    if (this.config.heartbeatIntervalMs <= 0) {
+      return;
+    }
+
+    this.wsHeartbeatIntervalId = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      const heartbeat: TransportEvent = {
+        id: crypto.randomUUID(),
+        type: 'heartbeat',
+        timestamp: new Date().toISOString(),
+        agent_id: 'webui',
+      };
+      this.send(heartbeat);
+    }, this.config.heartbeatIntervalMs);
+  }
+
+  private clearWsHeartbeat(): void {
+    if (this.wsHeartbeatIntervalId) {
+      clearInterval(this.wsHeartbeatIntervalId);
+      this.wsHeartbeatIntervalId = null;
+    }
   }
 
   private resolveWsUrl(runId: string): string {
