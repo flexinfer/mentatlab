@@ -1,0 +1,31 @@
+id: mentatlab.loom-mcp-executor
+version: 0.1.0
+image: registry.harbor.lan/library/mentatlab-loom-mcp-executor:latest
+runtime: python3.12
+description: "Execute Loom MCP tools from MentatLab flows"
+inputs:
+  - name: tool_name
+    type: string
+    metadata:
+      description: "Tool identifier (for example: k8s_apps_k3s__k8s_get)"
+  - name: tool_args
+    type: json
+    metadata:
+      description: "JSON object passed as tool arguments"
+  - name: context
+    type: json
+    metadata:
+      description: "Optional run context"
+outputs:
+  - name: result
+    type: json
+    metadata:
+      description: "Tool execution result payload"
+  - name: mentat_meta
+    type: json
+    metadata:
+      description: "Observability metadata"
+longRunning: false
+env:
+  - "PYTHONUNBUFFERED=1"
+  - "MCP_EXECUTOR_COMMAND=loom mcp call"
