@@ -59,6 +59,8 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
   const flowServiceRef = useRef<FlowService | null>(null);
   const lastSavedVersionRef = useRef<Map<string, string>>(new Map());
   const retryCountRef = useRef<Map<string, number>>(new Map());
+  const saveInFlightRef = useRef(false);
+  const queuedSaveRef = useRef(false);
 
   // Initialize flow service
   useEffect(() => {
@@ -67,13 +69,16 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
   // Convert store flow to API format
   const toApiFlow = useCallback((flowId: string, flowData: any): CreateFlowRequest => {
+    const nodes = flowData?.graph?.nodes ?? flowData?.nodes ?? [];
+    const edges = flowData?.graph?.edges ?? flowData?.edges ?? [];
+
     return {
       id: flowId,
       name: flowData?.name || flowData?.meta?.name || 'Untitled Flow',
       description: flowData?.description || flowData?.meta?.description,
       graph: {
-        nodes: flowData?.graph?.nodes || [],
-        edges: flowData?.graph?.edges || [],
+        nodes,
+        edges,
       },
       layout: flowData?.layout,
       metadata: {
@@ -122,37 +127,55 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
   // Save all pending flows
   const saveAllFlows = useCallback(async () => {
-    const flows = useFlowStore.getState().flows;
-    if (flows.size === 0) return;
+    if (saveInFlightRef.current) {
+      queuedSaveRef.current = true;
+      return;
+    }
 
+    const flows = useFlowStore.getState().flows;
+    if (flows.size === 0) {
+      setPendingChanges(false);
+      setStatus('idle');
+      return;
+    }
+
+    saveInFlightRef.current = true;
     setStatus('saving');
     setError(null);
     setPendingChanges(false);
 
-    const errors: Array<{ flowId: string; error: Error }> = [];
+    try {
+      const errors: Array<{ flowId: string; error: Error }> = [];
 
-    for (const [flowId, flowData] of flows.entries()) {
-      try {
-        await saveFlow(flowId, flowData);
-        onSave?.(flowId);
-      } catch (err) {
-        const error = err as Error;
-        errors.push({ flowId, error });
-        onError?.(error, flowId);
+      for (const [flowId, flowData] of flows.entries()) {
+        try {
+          await saveFlow(flowId, flowData);
+          onSave?.(flowId);
+        } catch (err) {
+          const error = err as Error;
+          errors.push({ flowId, error });
+          onError?.(error, flowId);
+        }
       }
-    }
 
-    if (errors.length > 0) {
-      setStatus('error');
-      setError(errors[0].error);
-    } else {
-      setStatus('saved');
-      setLastSavedAt(new Date());
+      if (errors.length > 0) {
+        setStatus('error');
+        setError(errors[0].error);
+      } else {
+        setStatus('saved');
+        setLastSavedAt(new Date());
 
-      // Reset to idle after a brief display of "saved"
-      setTimeout(() => {
-        setStatus((current) => (current === 'saved' ? 'idle' : current));
-      }, 2000);
+        // Reset to idle after a brief display of "saved"
+        setTimeout(() => {
+          setStatus((current) => (current === 'saved' ? 'idle' : current));
+        }, 2000);
+      }
+    } finally {
+      saveInFlightRef.current = false;
+      if (queuedSaveRef.current) {
+        queuedSaveRef.current = false;
+        void saveAllFlows();
+      }
     }
   }, [saveFlow, onSave, onError]);
 

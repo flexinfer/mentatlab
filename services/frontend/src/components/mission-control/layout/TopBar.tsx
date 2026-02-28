@@ -17,6 +17,7 @@ import { useWorkspace } from './WorkspaceProvider';
 import { useStreamingStore } from '@/stores';
 import { StreamConnectionState } from '@/types/streaming';
 import { SaveStatusIndicator } from '@/components/ui/SaveStatusIndicator';
+import type { AutoSaveState } from '@/hooks/useAutoSave';
 import type { MainViewMode } from '@/stores/layout';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,9 +56,10 @@ function ViewModeButton({ mode, label, active, onClick }: ViewModeButtonProps) {
 
 export interface TopBarProps {
   className?: string;
+  saveState?: Pick<AutoSaveState, 'status' | 'lastSavedAt' | 'pendingChanges' | 'error' | 'saveNow'>;
 }
 
-export function TopBar({ className = '' }: TopBarProps) {
+export function TopBar({ className = '', saveState }: TopBarProps) {
   const { mainView, setMainView, darkMode, toggleDarkMode } = useLayoutStore();
   const {
     isEnabled,
@@ -117,7 +119,7 @@ export function TopBar({ className = '' }: TopBarProps) {
       {/* Right: Controls */}
       <div className="flex items-center gap-2">
         {/* Save status */}
-        <SaveStatusIndicator />
+        <SaveStatusIndicator state={saveState} />
 
         {/* Run controls */}
         <div className="flex items-center gap-1 border-l pl-2 ml-2">

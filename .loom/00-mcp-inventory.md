@@ -1,5 +1,98 @@
 # MCP Inventory
 
+## 2026-02-28 Refresh (Core Completion + Spinner Incident)
+
+### Commands/Calls Run
+
+- `functions.list_mcp_resources()` -> returned empty list in-session
+- `functions.list_mcp_resource_templates()` -> returned empty list in-session
+- `functions.mcp__loom__codebase_memory__codebase_stats(...)` -> failed (`Transport closed`)
+- `python $CODEX_HOME/skills/plan-loom-core/scripts/workspace_snapshot.py --root .`
+- CLI fallbacks for repo inspection:
+  - `rg -n ... services/frontend/src`
+  - `npm run lint`
+  - `npm test`
+
+### Runtime Mode Detection
+
+- Loom-mode resources were **not discoverable** via MCP resource APIs in this session (empty resource/template listings).
+- Several direct MCP server calls failed with `Transport closed` (e.g., `codebase_memory`, `gitlab`, `jira`).
+- Practical mode for this session: **local CLI/file fallback** for planning and implementation evidence.
+
+### Constraints and Workaround
+
+- Constraint: MCP discovery/index tools intermittently unavailable from this client session.
+- Workaround used:
+  - source-of-truth from repository files and local test/lint commands,
+  - GitLab CLI (`glab`) for CI/MR status where needed.
+- Re-enable full loom-mode inventory once MCP transport is stable; then refresh this document with `loom://config`, `loom://servers`, and paged `loom://tools/*`.
+
+## 2026-02-26 Refresh (Plan Loom Core Baseline)
+
+### Commands/Calls Run
+
+- `python $CODEX_HOME/skills/plan-loom-core/scripts/init_loom_context.py --root .`
+- `python $CODEX_HOME/skills/plan-loom-core/scripts/workspace_snapshot.py --root .`
+- `functions.list_mcp_resources()`
+- `functions.list_mcp_resource_templates()`
+- `functions.read_mcp_resource(server="loom", uri="loom://config")`
+- `functions.read_mcp_resource(server="loom", uri="loom://servers")`
+- `functions.read_mcp_resource(server="loom", uri="loom://tools/index")`
+- `functions.read_mcp_resource(server="loom", uri="loom://tools/page/1..5")`
+- `functions.read_mcp_resource(server="loom", uri="loom://health")`
+- `functions.mcp__loom__codebase_memory__codebase_stats(...)` (failed twice: backend connect error)
+- `loom tools list --json`
+
+### Runtime Mode Detection
+
+- Loom-mode detected (`loom://config`, `loom://servers`, `loom://tools/index`, `loom://tools/page/{page}` present)
+- Active profile: `full`
+- Loom daemon reports:
+  - `serverCount=44`
+  - `toolCount=472`
+  - `activeProxySessions=2`
+  - `running=true`
+
+### Tool Inventory Snapshot
+
+- `totalTools=472`
+- `totalPages=5` from `loom://tools/index` (paged resource path available and validated)
+- `loom tools list --json` reports single-page full materialization (`pageSize=472`, `totalPages=1`)
+- Servers with registered tools: `44`
+
+Top tool counts by server:
+
+| Server | Tool count |
+|--------|------------|
+| `agent_context` | 80 |
+| `jobsearch` | 66 |
+| `gitlab` | 30 |
+| `flexinfer` | 19 |
+| `codebase_memory` | 17 |
+| `devbox` | 11 |
+| `git` | 11 |
+| `github` | 11 |
+
+### Health / Constraints
+
+- `loom://health` indicates broad local MCP health is good.
+- Notable caveat: `agent_context` hub path unhealthy, but local target healthy.
+- Critical planning constraint: direct `codebase_memory` tool calls failed in this session with:
+  - `dial codebase_memory: failed after 3 attempts: init attempt 3: init error: failed to connect to backend`
+- Current fallback for planning remains:
+  - workspace/file-grounded evidence from repo files,
+  - `loom://tools/*` inventory resources,
+  - CLI inventory (`loom tools list --json`).
+
+### Codebase Index Readiness (Current State)
+
+- `codebase_memory__codebase_stats` unavailable from this session due to backend connect failure.
+- Index freshness for this repo is therefore **not verifiable in-band right now**.
+- Action required before heavy index-driven planning:
+  1. Restore `codebase_memory` backend connectivity.
+  2. Re-run `codebase_memory__codebase_stats` (optionally with `repo_id=services/mentatlab`).
+  3. If missing/stale, run `codebase_memory__codebase_index_start` + `codebase_memory__codebase_index_poll`.
+
 ## 2026-02-20 Refresh (Mission Control UI/UX Planning)
 
 ### Commands/Calls Run
