@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NodePalette } from '../NodePalette';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +33,16 @@ vi.mock('@/nodes', () => ({
 describe('NodePalette', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network disabled in tests');
+      })
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('renders expanded palette with header', () => {
@@ -172,5 +182,30 @@ describe('NodePalette', () => {
       },
     });
     expect(setDataMock).toHaveBeenCalledWith('application/reactflow', 'media:upload');
+  });
+
+  it('loads MCP tools and groups them by server category', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('unsupported scheme'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            {
+              name: 'k8s_apps_k3s__k8s_get',
+              server: 'k8s_apps_k3s',
+              description: 'Get Kubernetes resources',
+            },
+          ],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NodePalette />);
+
+    await waitFor(() => {
+      expect(screen.getByText('MCP · K8s Apps K3s')).toBeInTheDocument();
+      expect(screen.getByText('K8s Get')).toBeInTheDocument();
+    });
   });
 });

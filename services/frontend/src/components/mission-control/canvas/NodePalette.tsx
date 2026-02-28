@@ -8,7 +8,7 @@
  * ReactFlow reads in the onDrop handler.
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { NodeCategory, MediaNodeType } from '@/types/graph';
 import { NODE_TYPES } from '@/nodes';
 import { Input } from '@/components/ui/Input';
@@ -23,6 +23,7 @@ export interface NodeDefinition {
   description: string;
   category: NodeCategory;
   icon?: string;
+  groupLabel?: string;
 }
 
 export interface NodePaletteProps {
@@ -201,6 +202,96 @@ const CATEGORY_CONFIG: Record<NodeCategory, { label: string; order: number; colo
   [NodeCategory.UTILITY]: { label: 'Utility', order: 8, color: 'text-gray-500' },
 };
 
+type MCPToolRecord = {
+  name: string;
+  description?: string;
+  server?: string;
+  inputSchema?: Record<string, unknown>;
+};
+
+function normalizeMCPTools(payload: unknown): MCPToolRecord[] {
+  const rawTools = Array.isArray(payload)
+    ? payload
+    : (payload as { tools?: unknown })?.tools;
+
+  if (!Array.isArray(rawTools)) return [];
+
+  return rawTools
+    .filter((tool): tool is Record<string, unknown> => typeof tool === 'object' && tool !== null)
+    .map((tool) => ({
+      name: String(tool.name ?? tool.id ?? '').trim(),
+      description: typeof tool.description === 'string' ? tool.description : undefined,
+      server: typeof tool.server === 'string'
+        ? tool.server
+        : (typeof tool.server_name === 'string' ? tool.server_name : undefined),
+      inputSchema: typeof tool.inputSchema === 'object' && tool.inputSchema !== null
+        ? (tool.inputSchema as Record<string, unknown>)
+        : undefined,
+    }))
+    .filter((tool) => tool.name.length > 0);
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function toolLabel(toolName: string): string {
+  const suffix = toolName.includes('__') ? toolName.split('__').pop() ?? toolName : toolName;
+  return toTitleCase(suffix);
+}
+
+function toolGroupLabel(server?: string): string {
+  const normalized = (server ?? 'misc').trim();
+  if (normalized.length === 0) return 'MCP · Misc';
+  return `MCP · ${toTitleCase(normalized)}`;
+}
+
+function toNodeType(toolName: string): string {
+  const safe = toolName.toLowerCase().replace(/[^a-z0-9:_-]+/g, '-');
+  return `mcp:${safe}`;
+}
+
+async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
+  if (typeof fetch !== 'function') return [];
+
+  const endpoints = [
+    'loom://tools/index',
+    '/api/v1/mcp/tools/index',
+    '/api/v1/mcp/tools',
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint);
+      if (!response.ok) continue;
+
+      const payload = (await response.json()) as unknown;
+      const tools = normalizeMCPTools(payload);
+      if (tools.length === 0) continue;
+
+      return tools.map((tool) => ({
+        type: toNodeType(tool.name),
+        label: toolLabel(tool.name),
+        description: tool.description ?? `Execute ${tool.name} via loom-mcp-executor`,
+        category: NodeCategory.INTEGRATION,
+        icon: '🧰',
+        groupLabel: toolGroupLabel(tool.server),
+      }));
+    } catch {
+      continue;
+    }
+  }
+
+  return [];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Draggable Node Item
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,14 +335,16 @@ function NodeItem({ node, onDragStart }: NodeItemProps) {
 
 interface CategorySectionProps {
   category: NodeCategory;
+  label?: string;
   nodes: NodeDefinition[];
   onDragStart?: (nodeType: string) => void;
   defaultExpanded?: boolean;
 }
 
-function CategorySection({ category, nodes, onDragStart, defaultExpanded = true }: CategorySectionProps) {
+function CategorySection({ category, label, nodes, onDragStart, defaultExpanded = true }: CategorySectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const config = CATEGORY_CONFIG[category];
+  const categoryLabel = label ?? config.label;
 
   if (nodes.length === 0) return null;
 
@@ -263,7 +356,7 @@ function CategorySection({ category, nodes, onDragStart, defaultExpanded = true 
                    text-muted-foreground hover:text-foreground transition-colors"
       >
         <span className={`${expanded ? 'rotate-90' : ''} transition-transform`}>▶</span>
-        <span className={config.color}>{config.label}</span>
+        <span className={config.color}>{categoryLabel}</span>
         <span className="text-muted-foreground/60">({nodes.length})</span>
       </button>
       {expanded && (
@@ -288,31 +381,59 @@ export function NodePalette({
   className = '',
 }: NodePaletteProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [mcpNodes, setMcpNodes] = useState<NodeDefinition[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void loadMCPToolNodes().then((nodes) => {
+      if (active && nodes.length > 0) setMcpNodes(nodes);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const allNodeDefinitions = useMemo(() => [...NODE_DEFINITIONS, ...mcpNodes], [mcpNodes]);
 
   // Filter nodes based on search term
   const filteredNodes = useMemo(() => {
-    if (!searchTerm.trim()) return NODE_DEFINITIONS;
+    if (!searchTerm.trim()) return allNodeDefinitions;
     const term = searchTerm.toLowerCase();
-    return NODE_DEFINITIONS.filter(
+    return allNodeDefinitions.filter(
       (node) =>
         node.label.toLowerCase().includes(term) ||
         node.description.toLowerCase().includes(term) ||
-        node.type.toLowerCase().includes(term)
+        node.type.toLowerCase().includes(term) ||
+        (node.groupLabel?.toLowerCase().includes(term) ?? false)
     );
-  }, [searchTerm]);
+  }, [searchTerm, allNodeDefinitions]);
 
   // Group filtered nodes by category
   const groupedNodes = useMemo(() => {
-    const groups = new Map<NodeCategory, NodeDefinition[]>();
+    const groups = new Map<string, { category: NodeCategory; label: string; nodes: NodeDefinition[] }>();
 
     filteredNodes.forEach((node) => {
-      const existing = groups.get(node.category) ?? [];
-      groups.set(node.category, [...existing, node]);
+      const key = node.groupLabel ?? node.category;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.nodes.push(node);
+        return;
+      }
+
+      groups.set(key, {
+        category: node.category,
+        label: node.groupLabel ?? CATEGORY_CONFIG[node.category].label,
+        nodes: [node],
+      });
     });
 
-    // Sort categories by their defined order
+    // Sort categories by configured order then label.
     return Array.from(groups.entries()).sort(
-      ([a], [b]) => CATEGORY_CONFIG[a].order - CATEGORY_CONFIG[b].order
+      ([, a], [, b]) => {
+        const byCategoryOrder = CATEGORY_CONFIG[a.category].order - CATEGORY_CONFIG[b.category].order;
+        if (byCategoryOrder !== 0) return byCategoryOrder;
+        return a.label.localeCompare(b.label);
+      }
     );
   }, [filteredNodes]);
 
@@ -364,13 +485,14 @@ export function NodePalette({
             No nodes match "{searchTerm}"
           </div>
         ) : (
-          groupedNodes.map(([category, nodes]) => (
+          groupedNodes.map(([groupKey, group]) => (
             <CategorySection
-              key={category}
-              category={category}
-              nodes={nodes}
+              key={groupKey}
+              category={group.category}
+              label={group.label}
+              nodes={group.nodes}
               onDragStart={onNodeDragStart}
-              defaultExpanded={searchTerm.length > 0 || nodes.length <= 5}
+              defaultExpanded={searchTerm.length > 0 || group.nodes.length <= 5}
             />
           ))
         )}
