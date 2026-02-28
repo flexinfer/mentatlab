@@ -108,12 +108,13 @@ function MissionControlInner() {
   const toast = useToast();
 
   // Auto-save
-  const { saveNow } = useAutoSave({
+  const autoSave = useAutoSave({
     enabled: true,
     debounceMs: 1500,
     onSave: (flowId) => console.log(`[AutoSave] Flow ${flowId} saved`),
     onError: (error, flowId) => console.error(`[AutoSave] Failed to save ${flowId}:`, error),
   });
+  const { saveNow } = autoSave;
 
   // Keyboard shortcuts
   const shortcuts = useShortcuts({
@@ -175,7 +176,7 @@ function MissionControlInner() {
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
       {/* Top Bar */}
-      <TopBar />
+      <TopBar saveState={autoSave} />
 
       {/* Canonical, layout-aware connection status surface */}
       <ConnectionStatusBanner onRetry={startLiveConnection} className="mx-4 mt-2" />

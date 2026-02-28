@@ -13,6 +13,65 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 ---
 
+## 2026-02-28 Core Completion Focus (User-Reported: Saving Spinner Stuck)
+
+### Problem Statement
+
+- User-visible defect: top-bar save indicator remains on `Saving...` continuously.
+- Goal for this cycle: stabilize core front/backend behavior before additional feature expansion.
+
+### Evidence Collected
+
+- Save indicator is mounted in `TopBar` via `SaveStatusIndicator`.
+- Auto-save hook was mounted in **two places**:
+  - `services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx`
+  - `services/frontend/src/components/ui/SaveStatusIndicator.tsx`
+- `useAutoSave` serialized graph payload from `flowData.graph.*` only, while store flows include canonical `nodes`/`edges` fields.
+
+### Implemented Remediation Slice
+
+1. Single autosave authority:
+   - Keep owner instance in `MissionControlLayout`.
+   - Pass autosave state to `TopBar` -> `SaveStatusIndicator` as external state.
+   - Prevent indicator component from creating a second autosave owner when state is supplied.
+2. Autosave robustness:
+   - Add in-flight save guard + queued follow-up save behavior in `useAutoSave`.
+   - Avoid overlapping save loops that can keep UI in `saving` state.
+3. Correct graph serialization:
+   - `toApiFlow` now maps graph from either `flowData.graph.*` or fallback `flowData.nodes/edges`.
+
+### Verification (Local)
+
+- `cd services/frontend && npm run lint` -> pass
+- `cd services/frontend && npm test -- src/components/mission-control/layout/__tests__/TopBar.test.tsx src/components/mission-control/layout/__tests__/StatusBar.spec.tsx` -> pass
+- `cd services/frontend && npm test` -> pass (`53` files / `767` tests)
+
+### Next Core-Completion Slices
+
+1. API/flow persistence contract hardening:
+   - add explicit integration tests for flow CRUD round-trip (`create -> update graph -> reload -> graph parity`).
+2. Canvas <-> flow persistence wiring audit:
+   - validate no silent divergence between canvas state and saved flow state.
+3. Backend validation sweep for "core complete":
+   - run end-to-end checks for runs, events stream, gates, webhooks, schedules against live deployment and document results.
+
+## 2026-02-26 Planning Context Refresh
+
+### Snapshot
+
+- Loom-mode MCP inventory refreshed (`44` servers, `472` tools).
+- Workspace snapshot regenerated in `.loom/00-workspace-snapshot.md`.
+- `codebase_memory` direct tool access is currently failing from this session (`failed to connect to backend`), so index freshness for `services/mentatlab` is not currently verifiable in-band.
+
+### Immediate Reliability Task (Planning Prerequisite)
+
+1. Restore `codebase_memory` backend connectivity.
+2. Re-run `codebase_memory__codebase_stats` for this repo (`repo_id=services/mentatlab`).
+3. If index missing/stale, run `codebase_memory__codebase_index_start` + `codebase_memory__codebase_index_poll`.
+4. Re-baseline any source-discovery-heavy milestones once index readiness is confirmed.
+
+---
+
 ## 2026-02-18 Slice: Public Docs Integration (`mentatlab` -> `flexinfer-site`)
 
 ### Objective

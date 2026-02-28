@@ -9,13 +9,15 @@
  */
 
 import React from 'react';
-import { useAutoSave, SaveStatus } from '@/hooks/useAutoSave';
+import { useAutoSave, SaveStatus, type AutoSaveState } from '@/hooks/useAutoSave';
 
 interface SaveStatusIndicatorProps {
   /** Whether auto-save is enabled */
   enabled?: boolean;
   /** Compact mode (icon only) */
   compact?: boolean;
+  /** Optional externally managed autosave state (prevents duplicate autosave owners) */
+  state?: Pick<AutoSaveState, 'status' | 'lastSavedAt' | 'pendingChanges' | 'error' | 'saveNow'>;
   /** Custom class name */
   className?: string;
 }
@@ -23,12 +25,14 @@ interface SaveStatusIndicatorProps {
 export function SaveStatusIndicator({
   enabled = true,
   compact = false,
+  state,
   className = '',
 }: SaveStatusIndicatorProps) {
-  const { status, lastSavedAt, pendingChanges, error, saveNow } = useAutoSave({
-    enabled,
+  const hookState = useAutoSave({
+    enabled: !state && enabled,
     debounceMs: 1500,
   });
+  const { status, lastSavedAt, pendingChanges, error, saveNow } = state ?? hookState;
 
   const statusConfig = getStatusConfig(status, pendingChanges);
 
