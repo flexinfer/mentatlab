@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"bufio"
 	"bytes"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -250,4 +252,42 @@ func TestResponseWriter(t *testing.T) {
 			t.Errorf("expected default status 200, got %d", rw.statusCode)
 		}
 	})
+
+	t.Run("forwards hijack when underlying supports it", func(t *testing.T) {
+		inner := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
+		rw := &responseWriter{ResponseWriter: inner, statusCode: http.StatusOK}
+
+		conn, _, err := rw.Hijack()
+		if err != nil {
+			t.Fatalf("expected no hijack error, got %v", err)
+		}
+		defer conn.Close()
+
+		if !inner.hijacked {
+			t.Error("expected underlying response writer hijack to be called")
+		}
+	})
+
+	t.Run("returns not supported when underlying does not support hijack", func(t *testing.T) {
+		inner := httptest.NewRecorder()
+		rw := &responseWriter{ResponseWriter: inner, statusCode: http.StatusOK}
+
+		_, _, err := rw.Hijack()
+		if err != http.ErrNotSupported {
+			t.Fatalf("expected http.ErrNotSupported, got %v", err)
+		}
+	})
+}
+
+type hijackableRecorder struct {
+	*httptest.ResponseRecorder
+	hijacked bool
+}
+
+func (h *hijackableRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h.hijacked = true
+	client, server := net.Pipe()
+	_ = server.Close()
+	rw := bufio.NewReadWriter(bufio.NewReader(client), bufio.NewWriter(client))
+	return client, rw, nil
 }
