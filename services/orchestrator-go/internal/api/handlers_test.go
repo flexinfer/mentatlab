@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -307,6 +308,101 @@ func TestGetFlowNotFound(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
+}
+
+func TestFlowCRUDRoundTripGraphParity(t *testing.T) {
+	srv := newTestServer(t)
+
+	initialGraph := json.RawMessage(`{
+		"nodes":[{"id":"n1","type":"agent","position":{"x":10,"y":20},"data":{"agent_id":"echo"}}],
+		"edges":[]
+	}`)
+	createPayload := flowstore.CreateFlowRequest{
+		Name:        "RoundTrip Flow",
+		Description: "initial",
+		Graph:       initialGraph,
+	}
+	createBody, _ := json.Marshal(createPayload)
+	createReq := httptest.NewRequest("POST", "/api/v1/flows", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createW, createReq)
+
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on create, got %d: %s", createW.Code, createW.Body.String())
+	}
+
+	var created flowstore.Flow
+	if err := json.NewDecoder(createW.Body).Decode(&created); err != nil {
+		t.Fatalf("failed to decode create response: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("expected created flow ID")
+	}
+
+	updatedName := "RoundTrip Flow Updated"
+	updatedGraph := json.RawMessage(`{
+		"nodes":[
+			{"id":"n1","type":"agent","position":{"x":120,"y":220},"data":{"agent_id":"echo","label":"updated"}},
+			{"id":"n2","type":"agent","position":{"x":300,"y":220},"data":{"agent_id":"echo"}}
+		],
+		"edges":[{"id":"e-1","source":"n1","target":"n2"}]
+	}`)
+	updatePayload := flowstore.UpdateFlowRequest{
+		Name:  &updatedName,
+		Graph: updatedGraph,
+	}
+	updateBody, _ := json.Marshal(updatePayload)
+	updateReq := httptest.NewRequest("PUT", "/api/v1/flows/"+created.ID, bytes.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(updateW, updateReq)
+
+	if updateW.Code != http.StatusOK {
+		t.Fatalf("expected 200 on update, got %d: %s", updateW.Code, updateW.Body.String())
+	}
+
+	var updated flowstore.Flow
+	if err := json.NewDecoder(updateW.Body).Decode(&updated); err != nil {
+		t.Fatalf("failed to decode update response: %v", err)
+	}
+	if updated.Name != updatedName {
+		t.Fatalf("expected updated name %q, got %q", updatedName, updated.Name)
+	}
+	if !jsonEqual(updatedGraph, updated.Graph) {
+		t.Fatalf("updated graph mismatch. expected=%s got=%s", string(updatedGraph), string(updated.Graph))
+	}
+
+	getReq := httptest.NewRequest("GET", "/api/v1/flows/"+created.ID, nil)
+	getW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(getW, getReq)
+
+	if getW.Code != http.StatusOK {
+		t.Fatalf("expected 200 on get, got %d: %s", getW.Code, getW.Body.String())
+	}
+
+	var fetched flowstore.Flow
+	if err := json.NewDecoder(getW.Body).Decode(&fetched); err != nil {
+		t.Fatalf("failed to decode get response: %v", err)
+	}
+	if fetched.Name != updatedName {
+		t.Fatalf("expected fetched name %q, got %q", updatedName, fetched.Name)
+	}
+	if !jsonEqual(updatedGraph, fetched.Graph) {
+		t.Fatalf("fetched graph mismatch. expected=%s got=%s", string(updatedGraph), string(fetched.Graph))
+	}
+}
+
+func jsonEqual(expected, actual json.RawMessage) bool {
+	var exp any
+	var got any
+	if err := json.Unmarshal(expected, &exp); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(actual, &got); err != nil {
+		return false
+	}
+	return reflect.DeepEqual(exp, got)
 }
 
 // --- SSE StreamEvents ---
