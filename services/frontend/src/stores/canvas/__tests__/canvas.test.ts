@@ -136,6 +136,23 @@ describe('Canvas Store - createNode', () => {
     expect(nodes[0]?.position).toEqual({ x: 10, y: 20 });
     expect(nodes[0]?.data).toEqual({ label: 'agent Node' });
   });
+
+  it('merges provided node data when creating a node', () => {
+    act(() => {
+      getState().createNode('mcp:k8s_apps_k3s__k8s_get', { x: 15, y: 30 }, {
+        label: 'K8s Get',
+        agent_id: 'loom-mcp-executor',
+        tool_name: 'k8s_apps_k3s__k8s_get',
+      });
+    });
+
+    const node = getState().nodes[0];
+    expect(node?.data).toEqual({
+      label: 'K8s Get',
+      agent_id: 'loom-mcp-executor',
+      tool_name: 'k8s_apps_k3s__k8s_get',
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

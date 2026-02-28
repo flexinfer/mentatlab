@@ -9,9 +9,11 @@
 import { useCallback, useState } from 'react';
 import { useReactFlow } from 'reactflow';
 import { useCanvasStore } from '@/stores';
+import type { NodeData } from '@/types/NodeOperations';
 
 // MIME type for ReactFlow drag data
 const REACTFLOW_MIME_TYPE = 'application/reactflow';
+const REACTFLOW_METADATA_MIME_TYPE = 'application/reactflow-metadata';
 
 export interface UseCanvasDropOptions {
   /** Callback when a node is successfully created */
@@ -48,6 +50,25 @@ export function useCanvasDrop(options: UseCanvasDropOptions = {}): UseCanvasDrop
   // Get ReactFlow instance for coordinate conversion
   const reactFlowInstance = useReactFlow();
   const createNode = useCanvasStore((state) => state.createNode);
+
+  const parseNodeData = useCallback((event: React.DragEvent): NodeData | undefined => {
+    if (!event.dataTransfer.types.includes(REACTFLOW_METADATA_MIME_TYPE)) {
+      return undefined;
+    }
+
+    const raw = event.dataTransfer.getData(REACTFLOW_METADATA_MIME_TYPE);
+    if (!raw) return undefined;
+
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as NodeData;
+      }
+    } catch {
+      // Ignore invalid metadata and fall back to default node data.
+    }
+    return undefined;
+  }, []);
 
   /**
    * Handle drag over - must call preventDefault to allow drops
@@ -112,13 +133,13 @@ export function useCanvasDrop(options: UseCanvasDropOptions = {}): UseCanvasDrop
     });
 
     // Create the node
-    createNode(nodeType, flowPosition);
+    createNode(nodeType, flowPosition, parseNodeData(event));
 
     // Notify callback
     onNodeCreated?.(nodeType, flowPosition);
 
     console.debug('[useCanvasDrop] Created node:', { nodeType, flowPosition });
-  }, [reactFlowInstance, createNode, onNodeCreated]);
+  }, [reactFlowInstance, createNode, onNodeCreated, parseNodeData]);
 
   return {
     isDragOver,
