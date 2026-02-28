@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bufio"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -115,6 +117,32 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack preserves websocket upgrades by forwarding the hijacker interface.
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
+}
+
+// Flush preserves streaming semantics for handlers that depend on http.Flusher.
+func (rw *responseWriter) Flush() {
+	flusher, ok := rw.ResponseWriter.(http.Flusher)
+	if ok {
+		flusher.Flush()
+	}
+}
+
+// Push preserves HTTP/2 server push semantics when available.
+func (rw *responseWriter) Push(target string, opts *http.PushOptions) error {
+	pusher, ok := rw.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, opts)
 }
 
 // normalizePath replaces dynamic path segments (UUIDs, IDs) with placeholders for metrics.
