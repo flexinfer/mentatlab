@@ -24,6 +24,7 @@ export interface NodeDefinition {
   category: NodeCategory;
   icon?: string;
   groupLabel?: string;
+  dragData?: Record<string, unknown>;
 }
 
 export interface NodePaletteProps {
@@ -258,6 +259,17 @@ function toNodeType(toolName: string): string {
   return `mcp:${safe}`;
 }
 
+function buildMCPToolDragData(tool: MCPToolRecord): Record<string, unknown> {
+  return {
+    label: toolLabel(tool.name),
+    agent_id: 'loom-mcp-executor',
+    tool_name: tool.name,
+    tool_args: {},
+    mcp_server: tool.server ?? '',
+    inputSchema: tool.inputSchema ?? {},
+  };
+}
+
 async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
   if (typeof fetch !== 'function') return [];
 
@@ -283,6 +295,7 @@ async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
         category: NodeCategory.INTEGRATION,
         icon: '🧰',
         groupLabel: toolGroupLabel(tool.server),
+        dragData: buildMCPToolDragData(tool),
       }));
     } catch {
       continue;
@@ -301,15 +314,21 @@ interface NodeItemProps {
   onDragStart?: (nodeType: string) => void;
 }
 
+const REACTFLOW_MIME_TYPE = 'application/reactflow';
+const REACTFLOW_METADATA_MIME_TYPE = 'application/reactflow-metadata';
+
 function NodeItem({ node, onDragStart }: NodeItemProps) {
   const handleDragStart = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
       // Set the node type in the drag data for the canvas to read
-      event.dataTransfer.setData('application/reactflow', node.type);
+      event.dataTransfer.setData(REACTFLOW_MIME_TYPE, node.type);
+      if (node.dragData) {
+        event.dataTransfer.setData(REACTFLOW_METADATA_MIME_TYPE, JSON.stringify(node.dragData));
+      }
       event.dataTransfer.effectAllowed = 'move';
       onDragStart?.(node.type);
     },
-    [node.type, onDragStart]
+    [node.dragData, node.type, onDragStart]
   );
 
   return (

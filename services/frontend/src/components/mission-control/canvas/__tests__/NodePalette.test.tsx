@@ -208,4 +208,53 @@ describe('NodePalette', () => {
       expect(screen.getByText('K8s Get')).toBeInTheDocument();
     });
   });
+
+  it('attaches MCP tool metadata to drag payload', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('unsupported scheme'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            {
+              name: 'k8s_apps_k3s__k8s_get',
+              server: 'k8s_apps_k3s',
+              description: 'Get Kubernetes resources',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  namespace: { type: 'string' },
+                },
+              },
+            },
+          ],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NodePalette />);
+
+    await waitFor(() => {
+      expect(screen.getByText('K8s Get')).toBeInTheDocument();
+    });
+
+    const mcpNode = screen.getByText('K8s Get').closest('[draggable]');
+    const setDataMock = vi.fn();
+    fireEvent.dragStart(mcpNode!, {
+      dataTransfer: {
+        setData: setDataMock,
+        effectAllowed: '',
+      },
+    });
+
+    expect(setDataMock).toHaveBeenCalledWith('application/reactflow', 'mcp:k8s_apps_k3s__k8s_get');
+    expect(setDataMock).toHaveBeenCalledWith(
+      'application/reactflow-metadata',
+      expect.stringContaining('"agent_id":"loom-mcp-executor"')
+    );
+    expect(setDataMock).toHaveBeenCalledWith(
+      'application/reactflow-metadata',
+      expect.stringContaining('"tool_name":"k8s_apps_k3s__k8s_get"')
+    );
+  });
 });
