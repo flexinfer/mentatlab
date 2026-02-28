@@ -146,11 +146,16 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
     try {
       const errors: Array<{ flowId: string; error: Error }> = [];
+      let softFailures = 0;
 
       for (const [flowId, flowData] of flows.entries()) {
         try {
-          await saveFlow(flowId, flowData);
-          onSave?.(flowId);
+          const saved = await saveFlow(flowId, flowData);
+          if (saved) {
+            onSave?.(flowId);
+          } else {
+            softFailures++;
+          }
         } catch (err) {
           const error = err as Error;
           errors.push({ flowId, error });
@@ -161,6 +166,9 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
       if (errors.length > 0) {
         setStatus('error');
         setError(errors[0].error);
+      } else if (softFailures > 0) {
+        // saveFlow already set conflict state/error for soft-failure paths.
+        // Avoid overriding that state with "saved".
       } else {
         setStatus('saved');
         setLastSavedAt(new Date());
