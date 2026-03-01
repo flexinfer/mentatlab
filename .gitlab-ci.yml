@@ -81,6 +81,18 @@ variables:
     done
     git checkout -q -f "${CI_COMMIT_SHA}"
 
+.npm_ci_verify: &npm_ci_verify
+  - |
+    set -euo pipefail
+    npm ci --prefer-offline || true
+    if [ ! -x node_modules/.bin/tsc ]; then
+      echo "npm install incomplete after first attempt; retrying clean npm ci..."
+      rm -rf node_modules
+      npm cache clean --force || true
+      npm ci
+    fi
+    test -x node_modules/.bin/tsc
+
 # Cache settings
 .go-cache: &go-cache
   cache:
@@ -127,7 +139,7 @@ lint-frontend:
     - *clone_repo
   script:
     - cd services/frontend
-    - npm ci --prefer-offline
+    - *npm_ci_verify
     - npm run lint
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
@@ -163,7 +175,7 @@ test-frontend:
     - *clone_repo
   script:
     - cd services/frontend
-    - npm ci --prefer-offline
+    - *npm_ci_verify
     - npm test -- --coverage
   coverage: '/All files\s*\|\s*(\d+\.\d+)/'
   rules:
