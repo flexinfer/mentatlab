@@ -4,6 +4,7 @@
  */
 
 import { httpClient } from './httpClient';
+import { getApiBaseUrl } from '@/config/orchestrator';
 
 // --- Types ---
 
@@ -58,11 +59,6 @@ interface TempoTraceResponse {
 }
 
 // --- Service ---
-
-function getGatewayBaseUrl(): string {
-  const base = (import.meta.env.VITE_API_URL as string) || '';
-  return base.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
-}
 
 function parseTempoResponse(data: TempoTraceResponse): TraceSpan[] {
   const spans: TraceSpan[] = [];
@@ -135,7 +131,8 @@ function buildSpanTree(spans: TraceSpan[]): TraceSpan[] {
 
 class TraceService {
   async getTrace(traceID: string): Promise<TraceData> {
-    const url = `${getGatewayBaseUrl()}/api/v1/traces/${encodeURIComponent(traceID)}`;
+    const base = getApiBaseUrl().replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
+    const url = `${base}/api/v1/traces/${encodeURIComponent(traceID)}`;
     const data = await httpClient.get<TempoTraceResponse>(url);
     const spans = parseTempoResponse(data);
     const tree = buildSpanTree(spans);
@@ -148,7 +145,8 @@ class TraceService {
   }
 
   async getTraceForRun(runID: string): Promise<TraceData> {
-    const url = `${getGatewayBaseUrl()}/api/v1/traces`;
+    const base = getApiBaseUrl().replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
+    const url = `${base}/api/v1/traces`;
     const data = await httpClient.get<TempoTraceResponse>(url, {
       params: { run_id: runID },
     });

@@ -19,7 +19,7 @@
  */
 
 import { Checkpoint, OrchestratorEvent } from '@/types/orchestrator';
-import { getOrchestratorBaseUrl } from '@/config/orchestrator';
+import { getApiBaseUrl } from '@/config/orchestrator';
 
 export type OrchestratorSSEHandlers = {
   onHello?: (data: { runId: string }) => void;
@@ -57,9 +57,9 @@ export type OrchestratorSSEConfig = {
    private static readonly HEARTBEAT_CHECK_INTERVAL_MS = 5_000; // 5s
    private static readonly BACKOFF_MS = [1000, 2000, 5000, 10000, 30000]; // cap at last
 
-   constructor(config: OrchestratorSSEConfig = {}) {
-     this.config = {
-       baseUrl: config.baseUrl || getOrchestratorBaseUrl(),
+  constructor(config: OrchestratorSSEConfig = {}) {
+    this.config = {
+       baseUrl: config.baseUrl || getApiBaseUrl(),
        replay: typeof config.replay === 'number' ? Math.max(0, Math.min(100, config.replay)) : 10,
        debug: !!config.debug
      };

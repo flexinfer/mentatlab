@@ -1,5 +1,5 @@
 import apiService from "./apiService";
-import { getOrchestratorBaseUrl } from "@/config/orchestrator";
+import { getApiBaseUrl } from "@/config/orchestrator";
 import {
   Run,
   Checkpoint,
@@ -28,7 +28,7 @@ class OrchestratorService {
   }
 
   private baseUrl(): string {
-    const base = getOrchestratorBaseUrl().replace(/\/$/, "");
+    const base = getApiBaseUrl().replace(/\/$/, "");
     // Ensure /api/v1 prefix — the Go orchestrator serves all endpoints under this path
     return base.endsWith("/api/v1") ? base : `${base}/api/v1`;
   }

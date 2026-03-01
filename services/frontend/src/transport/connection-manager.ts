@@ -22,7 +22,7 @@
 
 import { StreamConnectionState } from '@/types/streaming';
 import { OrchestratorSSE, type OrchestratorSSEHandlers } from '@/services/api/streaming/orchestratorSSE';
-import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
+import { getApiBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
 import { isSimFallbackEnabled } from '@/config/features';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,7 +106,7 @@ export class ConnectionManager {
   constructor(config: ConnectionManagerConfig) {
     this.config = {
       wsUrl: config.wsUrl ?? `${getGatewayBaseUrl().replace(/^http/, 'ws')}/ws/streams/{runId}`,
-      sseUrl: config.sseUrl ?? getOrchestratorBaseUrl(),
+      sseUrl: config.sseUrl ?? getApiBaseUrl(),
       timeout: config.timeout ?? 5000,
       autoReconnect: config.autoReconnect ?? true,
       maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
