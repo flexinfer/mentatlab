@@ -33,6 +33,21 @@ spec:
     requests:
       storage: 10Gi
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data-v2
+  namespace: mentatlab
+  labels:
+    app: minio
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 10Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -106,7 +121,8 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: minio-data
+            # Non-destructive cutover: keep minio-data for forensics.
+            claimName: minio-data-v2
 ---
 # Create the default bucket on startup
 apiVersion: batch/v1
