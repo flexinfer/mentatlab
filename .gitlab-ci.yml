@@ -16,6 +16,12 @@ stages:
 
 variables:
   REGISTRY: registry.harbor.lan/library
+  HARBOR_DOCKERHUB_MIRROR: registry.harbor.lan/dockerhub-cache
+  GO_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/golang:${GO_VERSION}-alpine
+  NODE_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/node:${NODE_VERSION}-alpine
+  DOCKER_CLI_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/docker:24-cli
+  DOCKER_DIND_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/docker:24-dind
+  KUBECTL_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/alpine/k8s:1.31.0
   BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
   GO_VERSION: "1.24"
   NODE_VERSION: "20"
@@ -98,7 +104,7 @@ variables:
 
 lint-go:
   stage: lint
-  image: golang:${GO_VERSION}-alpine
+  image: $GO_CI_IMAGE
   <<: *go-cache
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
@@ -114,7 +120,7 @@ lint-go:
 
 lint-frontend:
   stage: lint
-  image: node:${NODE_VERSION}-alpine
+  image: $NODE_CI_IMAGE
   <<: *node-cache
   before_script:
     - *apk_add_git
@@ -133,7 +139,7 @@ lint-frontend:
 
 test-go:
   stage: test
-  image: golang:${GO_VERSION}-alpine
+  image: $GO_CI_IMAGE
   <<: *go-cache
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
@@ -150,7 +156,7 @@ test-go:
 
 test-frontend:
   stage: test
-  image: node:${NODE_VERSION}-alpine
+  image: $NODE_CI_IMAGE
   <<: *node-cache
   before_script:
     - *apk_add_git
@@ -266,9 +272,9 @@ build-agents:
 e2e-test:
   stage: e2e
   needs: [build-go, build-frontend, build-agents]
-  image: docker:24-cli
+  image: $DOCKER_CLI_CI_IMAGE
   services:
-    - name: docker:24-dind
+    - name: $DOCKER_DIND_CI_IMAGE
       alias: docker
       command: ["--tls=false", "--insecure-registry=registry.harbor.lan"]
   variables:
@@ -385,7 +391,7 @@ e2e-test:
 
 deploy:
   stage: deploy
-  image: alpine/k8s:1.31.0
+  image: $KUBECTL_CI_IMAGE
   needs: [build-go, build-frontend, build-agents, e2e-test]
   variables:
     NAMESPACE: mentatlab
