@@ -1,7 +1,9 @@
 # Frontend - multi-stage build with nginx for production serving
 
+ARG BASE_REGISTRY=registry.harbor.lan/dockerhub-cache/library
+
 # Stage 1: Build
-FROM node:20-alpine AS builder
+FROM ${BASE_REGISTRY}/node:20-alpine AS builder
 
 ARG npm_config_registry=https://registry.npmjs.org
 ENV npm_config_registry=${npm_config_registry}
@@ -31,7 +33,7 @@ ENV VITE_GATEWAY_BASE_URL=${VITE_GATEWAY_BASE_URL} \
 RUN npx vite build
 
 # Stage 2: Serve with nginx
-FROM nginx:alpine
+FROM ${BASE_REGISTRY}/nginx:alpine
 
 RUN apk add --no-cache curl
 

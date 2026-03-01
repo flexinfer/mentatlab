@@ -1,5 +1,6 @@
 # Minimal Dockerfile for psyche-sim Cog‑Pak
-FROM python:3.12-slim
+ARG BASE_REGISTRY=registry.harbor.lan/dockerhub-cache/library
+FROM ${BASE_REGISTRY}/python:3.12-slim
 
 # Avoid buffering to ensure single-line JSON outputs stream immediately
 ENV PYTHONUNBUFFERED=1
