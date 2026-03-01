@@ -1,6 +1,6 @@
 services:
   redis:
-    image: redis:7-alpine
+    image: ${HARBOR_DOCKERHUB_MIRROR:-registry.harbor.lan/dockerhub-cache}/library/redis:7-alpine
     ports:
       - "6379:6379"
     healthcheck:
@@ -10,7 +10,7 @@ services:
       retries: 5
 
   tempo:
-    image: grafana/tempo:2.6.1
+    image: ${HARBOR_DOCKERHUB_MIRROR:-registry.harbor.lan/dockerhub-cache}/grafana/tempo:2.6.1
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
       - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
@@ -26,7 +26,7 @@ services:
       retries: 5
 
   grafana:
-    image: grafana/grafana:11.4.0
+    image: ${HARBOR_DOCKERHUB_MIRROR:-registry.harbor.lan/dockerhub-cache}/grafana/grafana:11.4.0
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
