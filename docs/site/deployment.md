@@ -12,8 +12,22 @@ Located in `k8s/`:
 - `orchestrator-rbac.yaml` - RBAC permissions for orchestrator
 - `frontend.yaml` - web UI
 - `redis.yaml` - Redis backend
+- `minio.yaml` - object storage + bootstrap bucket Job
 - `echoagent.yaml` - sample agent
 - `ingress.yaml` - ingress routes
+
+### MinIO Stability Guardrails
+
+`k8s/minio.yaml` includes operational safety defaults for single-replica object
+storage in this cluster:
+
+- `strategy: Recreate` to avoid RWO PVC multi-attach races during updates
+- explicit `nodeSelector` (`amd64`) to avoid cross-arch scheduling failures
+- non-trivial CPU/memory/ephemeral-storage requests and limits
+- bucket bootstrap Job retries MinIO readiness before creating
+  `mentatlab-artifacts`
+- MinIO and `mc` images are pulled through Harbor's Docker Hub cache
+  (`registry.harbor.lan/dockerhub-cache/minio/*`)
 
 ## Container Images
 
