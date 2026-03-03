@@ -35,6 +35,9 @@ type runContext struct {
 	tasksMu        sync.Mutex
 	gates          map[string]chan string // node_id -> channel receiving "approve" or "reject"
 	gatesMu        sync.Mutex
+	sessionMu      sync.Mutex
+	sessionID      string
+	sessionClosed  bool
 	done           chan struct{}
 	cancelled      bool
 	cancelledMu    sync.Mutex
@@ -54,6 +57,7 @@ type Scheduler struct {
 	logger             *slog.Logger
 	exprEval           *ExprEvaluator // Expression evaluator for control flow
 	executors          map[string]nodeExecutor
+	runSessionManager  RunSessionManager
 }
 
 // nodeExecutor defines the strategy for executing a specific type of node.
@@ -127,6 +131,13 @@ func WithLogger(logger *slog.Logger) Option {
 		if logger != nil {
 			s.logger = logger
 		}
+	}
+}
+
+// WithRunSessionManager sets a run session lifecycle manager integration.
+func WithRunSessionManager(manager RunSessionManager) Option {
+	return func(s *Scheduler) {
+		s.runSessionManager = manager
 	}
 }
 
@@ -282,6 +293,7 @@ func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
 	// Emit hello and status events
 	s.emitEvent(ctx, runID, "hello", map[string]interface{}{"runId": runID}, "", "")
 	s.emitRunStatus(ctx, runID, "running")
+	s.startRunSession(ctx, rctx)
 
 	// Determine run timeout: plan-level overrides default
 	runTimeout := s.defaultRunTimeout
@@ -341,6 +353,9 @@ func (s *Scheduler) CancelRun(ctx context.Context, runID string) error {
 		s.logger.Error("failed to update run status", slog.String("run_id", runID), slog.Any("error", err))
 	}
 	s.emitRunStatus(ctx, runID, "failed")
+	if exists {
+		s.finalizeRunSession(ctx, rctx, types.RunStatusFailed, "cancelled")
+	}
 
 	metrics.RunsActive.Dec()
 	metrics.RunsTotal.WithLabelValues("cancelled").Inc()

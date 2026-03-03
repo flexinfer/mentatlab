@@ -11,10 +11,10 @@ import (
 // Config holds all configuration for the orchestrator service.
 type Config struct {
 	// Server configuration
-	Port           string
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
-	ShutdownGrace  time.Duration
+	Port          string
+	ReadTimeout   time.Duration
+	WriteTimeout  time.Duration
+	ShutdownGrace time.Duration
 
 	// Redis configuration
 	RedisURL      string
@@ -22,10 +22,10 @@ type Config struct {
 	RedisDB       int
 
 	// RunStore configuration
-	RunStoreType         string // "memory" or "redis"
-	RunStoreTTL          time.Duration
-	EventMaxLen          int64
-	AllowMemoryFallback  bool // Allow fallback to memory store if Redis is unreachable
+	RunStoreType        string // "memory" or "redis"
+	RunStoreTTL         time.Duration
+	EventMaxLen         int64
+	AllowMemoryFallback bool // Allow fallback to memory store if Redis is unreachable
 
 	// OIDC configuration
 	OIDCIssuer       string
@@ -46,7 +46,7 @@ type Config struct {
 	K8sKubeconfig string
 
 	// Driver configuration
-	DriverType       string // "subprocess" or "k8s"
+	DriverType          string // "subprocess" or "k8s"
 	K8sImagePullSecrets []string
 
 	// Scheduler configuration
@@ -54,6 +54,12 @@ type Config struct {
 	DefaultMaxRetries  int
 	DefaultBackoffSecs int
 	DefaultRunTimeout  time.Duration
+
+	// Loom agent-context run lifecycle integration
+	AgentContextEnabled   bool
+	AgentContextAgentID   string
+	AgentContextNamespace string
+	LoomBin               string
 
 	// Tracing
 	TracingEnabled bool
@@ -79,7 +85,7 @@ func Load() *Config {
 		RedisDB:       getInt("REDIS_DB", 0),
 
 		// RunStore
-		RunStoreType:        getEnv("ORCH_RUNSTORE", "memory"), // "memory" or "redis"
+		RunStoreType:        getEnv("ORCH_RUNSTORE", "memory"),           // "memory" or "redis"
 		RunStoreTTL:         getDuration("RUNSTORE_TTL", 7*24*time.Hour), // 7 days
 		EventMaxLen:         getInt64("EVENT_MAX_LEN", 5000),
 		AllowMemoryFallback: getBool("ORCH_ALLOW_MEMORY_FALLBACK", false),
@@ -103,7 +109,7 @@ func Load() *Config {
 		K8sKubeconfig: getEnv("KUBECONFIG", ""),
 
 		// Driver
-		DriverType:       getEnv("ORCH_DRIVER", "subprocess"), // "subprocess" or "k8s"
+		DriverType:          getEnv("ORCH_DRIVER", "subprocess"), // "subprocess" or "k8s"
 		K8sImagePullSecrets: getStringSlice("K8S_IMAGE_PULL_SECRETS", nil),
 
 		// Scheduler
@@ -111,6 +117,12 @@ func Load() *Config {
 		DefaultMaxRetries:  getInt("ORCH_MAX_RETRIES_DEFAULT", 0),
 		DefaultBackoffSecs: getInt("ORCH_BACKOFF_SECONDS_DEFAULT", 2),
 		DefaultRunTimeout:  getDuration("ORCH_DEFAULT_RUN_TIMEOUT", 0), // 0 = no timeout
+
+		// Loom agent-context lifecycle
+		AgentContextEnabled:   getBool("ORCH_AGENT_CONTEXT_ENABLED", true),
+		AgentContextAgentID:   getEnv("ORCH_AGENT_CONTEXT_AGENT_ID", "mentatlab-orchestrator"),
+		AgentContextNamespace: getEnv("ORCH_AGENT_CONTEXT_NAMESPACE", ""),
+		LoomBin:               getEnv("LOOM_BIN", "loom"),
 
 		// Tracing
 		TracingEnabled: getBool("TRACING_ENABLED", false),
