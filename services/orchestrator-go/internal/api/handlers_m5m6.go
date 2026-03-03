@@ -547,10 +547,6 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 		if i >= len(plan.Nodes) {
 			break
 		}
-		// If agent_id and command are already set at top level, skip this node.
-		if plan.Nodes[i].AgentID != "" || len(plan.Nodes[i].Command) > 0 {
-			continue
-		}
 
 		// Check for ReactFlow "data" object with nested fields.
 		var nodeWithData struct {
@@ -560,6 +556,9 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 				Command []string          `json:"command"`
 				Env     map[string]string `json:"env"`
 				Input   json.RawMessage   `json:"input"`
+				ToolName  string          `json:"tool_name"`
+				ToolArgs  json.RawMessage `json:"tool_args"`
+				MCPServer string          `json:"mcp_server"`
 				Timeout string            `json:"timeout"`
 			} `json:"data"`
 		}
@@ -584,11 +583,59 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 				plan.Nodes[i].Env[k] = v
 			}
 		}
+		var inputSpec map[string]any
+		if plan.Nodes[i].Env != nil && plan.Nodes[i].Env["INPUT_SPEC"] != "" {
+			var existing map[string]any
+			if err := json.Unmarshal([]byte(plan.Nodes[i].Env["INPUT_SPEC"]), &existing); err == nil {
+				inputSpec = existing
+			}
+		}
 		if len(d.Input) > 0 && string(d.Input) != "null" {
 			if plan.Nodes[i].Env == nil {
 				plan.Nodes[i].Env = make(map[string]string)
 			}
 			plan.Nodes[i].Env["AGENT_INPUT"] = string(d.Input)
+
+			var parsedInput any
+			if err := json.Unmarshal(d.Input, &parsedInput); err == nil {
+				if asMap, ok := parsedInput.(map[string]any); ok {
+					if inputSpec == nil {
+						inputSpec = make(map[string]any)
+					}
+					for k, v := range asMap {
+						inputSpec[k] = v
+					}
+				}
+			}
+		}
+		if d.ToolName != "" {
+			if inputSpec == nil {
+				inputSpec = make(map[string]any)
+			}
+			inputSpec["tool_name"] = d.ToolName
+		}
+		if d.MCPServer != "" {
+			if inputSpec == nil {
+				inputSpec = make(map[string]any)
+			}
+			inputSpec["mcp_server"] = d.MCPServer
+		}
+		if len(d.ToolArgs) > 0 && string(d.ToolArgs) != "null" {
+			var toolArgs any
+			if err := json.Unmarshal(d.ToolArgs, &toolArgs); err == nil {
+				if inputSpec == nil {
+					inputSpec = make(map[string]any)
+				}
+				inputSpec["tool_args"] = toolArgs
+			}
+		}
+		if len(inputSpec) > 0 {
+			if plan.Nodes[i].Env == nil {
+				plan.Nodes[i].Env = make(map[string]string)
+			}
+			if b, err := json.Marshal(inputSpec); err == nil {
+				plan.Nodes[i].Env["INPUT_SPEC"] = string(b)
+			}
 		}
 		if d.Timeout != "" {
 			if dur, err := time.ParseDuration(d.Timeout); err == nil {
@@ -598,19 +645,37 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 	}
 
 	// Handle ReactFlow edge format (source/target → from/to).
-	if len(plan.Edges) == 0 && len(raw.Edges) > 0 {
+	hasUsableEdges := false
+	for _, e := range plan.Edges {
+		if e.From != "" && e.To != "" {
+			hasUsableEdges = true
+			break
+		}
+	}
+	if !hasUsableEdges && len(raw.Edges) > 0 {
+		plan.Edges = nil
 		for _, rawEdge := range raw.Edges {
 			var rfEdge struct {
 				Source string `json:"source"`
 				Target string `json:"target"`
+				From   string `json:"from"`
+				To     string `json:"to"`
 			}
 			if err := json.Unmarshal(rawEdge, &rfEdge); err != nil {
 				continue
 			}
-			if rfEdge.Source != "" && rfEdge.Target != "" {
+			from := rfEdge.From
+			to := rfEdge.To
+			if from == "" {
+				from = rfEdge.Source
+			}
+			if to == "" {
+				to = rfEdge.Target
+			}
+			if from != "" && to != "" {
 				plan.Edges = append(plan.Edges, types.EdgeSpec{
-					From: rfEdge.Source,
-					To:   rfEdge.Target,
+					From: from,
+					To:   to,
 				})
 			}
 		}
