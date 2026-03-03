@@ -59,6 +59,7 @@ func (s *Scheduler) handleRunTimeout(ctx context.Context, rctx *runContext, err 
 		"status": "failed",
 		"reason": reason,
 	}, "", "")
+	s.finalizeRunSession(bgCtx, rctx, types.RunStatusFailed, reason)
 
 	metrics.RunsActive.Dec()
 	metrics.RunsTotal.WithLabelValues("failed").Inc()
@@ -93,6 +94,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
+		s.finalizeRunSession(ctx, rctx, types.RunStatusFailed, "cancelled")
 		s.fireWebhookCallback(ctx, rctx.runID)
 		// Note: metrics for cancelled runs are recorded in CancelRun
 		return true
@@ -130,6 +132,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusSucceeded, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "succeeded")
+		s.finalizeRunSession(ctx, rctx, types.RunStatusSucceeded, "")
 		s.fireWebhookCallback(ctx, rctx.runID)
 		metrics.RunsActive.Dec()
 		metrics.RunsTotal.WithLabelValues("succeeded").Inc()
@@ -142,6 +145,7 @@ func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bo
 		finishedAt := utcISO()
 		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
 		s.emitRunStatus(ctx, rctx.runID, "failed")
+		s.finalizeRunSession(ctx, rctx, types.RunStatusFailed, "node_failure")
 		s.fireWebhookCallback(ctx, rctx.runID)
 		metrics.RunsActive.Dec()
 		metrics.RunsTotal.WithLabelValues("failed").Inc()

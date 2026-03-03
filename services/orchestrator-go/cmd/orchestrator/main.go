@@ -88,19 +88,32 @@ func main() {
 	// Command resolver for agents
 	resolveCmd := factories.CreateCommandResolver(cfg)
 
-	sched := scheduler.NewScheduler(store, execDriver, resolveCmd,
+	schedulerOpts := []scheduler.Option{
 		scheduler.WithMaxParallelism(cfg.MaxParallelism),
 		scheduler.WithDefaultMaxRetries(cfg.DefaultMaxRetries),
 		scheduler.WithDefaultBackoffSecs(cfg.DefaultBackoffSecs),
 		scheduler.WithDefaultRunTimeout(cfg.DefaultRunTimeout),
 		scheduler.WithLogger(logger.With(slog.String("component", "scheduler"))),
-	)
+	}
+	if cfg.AgentContextEnabled {
+		runSessionManager := scheduler.NewLoomRunSessionManager(scheduler.LoomRunSessionManagerConfig{
+			LoomBin:   cfg.LoomBin,
+			AgentID:   cfg.AgentContextAgentID,
+			Namespace: cfg.AgentContextNamespace,
+			Logger:    logger.With(slog.String("component", "run-session")),
+		})
+		schedulerOpts = append(schedulerOpts, scheduler.WithRunSessionManager(runSessionManager))
+	}
+
+	sched := scheduler.NewScheduler(store, execDriver, resolveCmd, schedulerOpts...)
 
 	logger.Info("scheduler initialized",
 		slog.String("driver", cfg.DriverType),
 		slog.Int("max_parallelism", cfg.MaxParallelism),
 		slog.Int("default_retries", cfg.DefaultMaxRetries),
 		slog.Duration("default_run_timeout", cfg.DefaultRunTimeout),
+		slog.Bool("agent_context_enabled", cfg.AgentContextEnabled),
+		slog.String("agent_context_agent_id", cfg.AgentContextAgentID),
 	)
 
 	// Initialize validator
@@ -166,14 +179,14 @@ func main() {
 	dataflowType := os.Getenv("DATAFLOW_TYPE")
 	if dataflowType != "" {
 		dfCfg := &dataflow.Config{
-			Type:           dataflowType,
-			Endpoint:       os.Getenv("MINIO_ENDPOINT"),
-			Bucket:         os.Getenv("MINIO_BUCKET"),
-			Region:         os.Getenv("MINIO_REGION"),
-			AccessKeyID:    os.Getenv("MINIO_ACCESS_KEY"),
+			Type:            dataflowType,
+			Endpoint:        os.Getenv("MINIO_ENDPOINT"),
+			Bucket:          os.Getenv("MINIO_BUCKET"),
+			Region:          os.Getenv("MINIO_REGION"),
+			AccessKeyID:     os.Getenv("MINIO_ACCESS_KEY"),
 			SecretAccessKey: os.Getenv("MINIO_SECRET_KEY"),
-			UseSSL:         os.Getenv("MINIO_USE_SSL") == "true",
-			PathPrefix:     "artifacts",
+			UseSSL:          os.Getenv("MINIO_USE_SSL") == "true",
+			PathPrefix:      "artifacts",
 		}
 		svc, err := dataflow.New(dfCfg)
 		if err != nil {

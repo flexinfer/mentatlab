@@ -55,6 +55,15 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RateLimitRPS != 100.0 {
 		t.Errorf("RateLimitRPS: got %f, want 100.0", cfg.RateLimitRPS)
 	}
+	if cfg.AgentContextEnabled != true {
+		t.Errorf("AgentContextEnabled: got %v, want true", cfg.AgentContextEnabled)
+	}
+	if cfg.AgentContextAgentID != "mentatlab-orchestrator" {
+		t.Errorf("AgentContextAgentID: got %q, want %q", cfg.AgentContextAgentID, "mentatlab-orchestrator")
+	}
+	if cfg.LoomBin != "loom" {
+		t.Errorf("LoomBin: got %q, want %q", cfg.LoomBin, "loom")
+	}
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
@@ -72,6 +81,10 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	t.Setenv("RATE_LIMIT_BURST", "100")
 	t.Setenv("K8S_NAMESPACE", "test-ns")
 	t.Setenv("CORS_ORIGINS", "http://a.com,http://b.com")
+	t.Setenv("ORCH_AGENT_CONTEXT_ENABLED", "false")
+	t.Setenv("ORCH_AGENT_CONTEXT_AGENT_ID", "agent-x")
+	t.Setenv("ORCH_AGENT_CONTEXT_NAMESPACE", "mentatlab")
+	t.Setenv("LOOM_BIN", "/usr/local/bin/loom")
 
 	cfg := Load()
 
@@ -107,6 +120,18 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	}
 	if len(cfg.CORSOrigins) != 2 || cfg.CORSOrigins[0] != "http://a.com" {
 		t.Errorf("CORSOrigins: got %v, want [http://a.com http://b.com]", cfg.CORSOrigins)
+	}
+	if cfg.AgentContextEnabled != false {
+		t.Errorf("AgentContextEnabled: got %v, want false", cfg.AgentContextEnabled)
+	}
+	if cfg.AgentContextAgentID != "agent-x" {
+		t.Errorf("AgentContextAgentID: got %q, want %q", cfg.AgentContextAgentID, "agent-x")
+	}
+	if cfg.AgentContextNamespace != "mentatlab" {
+		t.Errorf("AgentContextNamespace: got %q, want %q", cfg.AgentContextNamespace, "mentatlab")
+	}
+	if cfg.LoomBin != "/usr/local/bin/loom" {
+		t.Errorf("LoomBin: got %q, want %q", cfg.LoomBin, "/usr/local/bin/loom")
 	}
 }
 
