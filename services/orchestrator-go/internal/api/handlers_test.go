@@ -557,6 +557,181 @@ func TestRunFlowPreservesMCPPayloadInCreatedRunPlan(t *testing.T) {
 	}
 }
 
+func TestImportLoomWorkflowCreatesFlowWithDependencyParity(t *testing.T) {
+	srv := newTestServer(t)
+
+	payload := map[string]any{
+		"name": "Imported Loom Workflow",
+		"steps": []map[string]any{
+			{
+				"id":        "fetch",
+				"name":      "Fetch Tools",
+				"tool_name": "k8s_apps_k3s__k8s_get",
+				"tool_args": map[string]any{"kind": "pods"},
+			},
+			{
+				"id":         "infer",
+				"name":       "Infer",
+				"tool_name":  "flexinfer__inference_chat",
+				"depends_on": []string{"fetch"},
+				"tool_args":  map[string]any{"model": "mistral"},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/flows/import/loom", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var created flowstore.Flow
+	if err := json.NewDecoder(w.Body).Decode(&created); err != nil {
+		t.Fatalf("failed to decode created flow: %v", err)
+	}
+
+	var graph struct {
+		Nodes []struct {
+			ID   string `json:"id"`
+			Data struct {
+				ToolName string `json:"tool_name"`
+			} `json:"data"`
+		} `json:"nodes"`
+		Edges []struct {
+			Source string `json:"source"`
+			Target string `json:"target"`
+		} `json:"edges"`
+	}
+	if err := json.Unmarshal(created.Graph, &graph); err != nil {
+		t.Fatalf("failed to decode graph: %v", err)
+	}
+	if len(graph.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(graph.Nodes))
+	}
+	if len(graph.Edges) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(graph.Edges))
+	}
+	edge := graph.Edges[0]
+	if edge.Source != "fetch" || edge.Target != "infer" {
+		t.Fatalf("expected dependency fetch->infer, got %s->%s", edge.Source, edge.Target)
+	}
+}
+
+func TestExportFlowAsLoomWorkflowPreservesDependencies(t *testing.T) {
+	srv := newTestServer(t)
+
+	createPayload := flowstore.CreateFlowRequest{
+		Name: "Bridge Export Flow",
+		Graph: json.RawMessage(`{
+			"nodes":[
+				{
+					"id":"fetch",
+					"type":"mcp:k8s_apps_k3s__k8s_get",
+					"data":{
+						"label":"Fetch",
+						"agent_id":"loom-mcp-executor",
+						"tool_name":"k8s_apps_k3s__k8s_get",
+						"tool_args":{"kind":"pods"},
+						"mcp_server":"k8s_apps_k3s"
+					}
+				},
+				{
+					"id":"infer",
+					"type":"mcp:flexinfer__inference_chat",
+					"data":{
+						"label":"Infer",
+						"agent_id":"loom-mcp-executor",
+						"tool_name":"flexinfer__inference_chat",
+						"tool_args":{"model":"mistral"},
+						"mcp_server":"flexinfer"
+					}
+				}
+			],
+			"edges":[
+				{"id":"e-fetch-infer","source":"fetch","target":"infer"}
+			]
+		}`),
+	}
+
+	createBody, _ := json.Marshal(createPayload)
+	createReq := httptest.NewRequest("POST", "/api/v1/flows", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createW, createReq)
+
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on create flow, got %d: %s", createW.Code, createW.Body.String())
+	}
+
+	var created flowstore.Flow
+	if err := json.NewDecoder(createW.Body).Decode(&created); err != nil {
+		t.Fatalf("failed to decode create response: %v", err)
+	}
+
+	exportReq := httptest.NewRequest("GET", "/api/v1/flows/"+created.ID+"/export/loom", nil)
+	exportW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(exportW, exportReq)
+
+	if exportW.Code != http.StatusOK {
+		t.Fatalf("expected 200 on export, got %d: %s", exportW.Code, exportW.Body.String())
+	}
+
+	var wf struct {
+		Name  string `json:"name"`
+		Steps []struct {
+			ID        string   `json:"id"`
+			Name      string   `json:"name"`
+			ToolName  string   `json:"tool_name"`
+			Server    string   `json:"server_name"`
+			DependsOn []string `json:"depends_on"`
+		} `json:"steps"`
+	}
+	if err := json.NewDecoder(exportW.Body).Decode(&wf); err != nil {
+		t.Fatalf("failed to decode workflow: %v", err)
+	}
+
+	if wf.Name != "Bridge Export Flow" {
+		t.Fatalf("expected exported workflow name, got %q", wf.Name)
+	}
+	if len(wf.Steps) != 2 {
+		t.Fatalf("expected 2 exported steps, got %d", len(wf.Steps))
+	}
+
+	byID := map[string]struct {
+		ToolName  string
+		Server    string
+		DependsOn []string
+	}{}
+	for _, step := range wf.Steps {
+		byID[step.ID] = struct {
+			ToolName  string
+			Server    string
+			DependsOn []string
+		}{
+			ToolName:  step.ToolName,
+			Server:    step.Server,
+			DependsOn: step.DependsOn,
+		}
+	}
+
+	if byID["fetch"].ToolName != "k8s_apps_k3s__k8s_get" {
+		t.Fatalf("expected fetch tool_name preserved, got %q", byID["fetch"].ToolName)
+	}
+	if byID["fetch"].Server != "k8s_apps_k3s" {
+		t.Fatalf("expected fetch server preserved, got %q", byID["fetch"].Server)
+	}
+	if byID["infer"].ToolName != "flexinfer__inference_chat" {
+		t.Fatalf("expected infer tool_name preserved, got %q", byID["infer"].ToolName)
+	}
+	if len(byID["infer"].DependsOn) != 1 || byID["infer"].DependsOn[0] != "fetch" {
+		t.Fatalf("expected infer depends_on=[fetch], got %+v", byID["infer"].DependsOn)
+	}
+}
+
 func jsonEqual(expected, actual json.RawMessage) bool {
 	var exp any
 	var got any

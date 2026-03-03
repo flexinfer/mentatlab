@@ -68,6 +68,25 @@ export interface ListFlowsParams {
   created_by?: string;
 }
 
+export interface LoomWorkflowStep {
+  id?: string;
+  name: string;
+  description?: string;
+  depends_on?: string[];
+  step_type?: string;
+  requires_approval?: boolean;
+  server_name?: string;
+  tool_name?: string;
+  tool_args?: Record<string, any>;
+  timeout_seconds?: number;
+}
+
+export interface LoomWorkflowDefinition {
+  name: string;
+  description?: string;
+  steps: LoomWorkflowStep[];
+}
+
 export class FlowService extends BaseService {
   constructor(http: HttpClient, ws: WebSocketClient | null) {
     super(http, ws, { basePath: '/api/v1/flows', enableStreaming: false });
@@ -177,6 +196,20 @@ export class FlowService extends BaseService {
       }
       throw new Error(`Failed to parse flow JSON: ${error.message}`);
     }
+  }
+
+  /**
+   * Import a loom workflow definition as a MentatLab flow.
+   */
+  async importLoomWorkflow(workflow: LoomWorkflowDefinition): Promise<Flow> {
+    return this.post<Flow>('/import/loom', workflow);
+  }
+
+  /**
+   * Export a MentatLab flow as a loom workflow definition.
+   */
+  async exportFlowAsLoomWorkflow(flowId: string): Promise<LoomWorkflowDefinition> {
+    return this.get<LoomWorkflowDefinition>(`/${flowId}/export/loom`);
   }
 }
 

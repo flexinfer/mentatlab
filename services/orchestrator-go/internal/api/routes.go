@@ -90,6 +90,8 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/flows/{id}", s.handlers.UpdateFlow).Methods("PUT")
 	api.HandleFunc("/flows/{id}", s.handlers.DeleteFlow).Methods("DELETE")
 	api.HandleFunc("/flows/{id}/run", s.handlers.RunFlow).Methods("POST")
+	api.HandleFunc("/flows/import/loom", s.handlers.ImportLoomWorkflow).Methods("POST")
+	api.HandleFunc("/flows/{id}/export/loom", s.handlers.ExportFlowAsLoomWorkflow).Methods("GET")
 
 	// Run cloning
 	api.HandleFunc("/runs/{id}/clone", s.handlers.CloneRun).Methods("POST")
