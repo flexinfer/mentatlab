@@ -31,6 +31,7 @@ type Handlers struct {
 	dataflowSvc *dataflow.Service
 	cronRunner  *scheduler.CronRunner
 	apiKeyStore *auth.APIKeyStore
+	mcpFetcher  MCPToolsFetcher
 	config      *config.Config
 	logger      *slog.Logger
 }
@@ -43,6 +44,7 @@ type HandlerOptions struct {
 	DataflowSvc *dataflow.Service
 	CronRunner  *scheduler.CronRunner
 	APIKeyStore *auth.APIKeyStore
+	MCPFetcher  MCPToolsFetcher
 }
 
 // NewHandlers creates a new Handlers instance.
@@ -64,6 +66,10 @@ func NewHandlers(store runstore.RunStore, sched *scheduler.Scheduler, v *validat
 		h.dataflowSvc = opts.DataflowSvc
 		h.cronRunner = opts.CronRunner
 		h.apiKeyStore = opts.APIKeyStore
+		h.mcpFetcher = opts.MCPFetcher
+	}
+	if h.mcpFetcher == nil {
+		h.mcpFetcher = FetchMCPToolsFromLoomCLI
 	}
 	return h
 }
