@@ -36,9 +36,17 @@ import os
 import datetime
 import asyncio
 from typing import Any, Dict, Optional, List
-import ast
 import urllib.request
 import urllib.error
+try:
+    from agents.common.input_contract import read_input_contract
+except Exception:
+    import sys as _sys, os as _os
+
+    _sys.path.append(
+        _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", ".."))
+    )
+    from agents.common.input_contract import read_input_contract
 try:
     import torch
     import torch.nn as nn
@@ -58,24 +66,6 @@ from ctm.halting import HaltingController
 from ctm.telemetry import TelemetryBus
 
 AGENT_MODEL = "ctm/0.1.0"
-
-
-def _parse_maybe_json_or_python_dict(s: str) -> Optional[Dict[str, Any]]:
-    if not isinstance(s, str) or not s.strip():
-        return None
-    try:
-        v = json.loads(s)
-        if isinstance(v, dict):
-            return v
-    except Exception:
-        pass
-    try:
-        v = ast.literal_eval(s)
-        if isinstance(v, dict):
-            return v
-    except Exception:
-        pass
-    return None
 
 
 def _http_post_json(url: str, payload: Dict[str, Any], timeout: float = 20.0) -> tuple[int, str]:
@@ -139,35 +129,8 @@ def _vllm_generate_text(base: str, prompt: str, model: Optional[str] = None) -> 
     return None
 
 
-def read_input() -> Optional[Dict[str, Any]]:
-    """Read a single JSON object from stdin (single-line preferred),
-    falling back to INPUT_SPEC/INPUT_CONTEXT env vars when stdin is empty.
-    """
-    # 1) stdin path
-    try:
-        raw = sys.stdin.read()
-        if raw:
-            raw = raw.strip()
-            if raw:
-                return json.loads(raw)
-    except Exception:
-        pass
-    # 2) env fallback path
-    try:
-        spec_s = os.environ.get("INPUT_SPEC", "")
-        ctx_s = os.environ.get("INPUT_CONTEXT", "")
-        spec = _parse_maybe_json_or_python_dict(spec_s) if spec_s else None
-        ctx = _parse_maybe_json_or_python_dict(ctx_s) if ctx_s else None
-        if spec or ctx:
-            incoming: Dict[str, Any] = {}
-            if spec:
-                incoming["spec"] = spec
-            if ctx:
-                incoming["context"] = ctx
-            return incoming
-    except Exception:
-        pass
-    return None
+def read_input() -> Dict[str, Any]:
+    return read_input_contract()
 
 
 def _now_iso() -> str:
@@ -566,7 +529,9 @@ def main() -> int:
     start_time = time.time()
     try:
         incoming = read_input()
-        if incoming is None:
+        spec = incoming.get("spec", {})
+        context = incoming.get("context", {})
+        if not spec and not context:
             err = {
                 "error": "No input received on stdin. Please provide a single-line JSON object with keys 'spec' and optional 'context'."
             }
@@ -575,19 +540,15 @@ def main() -> int:
             print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
             return 1
 
-        spec = incoming.get("spec") if isinstance(incoming, dict) else incoming
-        context = incoming.get("context") if isinstance(incoming, dict) else None
-
         # Configure CloudEvents from environment
         ce_enabled = _env_flag_true(os.environ.get("CE_ENABLED"))
         ce_source = os.environ.get("CTM_CE_SOURCE", "/mentatlab/agent/ctm-cogpack")
         ce_version = os.environ.get("CTM_CE_VERSION", "1.0")
 
         execution_id: Optional[str] = None
-        if isinstance(incoming, dict):
-            v = incoming.get("execution_id")
-            if isinstance(v, str) and v:
-                execution_id = v
+        v = incoming.get("execution_id")
+        if isinstance(v, str) and v:
+            execution_id = v
         if not execution_id and isinstance(context, dict):
             v = context.get("execution_id")
             if isinstance(v, str) and v:

@@ -32,7 +32,6 @@ import uuid
 import os
 import datetime
 from typing import Any, Dict, Optional
-import ast
 import urllib.request
 import urllib.error
 import urllib.request
@@ -47,12 +46,13 @@ try:
         emit_event,
         set_correlation_id,
     )
+    from agents.common.input_contract import read_input_contract
 except Exception:
     # Fallback if namespace package resolution differs in certain environments
     import sys as _sys, os as _os
 
     _sys.path.append(
-        _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", ".."))
+        _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "..", ".."))
     )
     from agents.common.emit import (
         log_info,
@@ -61,60 +61,13 @@ except Exception:
         emit_event,
         set_correlation_id,
     )
+    from agents.common.input_contract import read_input_contract
 
 AGENT_MODEL = "psyche-sim/0.1.0"
 
 
-def _parse_maybe_json_or_python_dict(s: str) -> Optional[Dict[str, Any]]:
-    if not isinstance(s, str) or not s.strip():
-        return None
-    # Try JSON first
-    try:
-        v = json.loads(s)
-        if isinstance(v, dict):
-            return v
-    except Exception:
-        pass
-    # Fallback: Python literal dict (single quotes) from str(value)
-    try:
-        v = ast.literal_eval(s)
-        if isinstance(v, dict):
-            return v
-    except Exception:
-        pass
-    return None
-
-
-def read_input() -> Optional[Dict[str, Any]]:
-    """Read a single JSON object from stdin (single-line preferred),
-    falling back to INPUT_SPEC/INPUT_CONTEXT env vars when stdin is empty.
-    """
-    # 1) stdin path
-    try:
-        raw = sys.stdin.read()
-        if raw:
-            raw = raw.strip()
-            if raw:
-                return json.loads(raw)
-    except Exception:
-        pass
-
-    # 2) env fallback path (from orchestrator passing inputs as env vars)
-    try:
-        spec_s = os.environ.get("INPUT_SPEC", "")
-        ctx_s = os.environ.get("INPUT_CONTEXT", "")
-        spec = _parse_maybe_json_or_python_dict(spec_s) if spec_s else None
-        ctx = _parse_maybe_json_or_python_dict(ctx_s) if ctx_s else None
-        if spec or ctx:
-            incoming: Dict[str, Any] = {}
-            if spec:
-                incoming["spec"] = spec
-            if ctx:
-                incoming["context"] = ctx
-            return incoming
-    except Exception:
-        pass
-    return None
+def read_input() -> Dict[str, Any]:
+    return read_input_contract()
 
 
 def _now_iso() -> str:
@@ -680,7 +633,9 @@ def main() -> int:
         pass
     try:
         incoming = read_input()
-        if incoming is None:
+        spec = incoming.get("spec", {})
+        context = incoming.get("context", {})
+        if not spec and not context:
             # No stdin provided — write helpful JSON and exit non-zero
             err = {
                 "error": "No input received on stdin. Please provide a single-line JSON object with keys 'spec' and optional 'context'."
@@ -695,13 +650,10 @@ def main() -> int:
                 pass
             return 1
 
-        spec = incoming.get("spec") if isinstance(incoming, dict) else incoming
-        context = incoming.get("context") if isinstance(incoming, dict) else None
         # Correlate by execution_id if present
         try:
             exec_id_for_corr = None
-            if isinstance(incoming, dict):
-                exec_id_for_corr = incoming.get("execution_id")
+            exec_id_for_corr = incoming.get("execution_id")
             if not exec_id_for_corr and isinstance(context, dict):
                 exec_id_for_corr = context.get("execution_id")
             if exec_id_for_corr:
