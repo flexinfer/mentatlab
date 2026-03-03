@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import ast
 import json
 import os
 import shutil
 import subprocess
 import sys
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
+try:
+    from agents.common.input_contract import read_input_contract
+except Exception:
+    sys.path.append(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    )
+    from agents.common.input_contract import read_input_contract
 
 AGENT_MODEL = "loom-mcp-executor/0.1.0"
 
@@ -16,46 +22,6 @@ AGENT_MODEL = "loom-mcp-executor/0.1.0"
 def emit_event(event: Dict[str, Any]) -> None:
     sys.stdout.write(json.dumps(event, separators=(",", ":"), ensure_ascii=False) + "\n")
     sys.stdout.flush()
-
-
-def parse_maybe_json(value: str) -> Optional[Dict[str, Any]]:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = json.loads(value)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-    try:
-        parsed = ast.literal_eval(value)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-    return None
-
-
-def read_input() -> Dict[str, Any]:
-    # Primary path: stdin JSON object.
-    try:
-        raw = sys.stdin.read()
-        if raw and raw.strip():
-            decoded = json.loads(raw.strip())
-            if isinstance(decoded, dict):
-                return decoded
-    except Exception:
-        pass
-
-    # Fallback path: orchestrator-provided env vars.
-    incoming: Dict[str, Any] = {}
-    spec = parse_maybe_json(os.environ.get("INPUT_SPEC", ""))
-    context = parse_maybe_json(os.environ.get("INPUT_CONTEXT", ""))
-    if spec is not None:
-        incoming["spec"] = spec
-    if context is not None:
-        incoming["context"] = context
-    return incoming
 
 
 def resolve_loom_bin() -> str:
@@ -86,14 +52,8 @@ def build_payload(spec: Dict[str, Any], result: Any, seconds: float) -> Dict[str
 
 def main() -> int:
     started = time.time()
-    incoming = read_input()
-
-    spec: Dict[str, Any] = {}
-    if isinstance(incoming.get("spec"), dict):
-        spec = incoming["spec"]  # type: ignore[assignment]
-    elif "tool_name" in incoming:
-        # Allow direct payload shape for local debugging.
-        spec = incoming
+    incoming = read_input_contract()
+    spec = incoming.get("spec", {})
 
     tool_name = str(spec.get("tool_name", "")).strip()
     if not tool_name:
