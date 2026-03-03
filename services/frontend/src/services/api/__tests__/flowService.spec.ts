@@ -142,4 +142,48 @@ describe('FlowService', () => {
 
     expect(mockHttp.post).not.toHaveBeenCalled();
   });
+
+  it('importLoomWorkflow() posts workflow payload to /api/v1/flows/import/loom', async () => {
+    mockHttp.post.mockResolvedValueOnce({
+      id: 'flow-loom-import',
+      name: 'Imported Loom Workflow',
+      graph: sampleGraph,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    });
+
+    await svc.importLoomWorkflow({
+      name: 'Imported Loom Workflow',
+      steps: [
+        { id: 'fetch', name: 'Fetch', tool_name: 'k8s_apps_k3s__k8s_get' },
+        { id: 'infer', name: 'Infer', depends_on: ['fetch'], tool_name: 'flexinfer__inference_chat' },
+      ],
+    });
+
+    expect(mockHttp.post).toHaveBeenCalledWith('/api/v1/flows/import/loom', {
+      name: 'Imported Loom Workflow',
+      steps: [
+        { id: 'fetch', name: 'Fetch', tool_name: 'k8s_apps_k3s__k8s_get' },
+        { id: 'infer', name: 'Infer', depends_on: ['fetch'], tool_name: 'flexinfer__inference_chat' },
+      ],
+    }, { params: undefined });
+  });
+
+  it('exportFlowAsLoomWorkflow() gets workflow payload from /api/v1/flows/{id}/export/loom', async () => {
+    mockHttp.get.mockResolvedValueOnce({
+      name: 'Bridge Export Flow',
+      steps: [
+        { id: 'fetch', name: 'Fetch', tool_name: 'k8s_apps_k3s__k8s_get' },
+        { id: 'infer', name: 'Infer', depends_on: ['fetch'], tool_name: 'flexinfer__inference_chat' },
+      ],
+    });
+
+    const workflow = await svc.exportFlowAsLoomWorkflow('flow-bridge');
+
+    expect(mockHttp.get).toHaveBeenCalledWith('/api/v1/flows/flow-bridge/export/loom', {
+      params: undefined,
+    });
+    expect(workflow.name).toBe('Bridge Export Flow');
+    expect(workflow.steps[1]?.depends_on).toEqual(['fetch']);
+  });
 });
