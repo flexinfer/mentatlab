@@ -321,19 +321,30 @@ func (s *Scheduler) executeBodyNode(ctx context.Context, rctx *runContext, spec 
 	// Resolve command
 	cmd := s.resolveCmd(spec)
 	if len(cmd) == 0 {
-		// No command - mark as succeeded
+		err := fmt.Errorf("command resolution failed for loop body node %q: no command configured", nodeID)
+		s.logger.Error("loop body command resolution failed",
+			"run_id", rctx.runID,
+			"node_id", nodeID,
+			"iteration", iterIndex,
+			"error", err)
+
 		finishedAt := time.Now().UTC()
-		exitCode := 0
+		exitCode := 1
 		state := &types.NodeState{
 			NodeID:     nodeID,
-			Status:     types.NodeStatusSucceeded,
+			Status:     types.NodeStatusFailed,
 			StartedAt:  &startedAt,
 			FinishedAt: &finishedAt,
 			ExitCode:   &exitCode,
+			Error:      err.Error(),
 		}
 		s.store.UpdateNodeState(ctx, rctx.runID, nodeID, state)
-		s.emitNodeStatus(ctx, rctx.runID, nodeID, "succeeded", nil)
-		return nil
+		s.emitNodeStatus(ctx, rctx.runID, nodeID, "failed", map[string]interface{}{
+			"reason":    "command_resolution_failed",
+			"error":     err.Error(),
+			"iteration": iterIndex,
+		})
+		return err
 	}
 
 	// Build env with iteration variables

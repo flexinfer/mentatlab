@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -412,6 +413,72 @@ func TestK8sDriver_HealthCheck_FakeClient(t *testing.T) {
 	}
 	if err := d.HealthCheck(context.Background()); err != nil {
 		t.Fatalf("HealthCheck: %v", err)
+	}
+}
+
+func TestK8sDriver_RunNode_NoCommandFailsBeforeScheduling(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	code, err := d.RunNode(context.Background(), "run-test-1234", "node1", nil, map[string]string{
+		"AGENT_IMAGE": "python:3.12-slim",
+	}, 0)
+	if err == nil {
+		t.Fatal("expected error for missing command")
+	}
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+	if !strings.Contains(err.Error(), "command resolution failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	jobs, listErr := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if listErr != nil {
+		t.Fatalf("list jobs: %v", listErr)
+	}
+	if len(jobs.Items) != 0 {
+		t.Fatalf("expected no jobs created, found %d", len(jobs.Items))
+	}
+}
+
+func TestK8sDriver_RunNode_NoImageFailsBeforeScheduling(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	code, err := d.RunNode(context.Background(), "run-test-1234", "node1", []string{"echo", "hello"}, nil, 0)
+	if err == nil {
+		t.Fatal("expected error for missing image")
+	}
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+	if !strings.Contains(err.Error(), "image resolution failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	jobs, listErr := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if listErr != nil {
+		t.Fatalf("list jobs: %v", listErr)
+	}
+	if len(jobs.Items) != 0 {
+		t.Fatalf("expected no jobs created, found %d", len(jobs.Items))
 	}
 }
 
