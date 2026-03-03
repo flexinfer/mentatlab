@@ -4,7 +4,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { ToastProvider } from '../../../../contexts/ToastContext';
 
 // Hoisted mocks for useRunGraph and store
-const { mockRunGraphState, mockOpenContextMenu, mockToast, mockRetryNodes } = vi.hoisted(() => ({
+const { mockRunGraphState, mockOpenContextMenu, mockToast, mockCloneRun } = vi.hoisted(() => ({
   mockRunGraphState: {
     nodes: [] as any[],
     edges: [] as any[],
@@ -24,7 +24,7 @@ const { mockRunGraphState, mockOpenContextMenu, mockToast, mockRetryNodes } = vi
     removeToast: vi.fn(),
     clearAll: vi.fn(),
   },
-  mockRetryNodes: vi.fn(),
+  mockCloneRun: vi.fn(),
 }));
 
 // Mock useRunGraph
@@ -48,7 +48,7 @@ vi.mock('../../../../contexts/ToastContext', () => ({
 // Mock orchestratorService
 vi.mock('../../../../services/api/orchestratorService', () => ({
   orchestratorService: {
-    retryNodes: (...args: any[]) => mockRetryNodes(...args),
+    cloneRun: (...args: any[]) => mockCloneRun(...args),
   },
 }));
 
@@ -198,21 +198,21 @@ describe('GraphPanel', () => {
     });
   });
 
-  test('Retry Failed calls orchestratorService.retryNodes with failed node ids', async () => {
+  test('Retry Failed calls orchestratorService.cloneRun when failed nodes exist', async () => {
     mockRunGraphState.nodes = [
       { id: 'A', data: { status: 'failed' } },
       { id: 'B', data: { status: 'idle' } },
       { id: 'C', data: { status: 'failed' } },
     ];
-    mockRetryNodes.mockResolvedValueOnce({ retriedNodes: ['A', 'C'] });
+    mockCloneRun.mockResolvedValueOnce({ runId: 'run-2' });
 
     render(<GraphPanel runId="run-1" />);
     const retryBtn = screen.getByText(/Retry Failed/);
     fireEvent.click(retryBtn);
 
     await waitFor(() => {
-      expect(mockRetryNodes).toHaveBeenCalledWith('run-1', ['A', 'C']);
-      expect(mockToast.success).toHaveBeenCalled();
+      expect(mockCloneRun).toHaveBeenCalledWith('run-1', true);
+      expect(mockToast.success).toHaveBeenCalledWith('Started re-run as run-2');
     });
   });
 
@@ -220,7 +220,7 @@ describe('GraphPanel', () => {
     mockRunGraphState.nodes = [
       { id: 'A', data: { status: 'failed' } },
     ];
-    mockRetryNodes.mockRejectedValueOnce(new Error('Server error'));
+    mockCloneRun.mockRejectedValueOnce(new Error('Server error'));
 
     render(<GraphPanel runId="run-1" />);
     const retryBtn = screen.getByText(/Retry Failed/);

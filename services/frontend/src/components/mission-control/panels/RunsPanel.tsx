@@ -73,6 +73,7 @@ export default function RunsPanel(): JSX.Element {
       if (newRunId) {
         setRunIdInput(newRunId);
         setPlanResult(null);
+        setCheckpoints([]);
         await refreshRun(newRunId);
         connectToRun(newRunId);
         showToast(`Run created: ${newRunId}`, 'success');
@@ -88,15 +89,15 @@ export default function RunsPanel(): JSX.Element {
     }
   }
 
-  async function refreshRun(runId: string) {
+  async function refreshRun(runId: string): Promise<boolean> {
     try {
       const run = await orchestratorService.getRun(runId);
       setCurrentRun(run);
-      const cps = await orchestratorService.listCheckpoints(runId);
-      setCheckpoints(cps);
+      return true;
     } catch (err: any) {
       console.error('Refresh failed', err);
       showToast('Failed to load run details', 'error');
+      return false;
     }
   }
 
@@ -145,16 +146,12 @@ export default function RunsPanel(): JSX.Element {
       if (!runIdInput) return;
       setPosting(true);
       try {
-          await orchestratorService.postCheckpoint(runIdInput, {
-              type: 'user_annotation',
-              data: { note: 'Manual checkpoint', ts: Date.now() }
-          });
-          // Refresh list to be sure, though SSE should catch it
-          const cps = await orchestratorService.listCheckpoints(runIdInput);
-          setCheckpoints(cps);
-          showToast('Checkpoint added', 'success');
+          const ok = await refreshRun(runIdInput);
+          if (ok) {
+              showToast('Run refreshed', 'success');
+          }
       } catch (e: any) {
-          showToast('Failed to post checkpoint', 'error');
+          showToast('Failed to refresh run', 'error');
       } finally {
           setPosting(false);
       }
@@ -176,16 +173,11 @@ export default function RunsPanel(): JSX.Element {
   async function handleCloneRun() {
       if (!runIdInput) return;
       try {
-          const res = await fetch(`/api/v1/runs/${encodeURIComponent(runIdInput)}/clone`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ auto_start: false }),
-          });
-          if (!res.ok) throw new Error(`Clone failed: ${res.status}`);
-          const data = await res.json();
-          const newId = data.run_id || data.runId || data.id;
+          const res = await orchestratorService.cloneRun(runIdInput, false);
+          const newId = res.run_id || res.runId || res.id;
           if (newId) {
               setRunIdInput(newId);
+              setCheckpoints([]);
               await refreshRun(newId);
               showToast(`Cloned run: ${newId}`, 'success');
           }
@@ -197,16 +189,11 @@ export default function RunsPanel(): JSX.Element {
   async function handleRerun() {
       if (!runIdInput) return;
       try {
-          const res = await fetch(`/api/v1/runs/${encodeURIComponent(runIdInput)}/clone`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ auto_start: true }),
-          });
-          if (!res.ok) throw new Error(`Re-run failed: ${res.status}`);
-          const data = await res.json();
-          const newId = data.run_id || data.runId || data.id;
+          const res = await orchestratorService.cloneRun(runIdInput, true);
+          const newId = res.run_id || res.runId || res.id;
           if (newId) {
               setRunIdInput(newId);
+              setCheckpoints([]);
               await refreshRun(newId);
               connectToRun(newId);
               showToast(`Re-running as: ${newId}`, 'success');
@@ -313,7 +300,7 @@ export default function RunsPanel(): JSX.Element {
                 </div>
                 <div className="p-2 border-t border-white/5 bg-zinc-950/30 flex gap-2">
                      <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handlePostCheckpoint} disabled={posting || !runIdInput}>
-                        + Annotation
+                        Refresh
                      </Button>
                      <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handleCloneRun} disabled={!runIdInput}>
                         Clone

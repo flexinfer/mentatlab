@@ -125,14 +125,17 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
     }
 
     try {
-      toast.info(`Retrying ${failed.length} failed node${failed.length > 1 ? 's' : ''}...`);
-      const result = await orchestratorService.retryNodes(runId, failed);
-      toast.success(
-        `Retried ${result.retriedNodes.length} node${result.retriedNodes.length > 1 ? 's' : ''}`
-      );
+      toast.info(`Re-running flow after ${failed.length} failed node${failed.length > 1 ? 's' : ''}...`);
+      const result = await orchestratorService.cloneRun(runId, true);
+      const newRunId = result.runId || result.run_id || result.id;
+      if (newRunId) {
+        toast.success(`Started re-run as ${newRunId}`);
+      } else {
+        toast.success('Started re-run');
+      }
     } catch (err: any) {
       console.error('[GraphPanel] Retry failed:', err);
-      toast.error(err?.message || 'Failed to retry nodes');
+      toast.error(err?.message || 'Failed to re-run flow');
     }
   }, [nodes, runId, toast]);
 

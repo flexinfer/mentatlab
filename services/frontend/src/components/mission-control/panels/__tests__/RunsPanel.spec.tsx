@@ -8,8 +8,7 @@ const { mockOrchestratorService, mockCapturedHandlers, mockClose } = vi.hoisted(
   const mockOrchestratorService = {
     createRun: vi.fn(),
     getRun: vi.fn(),
-    listCheckpoints: vi.fn(),
-    postCheckpoint: vi.fn(),
+    cloneRun: vi.fn(),
     cancelRun: vi.fn(),
     streamRunEvents: vi.fn(),
   };
@@ -63,8 +62,6 @@ describe("RunsPanel (integration-ish)", () => {
       createdAt: new Date().toISOString(),
       status: "queued",
     });
-    (mockOrchestratorService.listCheckpoints as Mock).mockResolvedValue([]);
-
     render(<RunsPanel />);
 
     // Select mode 'redis'
@@ -82,9 +79,8 @@ describe("RunsPanel (integration-ish)", () => {
       expect(input.value).toBe("run-123");
     });
 
-    // Expect getRun and listCheckpoints were called
+    // Expect getRun was called
     expect(mockOrchestratorService.getRun).toHaveBeenCalledWith("run-123");
-    expect(mockOrchestratorService.listCheckpoints).toHaveBeenCalledWith("run-123");
 
     // Expect streamRunEvents was called (connects SSE)
     expect(mockOrchestratorService.streamRunEvents).toHaveBeenCalled();
@@ -106,11 +102,7 @@ describe("RunsPanel (integration-ish)", () => {
     await waitFor(() => expect(screen.getAllByText(/RUNNING/i).length).toBeGreaterThanOrEqual(1));
   }, 20000);
 
-  test("post annotation button calls postCheckpoint and refreshes list", async () => {
-    (mockOrchestratorService.postCheckpoint as Mock).mockResolvedValue({ checkpointId: "cp-xyz" });
-    (mockOrchestratorService.listCheckpoints as Mock).mockResolvedValue([
-      { id: "cp-xyz", runId: "r", ts: new Date().toISOString(), type: "user_annotation", data: {} },
-    ]);
+  test("Refresh button refreshes run details via getRun", async () => {
     (mockOrchestratorService.createRun as Mock).mockResolvedValue({ runId: "r" });
     (mockOrchestratorService.getRun as Mock).mockResolvedValue({
       id: "r",
@@ -127,11 +119,10 @@ describe("RunsPanel (integration-ish)", () => {
 
     await waitFor(() => expect((screen.getByPlaceholderText("Run ID...") as HTMLInputElement).value).toBe("r"));
 
-    // Click "+ Annotation" button (previously "Post progress checkpoint")
-    const postBtn = screen.getByRole("button", { name: /Annotation/i });
+    const postBtn = screen.getByRole("button", { name: /Refresh/i });
     fireEvent.click(postBtn);
 
-    await waitFor(() => expect(mockOrchestratorService.postCheckpoint).toHaveBeenCalled());
+    await waitFor(() => expect(mockOrchestratorService.getRun).toHaveBeenCalledTimes(2));
   });
 
   test("cancel run calls cancelRun on the service", async () => {
@@ -143,7 +134,6 @@ describe("RunsPanel (integration-ish)", () => {
       createdAt: new Date().toISOString(),
       status: "running",
     });
-    (mockOrchestratorService.listCheckpoints as Mock).mockResolvedValue([]);
     (mockOrchestratorService.cancelRun as Mock).mockResolvedValue({ status: "cancelled" });
 
     render(<RunsPanel />);
