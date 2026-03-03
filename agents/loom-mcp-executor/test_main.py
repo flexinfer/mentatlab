@@ -3,6 +3,9 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 
 def _load_module():
@@ -12,6 +15,12 @@ def _load_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def parse_single_event(output: str):
+    lines = [line for line in output.strip().splitlines() if line.strip()]
+    assert len(lines) == 1
+    return json.loads(lines[0])
 
 
 def test_resolve_placeholders_nested():
@@ -91,3 +100,106 @@ def test_call_flexinfer_inference_builds_openai_request(monkeypatch):
     assert request_body["max_tokens"] == 128
 
     assert result["id"] == "chatcmpl-test"
+
+
+def test_main_emits_result_for_mcp_tool(monkeypatch, capsys):
+    mod = _load_module()
+
+    monkeypatch.setattr(
+        mod,
+        "read_input_contract",
+        lambda: {
+            "spec": {
+                "tool_name": "k8s_apps_k3s__k8s_get",
+                "mcp_server": "k8s_apps_k3s",
+                "tool_args": {"kind": "pods"},
+            }
+        },
+    )
+
+    seen = {}
+
+    def fake_run(cmd, capture_output, text, check):
+        seen["cmd"] = cmd
+        return SimpleNamespace(returncode=0, stdout='{"ok":true}', stderr="")
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    code = mod.main()
+    assert code == 0
+
+    event = parse_single_event(capsys.readouterr().out)
+    assert event["type"] == "output"
+    assert event["key"] == "result"
+    assert event["value"]["tool_name"] == "k8s_apps_k3s__k8s_get"
+    assert event["value"]["mcp_server"] == "k8s_apps_k3s"
+    assert event["value"]["tool_args"] == {"kind": "pods"}
+    assert Path(seen["cmd"][0]).name == "loom"
+    assert seen["cmd"][1:4] == ["tools", "call", "k8s_apps_k3s__k8s_get"]
+
+
+def test_main_uses_flexinfer_inference_path(monkeypatch, capsys):
+    mod = _load_module()
+
+    monkeypatch.setattr(
+        mod,
+        "read_input_contract",
+        lambda: {
+            "spec": {
+                "tool_name": "flexinfer__inference_chat",
+                "mcp_server": "flexinfer",
+                "tool_args": {
+                    "proxy_url": "http://proxy",
+                    "model": "qwen2.5:7b",
+                    "prompt": "hello",
+                },
+            }
+        },
+    )
+
+    monkeypatch.setattr(mod, "call_flexinfer_inference", lambda args: {"choices": [{"message": {"content": "ok"}}]})
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("subprocess.run should not be called for flexinfer__inference_chat")
+
+    monkeypatch.setattr(mod.subprocess, "run", fail_if_called)
+
+    code = mod.main()
+    assert code == 0
+
+    event = parse_single_event(capsys.readouterr().out)
+    assert event["type"] == "output"
+    assert event["key"] == "result"
+    assert event["value"]["tool_name"] == "flexinfer__inference_chat"
+    assert event["value"]["mcp_server"] == "flexinfer"
+
+
+def test_main_errors_without_tool_name(monkeypatch, capsys):
+    mod = _load_module()
+
+    monkeypatch.setattr(mod, "read_input_contract", lambda: {"spec": {}})
+
+    code = mod.main()
+    assert code == 2
+
+    event = parse_single_event(capsys.readouterr().out)
+    assert event["type"] == "output"
+    assert event["key"] == "error"
+    assert "missing tool_name" in event["value"]["error"]
+
+
+@pytest.mark.parametrize(
+    "tool_name,expected",
+    [
+        ("k8s_apps_k3s__k8s_get", "k8s_apps_k3s__k8s_get"),
+        ("flexinfer__inference_chat", "flexinfer__inference_chat"),
+    ],
+)
+def test_build_payload_preserves_tool_name(tool_name, expected):
+    mod = _load_module()
+    payload = mod.build_payload(
+        {"tool_name": tool_name, "mcp_server": "server", "tool_args": {}},
+        {"ok": True},
+        0.123,
+    )
+    assert payload["tool_name"] == expected
