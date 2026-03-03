@@ -205,6 +205,9 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         if (n.data?.tool_args !== undefined) {
           inputSpec.tool_args = n.data.tool_args;
         }
+        if (n.data?.runtime_contract !== undefined) {
+          inputSpec.runtime_contract = n.data.runtime_contract;
+        }
         if (Object.keys(inputSpec).length > 0) {
           env.INPUT_SPEC = JSON.stringify(inputSpec);
         }

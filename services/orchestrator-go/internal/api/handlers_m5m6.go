@@ -551,15 +551,16 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 		// Check for ReactFlow "data" object with nested fields.
 		var nodeWithData struct {
 			Data struct {
-				AgentID string            `json:"agent_id"`
-				Image   string            `json:"image"`
-				Command []string          `json:"command"`
-				Env     map[string]string `json:"env"`
-				Input   json.RawMessage   `json:"input"`
-				ToolName  string          `json:"tool_name"`
-				ToolArgs  json.RawMessage `json:"tool_args"`
-				MCPServer string          `json:"mcp_server"`
-				Timeout string            `json:"timeout"`
+				AgentID         string            `json:"agent_id"`
+				Image           string            `json:"image"`
+				Command         []string          `json:"command"`
+				Env             map[string]string `json:"env"`
+				Input           json.RawMessage   `json:"input"`
+				ToolName        string            `json:"tool_name"`
+				ToolArgs        json.RawMessage   `json:"tool_args"`
+				MCPServer       string            `json:"mcp_server"`
+				RuntimeContract json.RawMessage   `json:"runtime_contract"`
+				Timeout         string            `json:"timeout"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(rawNode, &nodeWithData); err != nil {
@@ -627,6 +628,15 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 					inputSpec = make(map[string]any)
 				}
 				inputSpec["tool_args"] = toolArgs
+			}
+		}
+		if len(d.RuntimeContract) > 0 && string(d.RuntimeContract) != "null" {
+			var runtimeContract any
+			if err := json.Unmarshal(d.RuntimeContract, &runtimeContract); err == nil {
+				if inputSpec == nil {
+					inputSpec = make(map[string]any)
+				}
+				inputSpec["runtime_contract"] = runtimeContract
 			}
 		}
 		if len(inputSpec) > 0 {

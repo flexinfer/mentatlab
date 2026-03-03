@@ -257,4 +257,54 @@ describe('NodePalette', () => {
       expect.stringContaining('"tool_name":"k8s_apps_k3s__k8s_get"')
     );
   });
+
+  it('adds FlexInfer template nodes with runtime contracts', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('unsupported scheme'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tools: [
+            {
+              name: 'flexinfer__flexinfer_proxy_models',
+              server: 'flexinfer',
+              description: 'Readiness check',
+            },
+            {
+              name: 'flexinfer__flexinfer_activate_model',
+              server: 'flexinfer',
+              description: 'Activate model',
+            },
+          ],
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<NodePalette />);
+
+    await waitFor(() => {
+      expect(screen.getByText('FlexInfer Readiness')).toBeInTheDocument();
+      expect(screen.getByText('FlexInfer Activate Model')).toBeInTheDocument();
+      expect(screen.getByText('FlexInfer Inference')).toBeInTheDocument();
+    });
+
+    const inferenceNode = screen.getByText('FlexInfer Inference').closest('[draggable]');
+    const setDataMock = vi.fn();
+    fireEvent.dragStart(inferenceNode!, {
+      dataTransfer: {
+        setData: setDataMock,
+        effectAllowed: '',
+      },
+    });
+
+    expect(setDataMock).toHaveBeenCalledWith('application/reactflow', 'mcp:flexinfer-template-inference');
+    expect(setDataMock).toHaveBeenCalledWith(
+      'application/reactflow-metadata',
+      expect.stringContaining('"tool_name":"flexinfer__inference_chat"')
+    );
+    expect(setDataMock).toHaveBeenCalledWith(
+      'application/reactflow-metadata',
+      expect.stringContaining('"runtime_contract":{"kind":"flexinfer_inference"')
+    );
+  });
 });
