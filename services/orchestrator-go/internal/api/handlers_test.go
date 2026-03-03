@@ -393,6 +393,154 @@ func TestFlowCRUDRoundTripGraphParity(t *testing.T) {
 	}
 }
 
+func TestFlowGraphToPlanPreservesMCPPayload(t *testing.T) {
+	graph := json.RawMessage(`{
+		"nodes":[
+			{
+				"id":"n1",
+				"type":"mcp:k8s_apps_k3s__k8s_get",
+				"data":{
+					"agent_id":"loom-mcp-executor",
+					"tool_name":"k8s_apps_k3s__k8s_get",
+					"tool_args":{"namespace":"default","kind":"pods"},
+					"mcp_server":"k8s_apps_k3s"
+				}
+			}
+		],
+		"edges":[]
+	}`)
+
+	plan, err := flowGraphToPlan(graph)
+	if err != nil {
+		t.Fatalf("flowGraphToPlan failed: %v", err)
+	}
+	if len(plan.Nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(plan.Nodes))
+	}
+
+	node := plan.Nodes[0]
+	if node.AgentID != "loom-mcp-executor" {
+		t.Fatalf("expected agent_id loom-mcp-executor, got %q", node.AgentID)
+	}
+	if node.Env == nil {
+		t.Fatal("expected env to be set")
+	}
+
+	specRaw := node.Env["INPUT_SPEC"]
+	if specRaw == "" {
+		t.Fatal("expected INPUT_SPEC to be set")
+	}
+	var spec map[string]any
+	if err := json.Unmarshal([]byte(specRaw), &spec); err != nil {
+		t.Fatalf("failed to parse INPUT_SPEC: %v", err)
+	}
+	if got := spec["tool_name"]; got != "k8s_apps_k3s__k8s_get" {
+		t.Fatalf("expected tool_name preserved, got %v", got)
+	}
+	if got := spec["mcp_server"]; got != "k8s_apps_k3s" {
+		t.Fatalf("expected mcp_server preserved, got %v", got)
+	}
+	args, ok := spec["tool_args"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected tool_args object, got %T", spec["tool_args"])
+	}
+	if got := args["namespace"]; got != "default" {
+		t.Fatalf("expected tool_args.namespace=default, got %v", got)
+	}
+	if got := args["kind"]; got != "pods" {
+		t.Fatalf("expected tool_args.kind=pods, got %v", got)
+	}
+}
+
+func TestRunFlowPreservesMCPPayloadInCreatedRunPlan(t *testing.T) {
+	srv := newTestServer(t)
+
+	createPayload := flowstore.CreateFlowRequest{
+		Name: "MCP Flow",
+		Graph: json.RawMessage(`{
+			"nodes":[
+				{
+					"id":"mcp-1",
+					"type":"mcp:k8s_apps_k3s__k8s_get",
+					"data":{
+						"agent_id":"loom-mcp-executor",
+						"tool_name":"k8s_apps_k3s__k8s_get",
+						"tool_args":{"namespace":"default","kind":"pods"},
+						"mcp_server":"k8s_apps_k3s"
+					}
+				}
+			],
+			"edges":[]
+		}`),
+	}
+	createBody, _ := json.Marshal(createPayload)
+	createReq := httptest.NewRequest("POST", "/api/v1/flows", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createW, createReq)
+
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on create flow, got %d: %s", createW.Code, createW.Body.String())
+	}
+
+	var created flowstore.Flow
+	if err := json.NewDecoder(createW.Body).Decode(&created); err != nil {
+		t.Fatalf("failed to decode create flow response: %v", err)
+	}
+
+	runReq := httptest.NewRequest("POST", "/api/v1/flows/"+created.ID+"/run", bytes.NewReader([]byte(`{}`)))
+	runReq.Header.Set("Content-Type", "application/json")
+	runW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(runW, runReq)
+
+	if runW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on run flow, got %d: %s", runW.Code, runW.Body.String())
+	}
+
+	var runResp map[string]any
+	if err := json.NewDecoder(runW.Body).Decode(&runResp); err != nil {
+		t.Fatalf("failed to decode run response: %v", err)
+	}
+	runID, _ := runResp["run_id"].(string)
+	if runID == "" {
+		t.Fatalf("expected run_id in response, got %v", runResp)
+	}
+
+	getRunReq := httptest.NewRequest("GET", "/api/v1/runs/"+runID, nil)
+	getRunW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(getRunW, getRunReq)
+
+	if getRunW.Code != http.StatusOK {
+		t.Fatalf("expected 200 on get run, got %d: %s", getRunW.Code, getRunW.Body.String())
+	}
+
+	var run types.Run
+	if err := json.NewDecoder(getRunW.Body).Decode(&run); err != nil {
+		t.Fatalf("failed to decode run: %v", err)
+	}
+	if run.Plan == nil || len(run.Plan.Nodes) != 1 {
+		t.Fatalf("expected run plan with one node, got %+v", run.Plan)
+	}
+	node := run.Plan.Nodes[0]
+	if node.AgentID != "loom-mcp-executor" {
+		t.Fatalf("expected agent_id loom-mcp-executor, got %q", node.AgentID)
+	}
+	if node.Env == nil || node.Env["INPUT_SPEC"] == "" {
+		t.Fatalf("expected INPUT_SPEC in node env, got %+v", node.Env)
+	}
+
+	var spec map[string]any
+	if err := json.Unmarshal([]byte(node.Env["INPUT_SPEC"]), &spec); err != nil {
+		t.Fatalf("failed to decode INPUT_SPEC from run plan: %v", err)
+	}
+	if spec["tool_name"] != "k8s_apps_k3s__k8s_get" {
+		t.Fatalf("expected tool_name preserved, got %v", spec["tool_name"])
+	}
+	if spec["mcp_server"] != "k8s_apps_k3s" {
+		t.Fatalf("expected mcp_server preserved, got %v", spec["mcp_server"])
+	}
+}
+
 func jsonEqual(expected, actual json.RawMessage) bool {
 	var exp any
 	var got any
