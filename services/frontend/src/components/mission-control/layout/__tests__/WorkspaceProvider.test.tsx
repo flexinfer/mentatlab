@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WorkspaceProvider, useWorkspace } from '../WorkspaceProvider';
+import { useCanvasStore } from '@/stores/canvas';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mocks
@@ -135,6 +136,10 @@ describe('WorkspaceProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    vi.mocked(useCanvasStore.getState).mockReturnValue({
+      nodes: [],
+      edges: [],
+    } as any);
   });
 
   it('renders children', () => {
@@ -249,6 +254,49 @@ describe('WorkspaceProvider', () => {
       expect.objectContaining({ auto_start: true })
     );
     expect(screen.getByTestId('run-id').textContent).toBe('run-abc-123');
+  });
+
+  it('serializes MCP node metadata into INPUT_SPEC for direct runs', async () => {
+    vi.mocked(useCanvasStore.getState).mockReturnValue({
+      nodes: [
+        {
+          id: 'node-mcp-1',
+          type: 'agent',
+          data: {
+            label: 'List Pods',
+            agent_id: 'loom-mcp-executor',
+            tool_name: 'k8s_apps_k3s__k8s_get',
+            mcp_server: 'k8s_apps_k3s',
+            tool_args: { namespace: 'default', kind: 'pods' },
+            env: { STATIC_FLAG: 'true' },
+          },
+        },
+      ],
+      edges: [],
+    } as any);
+
+    render(
+      <WorkspaceProvider>
+        <TestConsumer />
+      </WorkspaceProvider>
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('start-run'));
+    });
+
+    expect(mockOrchestratorService.createRun).toHaveBeenCalledTimes(1);
+
+    const createRunPayload = mockOrchestratorService.createRun.mock.calls[0][0];
+    const runNode = createRunPayload.plan.nodes[0];
+    expect(runNode.agent_id).toBe('loom-mcp-executor');
+    expect(runNode.env).toBeDefined();
+    expect(runNode.env?.STATIC_FLAG).toBe('true');
+
+    const inputSpec = JSON.parse(runNode.env?.INPUT_SPEC ?? '{}');
+    expect(inputSpec.tool_name).toBe('k8s_apps_k3s__k8s_get');
+    expect(inputSpec.mcp_server).toBe('k8s_apps_k3s');
+    expect(inputSpec.tool_args).toEqual({ namespace: 'default', kind: 'pods' });
   });
 
   it('delegates setMainView to layout store', () => {
