@@ -268,6 +268,7 @@ describe('WorkspaceProvider', () => {
             tool_name: 'k8s_apps_k3s__k8s_get',
             mcp_server: 'k8s_apps_k3s',
             tool_args: { namespace: 'default', kind: 'pods' },
+            runtime_contract: { kind: 'mcp_tool', required_env: ['KUBECONFIG'] },
             env: { STATIC_FLAG: 'true' },
           },
         },
@@ -297,6 +298,7 @@ describe('WorkspaceProvider', () => {
     expect(inputSpec.tool_name).toBe('k8s_apps_k3s__k8s_get');
     expect(inputSpec.mcp_server).toBe('k8s_apps_k3s');
     expect(inputSpec.tool_args).toEqual({ namespace: 'default', kind: 'pods' });
+    expect(inputSpec.runtime_contract).toEqual({ kind: 'mcp_tool', required_env: ['KUBECONFIG'] });
   });
 
   it('delegates setMainView to layout store', () => {

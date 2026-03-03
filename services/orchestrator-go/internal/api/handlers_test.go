@@ -403,7 +403,8 @@ func TestFlowGraphToPlanPreservesMCPPayload(t *testing.T) {
 					"agent_id":"loom-mcp-executor",
 					"tool_name":"k8s_apps_k3s__k8s_get",
 					"tool_args":{"namespace":"default","kind":"pods"},
-					"mcp_server":"k8s_apps_k3s"
+					"mcp_server":"k8s_apps_k3s",
+					"runtime_contract":{"kind":"mcp_tool","required_env":["KUBECONFIG"]}
 				}
 			}
 		],
@@ -440,6 +441,13 @@ func TestFlowGraphToPlanPreservesMCPPayload(t *testing.T) {
 	if got := spec["mcp_server"]; got != "k8s_apps_k3s" {
 		t.Fatalf("expected mcp_server preserved, got %v", got)
 	}
+	contract, ok := spec["runtime_contract"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected runtime_contract object, got %T", spec["runtime_contract"])
+	}
+	if got := contract["kind"]; got != "mcp_tool" {
+		t.Fatalf("expected runtime_contract.kind=mcp_tool, got %v", got)
+	}
 	args, ok := spec["tool_args"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected tool_args object, got %T", spec["tool_args"])
@@ -466,7 +474,8 @@ func TestRunFlowPreservesMCPPayloadInCreatedRunPlan(t *testing.T) {
 						"agent_id":"loom-mcp-executor",
 						"tool_name":"k8s_apps_k3s__k8s_get",
 						"tool_args":{"namespace":"default","kind":"pods"},
-						"mcp_server":"k8s_apps_k3s"
+						"mcp_server":"k8s_apps_k3s",
+						"runtime_contract":{"kind":"mcp_tool","required_env":["KUBECONFIG"]}
 					}
 				}
 			],
@@ -538,6 +547,13 @@ func TestRunFlowPreservesMCPPayloadInCreatedRunPlan(t *testing.T) {
 	}
 	if spec["mcp_server"] != "k8s_apps_k3s" {
 		t.Fatalf("expected mcp_server preserved, got %v", spec["mcp_server"])
+	}
+	contract, ok := spec["runtime_contract"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected runtime_contract object, got %T", spec["runtime_contract"])
+	}
+	if contract["kind"] != "mcp_tool" {
+		t.Fatalf("expected runtime_contract.kind preserved, got %v", contract["kind"])
 	}
 }
 

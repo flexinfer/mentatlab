@@ -210,6 +210,10 @@ type MCPToolRecord = {
   inputSchema?: Record<string, unknown>;
 };
 
+const FLEXINFER_SERVER = 'flexinfer';
+const FLEXINFER_INFERENCE_TOOL = 'flexinfer__inference_chat';
+const FLEXINFER_TEMPLATE_GROUP = 'FlexInfer Templates';
+
 function normalizeMCPTools(payload: unknown): MCPToolRecord[] {
   const rawTools = Array.isArray(payload)
     ? payload
@@ -270,6 +274,100 @@ function buildMCPToolDragData(tool: MCPToolRecord): Record<string, unknown> {
   };
 }
 
+function hasTool(tools: MCPToolRecord[], name: string): boolean {
+  return tools.some((tool) => tool.name === name);
+}
+
+function hasFlexInferInventory(tools: MCPToolRecord[]): boolean {
+  return tools.some((tool) => {
+    const server = (tool.server ?? '').toLowerCase();
+    return server === FLEXINFER_SERVER || tool.name.startsWith('flexinfer__');
+  });
+}
+
+function buildFlexInferTemplateNodes(tools: MCPToolRecord[]): NodeDefinition[] {
+  if (!hasFlexInferInventory(tools)) return [];
+
+  const nodes: NodeDefinition[] = [];
+
+  if (hasTool(tools, 'flexinfer__flexinfer_proxy_models')) {
+    nodes.push({
+      type: 'mcp:flexinfer-template-readiness',
+      label: 'FlexInfer Readiness',
+      description: 'Check proxy /v1/models to verify inference backend readiness',
+      category: NodeCategory.AI,
+      icon: '🩺',
+      groupLabel: FLEXINFER_TEMPLATE_GROUP,
+      dragData: {
+        label: 'FlexInfer Readiness',
+        agent_id: 'loom-mcp-executor',
+        tool_name: 'flexinfer__flexinfer_proxy_models',
+        mcp_server: FLEXINFER_SERVER,
+        tool_args: {
+          proxy_url: '${FLEXINFER_PROXY_URL}',
+        },
+        runtime_contract: {
+          kind: 'flexinfer_readiness',
+          required_env: ['FLEXINFER_PROXY_URL'],
+        },
+      },
+    });
+  }
+
+  if (hasTool(tools, 'flexinfer__flexinfer_activate_model')) {
+    nodes.push({
+      type: 'mcp:flexinfer-template-activate',
+      label: 'FlexInfer Activate Model',
+      description: 'Warm a serverless model before inference execution',
+      category: NodeCategory.AI,
+      icon: '⚡',
+      groupLabel: FLEXINFER_TEMPLATE_GROUP,
+      dragData: {
+        label: 'FlexInfer Activate Model',
+        agent_id: 'loom-mcp-executor',
+        tool_name: 'flexinfer__flexinfer_activate_model',
+        mcp_server: FLEXINFER_SERVER,
+        tool_args: {
+          name: '${FLEXINFER_MODEL}',
+          namespace: '${FLEXINFER_NAMESPACE:-flexinfer-system}',
+        },
+        runtime_contract: {
+          kind: 'flexinfer_activation',
+          required_env: ['FLEXINFER_MODEL'],
+        },
+      },
+    });
+  }
+
+  nodes.push({
+    type: 'mcp:flexinfer-template-inference',
+    label: 'FlexInfer Inference',
+    description: 'Call FlexInfer OpenAI-compatible chat completions endpoint',
+    category: NodeCategory.AI,
+    icon: '🤖',
+    groupLabel: FLEXINFER_TEMPLATE_GROUP,
+    dragData: {
+      label: 'FlexInfer Inference',
+      agent_id: 'loom-mcp-executor',
+      tool_name: FLEXINFER_INFERENCE_TOOL,
+      mcp_server: FLEXINFER_SERVER,
+      tool_args: {
+        proxy_url: '${FLEXINFER_PROXY_URL}',
+        model: '${FLEXINFER_MODEL}',
+        prompt: '${FLEXINFER_PROMPT}',
+        temperature: '${FLEXINFER_TEMPERATURE:-0.2}',
+        max_tokens: '${FLEXINFER_MAX_TOKENS:-512}',
+      },
+      runtime_contract: {
+        kind: 'flexinfer_inference',
+        required_env: ['FLEXINFER_PROXY_URL', 'FLEXINFER_MODEL', 'FLEXINFER_PROMPT'],
+      },
+    },
+  });
+
+  return nodes;
+}
+
 async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
   if (typeof fetch !== 'function') return [];
 
@@ -288,7 +386,7 @@ async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
       const tools = normalizeMCPTools(payload);
       if (tools.length === 0) continue;
 
-      return tools.map((tool) => ({
+      const toolNodes = tools.map((tool) => ({
         type: toNodeType(tool.name),
         label: toolLabel(tool.name),
         description: tool.description ?? `Execute ${tool.name} via loom-mcp-executor`,
@@ -297,6 +395,9 @@ async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
         groupLabel: toolGroupLabel(tool.server),
         dragData: buildMCPToolDragData(tool),
       }));
+
+      const flexInferTemplates = buildFlexInferTemplateNodes(tools);
+      return [...flexInferTemplates, ...toolNodes];
     } catch {
       continue;
     }
