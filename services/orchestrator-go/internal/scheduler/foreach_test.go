@@ -919,16 +919,19 @@ func TestExecuteBodyNode_NoCommand(t *testing.T) {
 	}
 
 	err = s.executeBodyNode(ctx, rctx, spec, map[string]interface{}{}, 0)
-	if err != nil {
-		t.Errorf("Node with no command should succeed: %v", err)
+	if err == nil {
+		t.Fatal("expected error for node with no command")
 	}
 
-	// Check that node was marked as succeeded
+	// Check that node was marked as failed
 	state, err := store.GetNodeState(ctx, runID, "no_cmd_node")
 	if err != nil {
 		t.Fatalf("Failed to get node state: %v", err)
 	}
-	if state.Status != types.NodeStatusSucceeded {
-		t.Errorf("Node should be succeeded, got %v", state.Status)
+	if state.Status != types.NodeStatusFailed {
+		t.Errorf("Node should be failed, got %v", state.Status)
+	}
+	if state.Error == "" {
+		t.Error("Node failure should include explicit error details")
 	}
 }

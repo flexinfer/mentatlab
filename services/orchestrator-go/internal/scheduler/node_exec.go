@@ -241,7 +241,12 @@ type agentExecutor struct{}
 func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error) {
 	cmd := s.resolveCmd(spec)
 	if len(cmd) == 0 {
-		return 0, nil
+		err := fmt.Errorf("command resolution failed for node %q: no command configured", nodeID)
+		s.emitNodeStatus(ctx, rctx.runID, nodeID, "failed", map[string]interface{}{
+			"reason": "command_resolution_failed",
+			"error":  err.Error(),
+		})
+		return 1, err
 	}
 
 	// Build env

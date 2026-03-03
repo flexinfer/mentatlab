@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
@@ -53,23 +54,37 @@ func NewK8sDriver(emitter EventEmitter, cfg *K8sDriverConfig) (*K8sDriver, error
 
 // RunNode creates a K8s Job and waits for completion.
 func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []string, env map[string]string, timeout float64) (int, error) {
+	if len(cmd) == 0 || strings.TrimSpace(cmd[0]) == "" {
+		err := fmt.Errorf("command resolution failed for node %q: no command configured", nodeID)
+		d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
+			"status": "failed",
+			"reason": "command_resolution_failed",
+			"error":  err.Error(),
+			"runId":  runID,
+			"nodeId": nodeID,
+		}, nodeID, "")
+		return 1, err
+	}
+
+	image := strings.TrimSpace(env["AGENT_IMAGE"])
+	if image == "" {
+		err := fmt.Errorf("image resolution failed for node %q: AGENT_IMAGE is required for k8s execution", nodeID)
+		d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
+			"status": "failed",
+			"reason": "image_resolution_failed",
+			"error":  err.Error(),
+			"runId":  runID,
+			"nodeId": nodeID,
+		}, nodeID, "")
+		return 1, err
+	}
+
 	// Build node spec from parameters
 	nodeSpec := &types.NodeSpec{
 		ID:      nodeID,
 		Command: cmd,
 		Env:     env,
-	}
-
-	// Try to find image from env (passed by scheduler)
-	if img, ok := env["AGENT_IMAGE"]; ok {
-		nodeSpec.Image = img
-	}
-
-	// Use a default image if none specified
-	if nodeSpec.Image == "" {
-		// This shouldn't happen in production - scheduler should provide image
-		slog.Warn("no image specified for node, using default", slog.String("node_id", nodeID), slog.String("default_image", "python:3.12-slim"))
-		nodeSpec.Image = "python:3.12-slim"
+		Image:   image,
 	}
 
 	// Set timeout
