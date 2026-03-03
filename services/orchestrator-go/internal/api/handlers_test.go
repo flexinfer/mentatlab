@@ -557,6 +557,92 @@ func TestRunFlowPreservesMCPPayloadInCreatedRunPlan(t *testing.T) {
 	}
 }
 
+func TestRunFlowPreservesFlexInferPayloadInCreatedRunPlan(t *testing.T) {
+	srv := newTestServer(t)
+
+	createPayload := flowstore.CreateFlowRequest{
+		Name: "FlexInfer Flow",
+		Graph: json.RawMessage(`{
+			"nodes":[
+				{
+					"id":"fx-1",
+					"type":"mcp:flexinfer__flexinfer_proxy_models",
+					"data":{
+						"agent_id":"loom-mcp-executor",
+						"tool_name":"flexinfer__flexinfer_proxy_models",
+						"tool_args":{"proxy_url":"http://flexinfer-proxy.flexinfer-system.svc.cluster.local"},
+						"mcp_server":"flexinfer"
+					}
+				}
+			],
+			"edges":[]
+		}`),
+	}
+	createBody, _ := json.Marshal(createPayload)
+	createReq := httptest.NewRequest("POST", "/api/v1/flows", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createW, createReq)
+
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on create flow, got %d: %s", createW.Code, createW.Body.String())
+	}
+
+	var created flowstore.Flow
+	if err := json.NewDecoder(createW.Body).Decode(&created); err != nil {
+		t.Fatalf("failed to decode create flow response: %v", err)
+	}
+
+	runReq := httptest.NewRequest("POST", "/api/v1/flows/"+created.ID+"/run", bytes.NewReader([]byte(`{}`)))
+	runReq.Header.Set("Content-Type", "application/json")
+	runW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(runW, runReq)
+
+	if runW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on run flow, got %d: %s", runW.Code, runW.Body.String())
+	}
+
+	var runResp map[string]any
+	if err := json.NewDecoder(runW.Body).Decode(&runResp); err != nil {
+		t.Fatalf("failed to decode run response: %v", err)
+	}
+	runID, _ := runResp["run_id"].(string)
+	if runID == "" {
+		t.Fatalf("expected run_id in response, got %v", runResp)
+	}
+
+	getRunReq := httptest.NewRequest("GET", "/api/v1/runs/"+runID, nil)
+	getRunW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(getRunW, getRunReq)
+
+	if getRunW.Code != http.StatusOK {
+		t.Fatalf("expected 200 on get run, got %d: %s", getRunW.Code, getRunW.Body.String())
+	}
+
+	var run types.Run
+	if err := json.NewDecoder(getRunW.Body).Decode(&run); err != nil {
+		t.Fatalf("failed to decode run: %v", err)
+	}
+	if run.Plan == nil || len(run.Plan.Nodes) != 1 {
+		t.Fatalf("expected run plan with one node, got %+v", run.Plan)
+	}
+	node := run.Plan.Nodes[0]
+	if node.Env == nil || node.Env["INPUT_SPEC"] == "" {
+		t.Fatalf("expected INPUT_SPEC in node env, got %+v", node.Env)
+	}
+
+	var spec map[string]any
+	if err := json.Unmarshal([]byte(node.Env["INPUT_SPEC"]), &spec); err != nil {
+		t.Fatalf("failed to decode INPUT_SPEC from run plan: %v", err)
+	}
+	if spec["tool_name"] != "flexinfer__flexinfer_proxy_models" {
+		t.Fatalf("expected flexinfer tool_name preserved, got %v", spec["tool_name"])
+	}
+	if spec["mcp_server"] != "flexinfer" {
+		t.Fatalf("expected flexinfer mcp_server preserved, got %v", spec["mcp_server"])
+	}
+}
+
 func TestImportLoomWorkflowCreatesFlowWithDependencyParity(t *testing.T) {
 	srv := newTestServer(t)
 
