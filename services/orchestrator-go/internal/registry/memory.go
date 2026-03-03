@@ -57,6 +57,16 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			CreatedAt:    now,
 			UpdatedAt:    now,
 		},
+		{
+			ID:           "loom-mcp-executor",
+			Name:         "Loom MCP Executor",
+			Version:      "1.0.0",
+			Description:  "Executes MCP tools through loom-core and emits output payloads",
+			Command:      []string{"python", "agents/loom-mcp-executor/main.py"},
+			Capabilities: []string{"mcp", "integration", "tools"},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		},
 	}
 
 	for _, agent := range defaults {

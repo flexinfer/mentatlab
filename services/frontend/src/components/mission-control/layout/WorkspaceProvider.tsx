@@ -169,12 +169,52 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         }
 
         // Regular task/agent node — include retry policy and timeout if configured
+        const env: Record<string, string> = {};
+        if (n.data?.env && typeof n.data.env === 'object') {
+          for (const [key, value] of Object.entries(n.data.env as Record<string, unknown>)) {
+            if (value === undefined || value === null) continue;
+            if (typeof value === 'string') {
+              env[key] = value;
+              continue;
+            }
+            env[key] = JSON.stringify(value);
+          }
+        }
+
+        // Preserve MCP drag metadata in direct-run path by serializing INPUT_SPEC.
+        let inputSpec: Record<string, unknown> = {};
+        if (env.INPUT_SPEC) {
+          try {
+            const parsed = JSON.parse(env.INPUT_SPEC);
+            if (parsed && typeof parsed === 'object') {
+              inputSpec = parsed as Record<string, unknown>;
+            }
+          } catch {
+            // Ignore malformed INPUT_SPEC and rebuild from node metadata.
+          }
+        }
+
+        const toolName = typeof n.data?.tool_name === 'string' ? n.data.tool_name.trim() : '';
+        if (toolName) {
+          inputSpec.tool_name = toolName;
+        }
+        const mcpServer = typeof n.data?.mcp_server === 'string' ? n.data.mcp_server.trim() : '';
+        if (mcpServer) {
+          inputSpec.mcp_server = mcpServer;
+        }
+        if (n.data?.tool_args !== undefined) {
+          inputSpec.tool_args = n.data.tool_args;
+        }
+        if (Object.keys(inputSpec).length > 0) {
+          env.INPUT_SPEC = JSON.stringify(inputSpec);
+        }
+
         const node: PlanNode = {
           ...base,
           agent_id: n.data?.agent_id || n.data?.agentId,
           command: n.data?.command,
           image: n.data?.image,
-          env: n.data?.env,
+          env: Object.keys(env).length > 0 ? env : undefined,
         };
         if (n.data?.retry_policy) {
           node.retry_policy = n.data.retry_policy;
