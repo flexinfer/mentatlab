@@ -50,6 +50,7 @@ vi.mock('@/config/features', () => ({
 // Mock orchestrator config
 vi.mock('@/config/orchestrator', () => ({
   getOrchestratorBaseUrl: () => 'http://localhost:7070',
+  getApiBaseUrl: () => 'http://localhost:7070',
 }));
 
 // Mock CanvasUnderlay -- the component imports from './network/CanvasUnderlay'

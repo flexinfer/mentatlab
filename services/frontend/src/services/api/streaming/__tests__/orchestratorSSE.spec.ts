@@ -4,7 +4,8 @@ import OrchestratorSSE from '../orchestratorSSE';
 
 // Mock base URL helper
 vi.mock('../../../../config/orchestrator', () => ({
-  getOrchestratorBaseUrl: () => 'http://orch.test'
+  getOrchestratorBaseUrl: () => 'http://orch.test',
+  getApiBaseUrl: () => 'http://orch.test',
 }));
 
 // Simple EventSource mock that allows tests to simulate open/error/message/named events.

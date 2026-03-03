@@ -17,6 +17,7 @@ vi.mock('@/config/features', () => ({
 
 vi.mock('@/config/orchestrator', () => ({
   getOrchestratorBaseUrl: () => 'http://localhost:7070',
+  getApiBaseUrl: () => 'http://localhost:7070',
 }));
 
 // Import after mocks

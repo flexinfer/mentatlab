@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the orchestrator base URL helper to avoid import.meta.env
 vi.mock('@/config/orchestrator', () => ({
-  getOrchestratorBaseUrl: () => 'http://orch.test'
+  getOrchestratorBaseUrl: () => 'http://orch.test',
+  getApiBaseUrl: () => 'http://orch.test',
 }));
 
 // Hoisted mock so it can be referenced in the vi.mock factory below
