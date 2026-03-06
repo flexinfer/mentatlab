@@ -4,7 +4,6 @@
 
 import { BaseService } from './baseService';
 import { HttpClient } from './httpClient';
-import { WebSocketClient } from './websocketClient';
 
 export interface FlowGraph {
   nodes: FlowNode[];
@@ -88,8 +87,8 @@ export interface LoomWorkflowDefinition {
 }
 
 export class FlowService extends BaseService {
-  constructor(http: HttpClient, ws: WebSocketClient | null) {
-    super(http, ws, { basePath: '/api/v1/flows', enableStreaming: false });
+  constructor(http: HttpClient) {
+    super(http, null, { basePath: '/api/v1/flows', enableStreaming: false });
   }
 
   /**
@@ -216,9 +215,9 @@ export class FlowService extends BaseService {
 // Export singleton instance
 let flowServiceInstance: FlowService | null = null;
 
-export function getFlowService(http: HttpClient, ws: WebSocketClient | null): FlowService {
+export function getFlowService(http: HttpClient): FlowService {
   if (!flowServiceInstance) {
-    flowServiceInstance = new FlowService(http, ws);
+    flowServiceInstance = new FlowService(http);
   }
   return flowServiceInstance;
 }

@@ -64,7 +64,7 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
   // Initialize flow service
   useEffect(() => {
-    flowServiceRef.current = getFlowService(httpClient, null);
+    flowServiceRef.current = getFlowService(httpClient);
   }, []);
 
   // Convert store flow to API format

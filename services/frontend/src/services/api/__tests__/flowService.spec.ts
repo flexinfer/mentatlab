@@ -38,7 +38,7 @@ describe('FlowService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockHttp = makeMockHttp();
-    svc = new FlowService(mockHttp as any, null);
+    svc = new FlowService(mockHttp as any);
   });
 
   it('listFlows() forwards query params to GET /api/v1/flows', async () => {

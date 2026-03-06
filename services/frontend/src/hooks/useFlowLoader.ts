@@ -59,7 +59,7 @@ export function useFlowLoader(): { loaded: boolean; error: string | null } {
     if (loadedRef.current) return;
     loadedRef.current = true;
 
-    const flowService = getFlowService(httpClient, null);
+    const flowService = getFlowService(httpClient);
 
     flowService
       .listFlows()
