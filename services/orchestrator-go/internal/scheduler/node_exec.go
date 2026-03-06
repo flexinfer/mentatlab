@@ -135,6 +135,7 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 		s.store.UpdateNodeState(ctx, rctx.runID, nodeID, newState)
 		metrics.NodesTotal.WithLabelValues("succeeded").Inc()
 		metrics.NodeRetries.WithLabelValues("succeeded").Observe(float64(attempts))
+		s.addNodeUpdate(ctx, rctx, nodeID, types.NodeStatusSucceeded, exitCode)
 
 		// Unlock downstream nodes
 		for downstream := range rctx.dependents[nodeID] {
@@ -198,6 +199,7 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 			s.store.UpdateNodeState(ctx, rctx.runID, nodeID, newState)
 			metrics.NodesTotal.WithLabelValues("failed").Inc()
 			metrics.NodeRetries.WithLabelValues("failed").Observe(float64(attempts))
+			s.addNodeUpdate(ctx, rctx, nodeID, types.NodeStatusFailed, exitCode)
 		}
 	}
 }

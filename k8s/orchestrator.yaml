@@ -110,6 +110,15 @@ spec:
             # Scheduler
             - name: ORCH_DEFAULT_RUN_TIMEOUT
               value: "30m"
+            # Agent Context (loom integration)
+            - name: ORCH_AGENT_CONTEXT_ENABLED
+              value: "true"
+            - name: ORCH_AGENT_CONTEXT_AGENT_ID
+              value: "mentatlab-orchestrator"
+            - name: ORCH_AGENT_CONTEXT_NAMESPACE
+              value: "mentatlab/runs"
+            - name: LOOM_BIN
+              value: "/usr/local/bin/loom"
             # Tracing
             - name: TRACING_ENABLED
               value: "true"
