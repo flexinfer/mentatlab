@@ -52,7 +52,10 @@ spec:
             # Browser-accessible gateway URL — uses the ingress hostname so
             # API calls to /api/* and WebSocket at /ws/* resolve correctly.
             - name: VITE_GATEWAY_BASE_URL
-              value: "https://mentatlab.flexinfer.ai"
+              valueFrom:
+                configMapKeyRef:
+                  name: mentatlab-urls
+                  key: GATEWAY_PUBLIC_URL
           resources:
             requests:
               cpu: 100m

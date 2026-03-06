@@ -60,7 +60,10 @@ spec:
             - name: REDIS_URL
               value: "redis:6379"
             - name: CORS_ORIGINS
-              value: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"
+              valueFrom:
+                configMapKeyRef:
+                  name: mentatlab-urls
+                  key: CORS_ORIGINS
             # Cloudflare Access configuration
             - name: CF_TEAM_DOMAIN
               valueFrom:

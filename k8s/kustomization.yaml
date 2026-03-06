@@ -6,7 +6,9 @@ namespace: mentatlab
 resources:
   - namespace.yaml
   - orchestrator-rbac.yaml
+  - configmap-urls.yaml
   - redis.yaml
+  - minio-secret.yaml
   - minio.yaml
   - orchestrator.yaml
   - gateway.yaml
@@ -19,16 +21,16 @@ resources:
   - grafana-dashboards.yaml
 
 # Image tags — CI overrides via `kustomize edit set image`.
-# Default to :latest so Flux reconciliation uses a real, pullable tag.
+# Pin to a dev tag; CI replaces with build-specific tags.
 images:
   - name: registry.harbor.lan/library/mentatlab-orchestrator-go
-    newTag: latest
+    newTag: v0.1.0-dev
   - name: registry.harbor.lan/library/mentatlab-gateway-go
-    newTag: latest
+    newTag: v0.1.0-dev
   - name: registry.harbor.lan/library/mentatlab-frontend
-    newTag: latest
+    newTag: v0.1.0-dev
   - name: registry.harbor.lan/library/mentatlab-echoagent
-    newTag: latest
+    newTag: v0.1.0-dev
 
 # Common labels for all resources (use 'labels' not 'commonLabels' to avoid modifying immutable selectors)
 labels:

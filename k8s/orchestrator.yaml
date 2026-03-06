@@ -70,7 +70,10 @@ spec:
             - name: VLLM_BASE_URL
               value: "http://vllm-optimized-lb.ai.svc.cluster.local:8000"
             - name: FRONTEND_URL
-              value: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"
+              valueFrom:
+                configMapKeyRef:
+                  name: mentatlab-urls
+                  key: FRONTEND_URLS
             # Agent registry backend (redis or memory)
             - name: REGISTRY_TYPE
               value: "redis"
