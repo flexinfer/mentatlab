@@ -198,6 +198,7 @@ const CATEGORY_CONFIG: Record<NodeCategory, { label: string; order: number; colo
   [NodeCategory.PROCESSING]: { label: 'Processing', order: 3, color: 'text-yellow-500' },
   [NodeCategory.LOGIC]: { label: 'Logic', order: 4, color: 'text-purple-500' },
   [NodeCategory.AI]: { label: 'AI', order: 5, color: 'text-pink-500' },
+  [NodeCategory.AI_INFERENCE]: { label: 'AI Inference', order: 5.5, color: 'text-rose-400' },
   [NodeCategory.MEDIA]: { label: 'Media', order: 6, color: 'text-orange-500' },
   [NodeCategory.INTEGRATION]: { label: 'Integration', order: 7, color: 'text-cyan-500' },
   [NodeCategory.UTILITY]: { label: 'Utility', order: 8, color: 'text-gray-500' },
@@ -263,7 +264,43 @@ function toNodeType(toolName: string): string {
   return `mcp:${safe}`;
 }
 
+// FlexInfer tool name prefixes — routed to the dedicated adapter agent
+const FLEXINFER_TOOL_PREFIXES = [
+  'flexinfer_',
+  'flexinfer__',
+];
+
+function isFlexInferTool(toolName: string): boolean {
+  return FLEXINFER_TOOL_PREFIXES.some((p) => toolName.startsWith(p));
+}
+
+function flexInferAction(toolName: string): string {
+  const suffix = toolName.replace(/^flexinfer_+/, '');
+  const actionMap: Record<string, string> = {
+    proxy_models: 'inference',
+    list_models: 'list',
+    get_model: 'get',
+    activate_model: 'activate',
+    scale_model: 'scale',
+    gpu_status: 'gpu_status',
+    list_catalogs: 'list',
+  };
+  return actionMap[suffix] ?? suffix;
+}
+
 function buildMCPToolDragData(tool: MCPToolRecord): Record<string, unknown> {
+  // FlexInfer tools use the dedicated adapter agent
+  if (isFlexInferTool(tool.name)) {
+    return {
+      label: toolLabel(tool.name),
+      agent_id: 'mentatlab.flexinfer-adapter',
+      tool_name: tool.name,
+      tool_args: { action: flexInferAction(tool.name) },
+      mcp_server: tool.server ?? '',
+      inputSchema: tool.inputSchema ?? {},
+    };
+  }
+
   return {
     label: toolLabel(tool.name),
     agent_id: 'loom-mcp-executor',
@@ -386,15 +423,20 @@ async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
       const tools = normalizeMCPTools(payload);
       if (tools.length === 0) continue;
 
-      const toolNodes = tools.map((tool) => ({
-        type: toNodeType(tool.name),
-        label: toolLabel(tool.name),
-        description: tool.description ?? `Execute ${tool.name} via loom-mcp-executor`,
-        category: NodeCategory.INTEGRATION,
-        icon: '🧰',
-        groupLabel: toolGroupLabel(tool.server),
-        dragData: buildMCPToolDragData(tool),
-      }));
+      const toolNodes = tools.map((tool) => {
+        const flexinfer = isFlexInferTool(tool.name);
+        return {
+          type: toNodeType(tool.name),
+          label: toolLabel(tool.name),
+          description: tool.description ?? (flexinfer
+            ? `FlexInfer: ${flexInferAction(tool.name)}`
+            : `Execute ${tool.name} via loom-mcp-executor`),
+          category: flexinfer ? NodeCategory.AI_INFERENCE : NodeCategory.INTEGRATION,
+          icon: flexinfer ? '\u{1F9E0}' : '🧰',
+          groupLabel: flexinfer ? 'AI Inference' : toolGroupLabel(tool.server),
+          dragData: buildMCPToolDragData(tool),
+        };
+      });
 
       const flexInferTemplates = buildFlexInferTemplateNodes(tools);
       return [...flexInferTemplates, ...toolNodes];

@@ -244,6 +244,7 @@ export enum NodeCategory {
   LOGIC = 'logic',
   MEDIA = 'media',
   AI = 'ai',
+  AI_INFERENCE = 'ai_inference',
   INTEGRATION = 'integration',
   UTILITY = 'utility',
 }
