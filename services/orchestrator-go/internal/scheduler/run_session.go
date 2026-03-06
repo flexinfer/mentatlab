@@ -109,6 +109,36 @@ func (s *Scheduler) finalizeRunSession(ctx context.Context, rctx *runContext, st
 	s.emitEvent(ctx, rctx.runID, "agent_context", event, "", "")
 }
 
+// addNodeUpdate records a node lifecycle event in the linked agent-context session.
+func (s *Scheduler) addNodeUpdate(ctx context.Context, rctx *runContext, nodeID string, status types.NodeStatus, exitCode int) {
+	if s.runSessionManager == nil || rctx == nil {
+		return
+	}
+
+	rctx.sessionMu.Lock()
+	sessionID := rctx.sessionID
+	closed := rctx.sessionClosed
+	rctx.sessionMu.Unlock()
+
+	if sessionID == "" || closed {
+		return
+	}
+
+	content := fmt.Sprintf("Node %s %s (exit_code=%d)", nodeID, status, exitCode)
+	metadata := map[string]interface{}{
+		"node_id":   nodeID,
+		"exit_code": exitCode,
+	}
+
+	if err := s.runSessionManager.AddRunUpdate(ctx, sessionID, rctx.runID, string(status), content, metadata); err != nil {
+		s.logger.Warn("failed to add node session update",
+			"run_id", rctx.runID,
+			"session_id", sessionID,
+			"node_id", nodeID,
+			"error", err)
+	}
+}
+
 func (s *Scheduler) buildRunSummary(ctx context.Context, rctx *runContext, status types.RunStatus, reason string) (string, map[string]interface{}) {
 	var running, pending, failed, succeeded, waiting, skipped int
 	for nodeID := range rctx.nodeSpecs {

@@ -118,12 +118,26 @@ func TestRunSessionLifecycleOnSucceededRun(t *testing.T) {
 	if manager.started[0] != manager.ended[0] {
 		t.Fatalf("session start/end mismatch: started=%q ended=%q", manager.started[0], manager.ended[0])
 	}
-	if len(manager.updates) < 2 {
-		t.Fatalf("expected at least 2 session updates, got %d", len(manager.updates))
+	// Expect at least 3 updates: run-running, node-succeeded, run-succeeded
+	if len(manager.updates) < 3 {
+		t.Fatalf("expected at least 3 session updates (run-running, node, run-final), got %d", len(manager.updates))
 	}
 	if manager.updates[0].status != string(types.RunStatusRunning) {
 		t.Fatalf("expected first update status=%q, got %q", types.RunStatusRunning, manager.updates[0].status)
 	}
+
+	// Find node-level update
+	var foundNodeUpdate bool
+	for _, u := range manager.updates {
+		if u.status == string(types.NodeStatusSucceeded) && u.runID == runID {
+			foundNodeUpdate = true
+			break
+		}
+	}
+	if !foundNodeUpdate {
+		t.Fatalf("expected a node-level succeeded update, updates: %+v", manager.updates)
+	}
+
 	last := manager.updates[len(manager.updates)-1]
 	if last.status != string(types.RunStatusSucceeded) {
 		t.Fatalf("expected final update status=%q, got %q", types.RunStatusSucceeded, last.status)
@@ -190,9 +204,23 @@ func TestRunSessionLifecycleOnFailedRun(t *testing.T) {
 	if len(manager.started) != 1 || len(manager.ended) != 1 {
 		t.Fatalf("expected one started and one ended session, got started=%d ended=%d", len(manager.started), len(manager.ended))
 	}
-	if len(manager.updates) == 0 {
-		t.Fatal("expected at least one session update")
+	// Expect at least 3 updates: run-running, node-failed, run-failed
+	if len(manager.updates) < 3 {
+		t.Fatalf("expected at least 3 session updates (run-running, node-failed, run-failed), got %d: %+v", len(manager.updates), manager.updates)
 	}
+
+	// Find node-level failure update
+	var foundNodeFailure bool
+	for _, u := range manager.updates {
+		if u.status == string(types.NodeStatusFailed) {
+			foundNodeFailure = true
+			break
+		}
+	}
+	if !foundNodeFailure {
+		t.Fatalf("expected a node-level failed update, updates: %+v", manager.updates)
+	}
+
 	last := manager.updates[len(manager.updates)-1]
 	if last.status != string(types.RunStatusFailed) {
 		t.Fatalf("expected final status failed, got %q", last.status)
