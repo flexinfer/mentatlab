@@ -20,7 +20,7 @@ class MentatAgent:
     Base class for Mentat agents implementing the Template Method pattern.
     Provides standard input reading, output writing, and error handling.
     """
-    
+
     def __init__(self, agent_id: str, version: str = "0.1.0"):
         self.agent_id = agent_id
         self.version = version
@@ -33,20 +33,20 @@ class MentatAgent:
         try:
             self.setup()
             incoming = self.read_input()
-            
+
             if incoming is None:
                 return self.handle_no_input()
 
             spec = incoming.get("spec", {})
             context = incoming.get("context", {})
-            
+
             # Extract execution ID for correlation
             exec_id = incoming.get("execution_id") or context.get("execution_id")
             if exec_id:
                 set_correlation_id(str(exec_id))
 
             result_payload = self.process(spec, context)
-            
+
             self.write_output(result_payload)
             self.teardown()
             return 0
@@ -74,10 +74,10 @@ class MentatAgent:
         try:
             spec_s = os.environ.get("INPUT_SPEC", "")
             ctx_s = os.environ.get("INPUT_CONTEXT", "")
-            
+
             spec = self._parse_maybe_json(spec_s) if spec_s else None
             ctx = self._parse_maybe_json(ctx_s) if ctx_s else None
-            
+
             if spec or ctx:
                 incoming = {}
                 if spec: incoming["spec"] = spec
@@ -85,7 +85,7 @@ class MentatAgent:
                 return incoming
         except Exception:
             pass
-            
+
         return None
 
     def process(self, spec: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
@@ -96,15 +96,14 @@ class MentatAgent:
         """Writes the final result to stdout in the standard format."""
         end_time = time.time()
         output = self.make_output_envelope(result_payload, self.start_time, end_time)
-        
+
         # Check for CloudEvents mode (can be extended by subclasses)
         if self.should_use_cloudevents():
             output = self.wrap_cloudevent(output)
-            
-        sys.stdout.write(json.dumps(output, separators=(",", ":"), ensure_ascii=False) + "
-")
+
+        sys.stdout.write(json.dumps(output, separators=(",", ":"), ensure_ascii=False) + "\n")
         sys.stdout.flush()
-        
+
         log_info(f"{self.agent_id}: completed", data={"seconds": round(end_time - self.start_time, 4)})
         checkpoint("end", 1.0)
 
@@ -116,7 +115,7 @@ class MentatAgent:
         """Handles cases where no input was received."""
         err_msg = "No input received on stdin or environment variables."
         log_error(f"{self.agent_id}: {err_msg}")
-        
+
         out = self.make_output_envelope({"error": err_msg}, self.start_time, time.time())
         print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
         return 1
@@ -125,13 +124,13 @@ class MentatAgent:
         """Standard error handling and reporting."""
         log_error(f"{self.agent_id}: internal error", data={"exception": str(exc)})
         tb = traceback.format_exc()
-        
+
         err_payload = {
             "error": "Internal agent error",
             "exception": str(exc),
             "traceback": tb
         }
-        
+
         out = self.make_output_envelope(err_payload, self.start_time, time.time())
         print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
         return 2
