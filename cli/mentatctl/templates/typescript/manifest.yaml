@@ -1,0 +1,27 @@
+id: {{AGENT_ID}}
+version: "{{VERSION}}"
+image: registry.harbor.lan/library/{{AGENT_NAME}}:v0.1.0-dev
+runtime: node22
+description: "{{DESCRIPTION}}"
+longRunning: false
+
+inputs:
+  - name: spec
+    type: json
+    metadata:
+      description: "Agent input specification"
+  - name: context
+    type: json
+    metadata:
+      description: "Execution context"
+
+outputs:
+  - name: result
+    type: json
+    metadata:
+      description: "Agent result payload"
+
+capabilities:
+  actions: []
+  supports_progress: false
+  supports_heartbeat: false
