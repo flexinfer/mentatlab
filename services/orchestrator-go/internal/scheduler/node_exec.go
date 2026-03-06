@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -265,6 +266,22 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 
 	if spec.Image != "" {
 		env["AGENT_IMAGE"] = spec.Image
+	}
+
+	// Serialize MCP config into INPUT_SPEC if present and not already set
+	if spec.MCP != nil && spec.MCP.ToolName != "" && env["INPUT_SPEC"] == "" {
+		mcpSpec := map[string]any{
+			"tool_name": spec.MCP.ToolName,
+		}
+		if spec.MCP.Server != "" {
+			mcpSpec["mcp_server"] = spec.MCP.Server
+		}
+		if len(spec.MCP.ToolArgs) > 0 {
+			mcpSpec["tool_args"] = spec.MCP.ToolArgs
+		}
+		if b, err := json.Marshal(mcpSpec); err == nil {
+			env["INPUT_SPEC"] = string(b)
+		}
 	}
 
 	timeout := 0.0

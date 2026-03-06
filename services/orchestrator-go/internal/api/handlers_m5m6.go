@@ -609,25 +609,42 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 				}
 			}
 		}
+		// Populate structured MCPConfig and INPUT_SPEC for MCP tool nodes.
 		if d.ToolName != "" {
+			mcp := &types.MCPConfig{ToolName: d.ToolName, Server: d.MCPServer}
+			if len(d.ToolArgs) > 0 && string(d.ToolArgs) != "null" {
+				var args map[string]any
+				if err := json.Unmarshal(d.ToolArgs, &args); err == nil {
+					mcp.ToolArgs = args
+				}
+			}
+			plan.Nodes[i].MCP = mcp
+
 			if inputSpec == nil {
 				inputSpec = make(map[string]any)
 			}
 			inputSpec["tool_name"] = d.ToolName
-		}
-		if d.MCPServer != "" {
-			if inputSpec == nil {
-				inputSpec = make(map[string]any)
+			if d.MCPServer != "" {
+				inputSpec["mcp_server"] = d.MCPServer
 			}
-			inputSpec["mcp_server"] = d.MCPServer
-		}
-		if len(d.ToolArgs) > 0 && string(d.ToolArgs) != "null" {
-			var toolArgs any
-			if err := json.Unmarshal(d.ToolArgs, &toolArgs); err == nil {
+			if mcp.ToolArgs != nil {
+				inputSpec["tool_args"] = mcp.ToolArgs
+			}
+		} else {
+			if d.MCPServer != "" {
 				if inputSpec == nil {
 					inputSpec = make(map[string]any)
 				}
-				inputSpec["tool_args"] = toolArgs
+				inputSpec["mcp_server"] = d.MCPServer
+			}
+			if len(d.ToolArgs) > 0 && string(d.ToolArgs) != "null" {
+				var toolArgs any
+				if err := json.Unmarshal(d.ToolArgs, &toolArgs); err == nil {
+					if inputSpec == nil {
+						inputSpec = make(map[string]any)
+					}
+					inputSpec["tool_args"] = toolArgs
+				}
 			}
 		}
 		if len(d.RuntimeContract) > 0 && string(d.RuntimeContract) != "null" {

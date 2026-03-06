@@ -20,32 +20,32 @@ const (
 type NodeStatus string
 
 const (
-	NodeStatusPending          NodeStatus = "pending"
-	NodeStatusRunning          NodeStatus = "running"
-	NodeStatusSucceeded        NodeStatus = "succeeded"
-	NodeStatusFailed           NodeStatus = "failed"
-	NodeStatusSkipped          NodeStatus = "skipped"
-	NodeStatusWaitingApproval  NodeStatus = "waiting_approval"
+	NodeStatusPending         NodeStatus = "pending"
+	NodeStatusRunning         NodeStatus = "running"
+	NodeStatusSucceeded       NodeStatus = "succeeded"
+	NodeStatusFailed          NodeStatus = "failed"
+	NodeStatusSkipped         NodeStatus = "skipped"
+	NodeStatusWaitingApproval NodeStatus = "waiting_approval"
 )
 
 // Run represents a single execution of a graph/flow.
 type Run struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name,omitempty"`
-	Owner       string            `json:"owner,omitempty"`         // User who created the run (email)
-	TraceID     string            `json:"trace_id,omitempty"`      // OpenTelemetry trace ID for distributed tracing
-	Status      RunStatus         `json:"status"`
-	Plan        *Plan             `json:"plan,omitempty"`
-	FlowID      string            `json:"flow_id,omitempty"`      // Source flow ID for lineage
-	ParentRunID string            `json:"parent_run_id,omitempty"` // Cloned from this run
-	StartedAt   *time.Time        `json:"started_at,omitempty"`
-	FinishedAt  *time.Time        `json:"finished_at,omitempty"`
-	Error          string            `json:"error,omitempty"`
-	WebhookURL     string            `json:"webhook_url,omitempty"`    // URL to POST on completion
-	WebhookSecret  string            `json:"webhook_secret,omitempty"` // HMAC-SHA256 signing secret
-	Metadata       map[string]string `json:"metadata,omitempty"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name,omitempty"`
+	Owner         string            `json:"owner,omitempty"`    // User who created the run (email)
+	TraceID       string            `json:"trace_id,omitempty"` // OpenTelemetry trace ID for distributed tracing
+	Status        RunStatus         `json:"status"`
+	Plan          *Plan             `json:"plan,omitempty"`
+	FlowID        string            `json:"flow_id,omitempty"`       // Source flow ID for lineage
+	ParentRunID   string            `json:"parent_run_id,omitempty"` // Cloned from this run
+	StartedAt     *time.Time        `json:"started_at,omitempty"`
+	FinishedAt    *time.Time        `json:"finished_at,omitempty"`
+	Error         string            `json:"error,omitempty"`
+	WebhookURL    string            `json:"webhook_url,omitempty"`    // URL to POST on completion
+	WebhookSecret string            `json:"webhook_secret,omitempty"` // HMAC-SHA256 signing secret
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
 }
 
 // RunMeta is a lightweight representation of a run for listing.
@@ -87,17 +87,27 @@ type RetryPolicy struct {
 	BackoffMax  time.Duration `json:"backoff_max,omitempty"`  // Maximum delay cap (default: 60s)
 }
 
+// MCPConfig holds MCP tool metadata for nodes that invoke MCP tools.
+type MCPConfig struct {
+	ToolName string         `json:"tool_name"`
+	Server   string         `json:"server,omitempty"`
+	ToolArgs map[string]any `json:"tool_args,omitempty"`
+}
+
 // NodeSpec describes a single node in the execution plan.
 type NodeSpec struct {
-	ID       string            `json:"id"`
-	Type     string            `json:"type"`
-	AgentID  string            `json:"agent_id,omitempty"`
-	Command  []string          `json:"command,omitempty"`
-	Image    string            `json:"image,omitempty"`
-	Env      map[string]string `json:"env,omitempty"`
-	Inputs   []string          `json:"inputs,omitempty"` // Node IDs this depends on
-	Timeout  time.Duration     `json:"timeout,omitempty"`
-	Retries  int               `json:"retries,omitempty"`
+	ID      string            `json:"id"`
+	Type    string            `json:"type"`
+	AgentID string            `json:"agent_id,omitempty"`
+	Command []string          `json:"command,omitempty"`
+	Image   string            `json:"image,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	Inputs  []string          `json:"inputs,omitempty"` // Node IDs this depends on
+	Timeout time.Duration     `json:"timeout,omitempty"`
+	Retries int               `json:"retries,omitempty"`
+
+	// MCP tool configuration (populated from canvas MCP node data)
+	MCP *MCPConfig `json:"mcp,omitempty"`
 
 	// Per-node retry policy (overrides global defaults when set)
 	RetryPolicy *RetryPolicy `json:"retry_policy,omitempty"`
