@@ -57,6 +57,9 @@ func (s *Server) setupRoutes() {
 		api.Use(s.authMiddleware.Handler)
 	}
 
+	// Audit logging for authenticated API operations
+	api.Use(s.handlers.AuditMiddleware)
+
 	// Apply per-IP rate limiting to API subrouter
 	if s.rateLimitRPS > 0 {
 		rateLimiter := auth.NewPerIPRateLimiter(s.rateLimitRPS, s.rateLimitBurst)
