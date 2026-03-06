@@ -6,9 +6,9 @@
  * WebSocket management happens here -- this component is a pure consumer.
  */
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 
-import { useStreamingStore, type StreamSession } from '@/stores/streaming';
+import { useStreamingStore } from '@/stores/streaming';
 import type { StreamMessage } from '@/types/streaming';
 
 interface StreamingCanvasProps {
@@ -17,10 +17,15 @@ interface StreamingCanvasProps {
 }
 
 export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
-  width = 800,
-  height = 600,
+  width,
+  height,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasViewportRef = useRef<HTMLDivElement>(null);
+  const [viewportSize, setViewportSize] = useState({
+    width: width ?? 800,
+    height: height ?? 600,
+  });
 
   // Read from the streaming store -- single source of truth
   const sessions = useStreamingStore((s) => s.sessions);
@@ -37,15 +42,18 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const drawWidth = viewportSize.width;
+    const drawHeight = viewportSize.height;
+
     // Clear canvas
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(0, 0, drawWidth, drawHeight);
 
     // Detect dark mode and load theme CSS vars
     const docStyle = window.getComputedStyle(document.documentElement);
     const foregroundVar = (docStyle.getPropertyValue('--foreground') || '').trim();
 
     // Set up drawing parameters
-    const streamHeight = Math.min(height / Math.max(sessionEntries.length, 1), 120);
+    const streamHeight = Math.min(drawHeight / Math.max(sessionEntries.length, 1), 120);
     const margin = 20;
     let yOffset = margin;
 
@@ -63,7 +71,7 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
       const statusColor = getStatusColor(session.status);
       ctx.fillStyle = statusColor;
       ctx.beginPath();
-      ctx.arc(width - 30, yOffset + 15, 6, 0, 2 * Math.PI);
+      ctx.arc(drawWidth - 30, yOffset + 15, 6, 0, 2 * Math.PI);
       ctx.fill();
       // Glow effect
       ctx.shadowBlur = 10;
@@ -73,7 +81,7 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
 
       // Draw streaming data visualization
       if (messages.length > 0) {
-        drawStreamTrace(ctx, messages, margin, yOffset + 30, width - 2 * margin, streamHeight - 60);
+        drawStreamTrace(ctx, messages, margin, yOffset + 30, drawWidth - 2 * margin, streamHeight - 60);
       }
 
       // Draw session info
@@ -90,9 +98,9 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     ctx.fillText(
       isStreaming ? `Streaming ${sessionEntries.length} sessions` : 'Not streaming',
       margin,
-      height - margin,
+      drawHeight - margin,
     );
-  }, [sessionEntries, isStreaming, width, height]);
+  }, [sessionEntries, isStreaming, viewportSize.height, viewportSize.width]);
 
   const drawStreamTrace = (
     ctx: CanvasRenderingContext2D,
@@ -191,12 +199,49 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
     drawStreamingVisualization();
   }, [drawStreamingVisualization]);
 
+  useEffect(() => {
+    if (width !== undefined || height !== undefined) {
+      setViewportSize((current) => {
+        const next = {
+          width: width ?? current.width,
+          height: height ?? current.height,
+        };
+        return next.width === current.width && next.height === current.height ? current : next;
+      });
+      return;
+    }
+
+    const element = canvasViewportRef.current;
+    if (!element) return;
+
+    const updateViewportSize = () => {
+      const nextWidth = Math.max(320, Math.floor(element.clientWidth));
+      const nextHeight = Math.max(260, Math.floor(element.clientHeight));
+      setViewportSize((current) =>
+        current.width === nextWidth && current.height === nextHeight
+          ? current
+          : { width: nextWidth, height: nextHeight }
+      );
+    };
+
+    updateViewportSize();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => updateViewportSize());
+      resizeObserver.observe(element);
+      return () => resizeObserver.disconnect();
+    }
+
+    window.addEventListener('resize', updateViewportSize);
+    return () => window.removeEventListener('resize', updateViewportSize);
+  }, [height, width]);
+
   // Build summary stats from store
   const totalMessages = sessionEntries.reduce((acc, [, s]) => acc + s.messages.length, 0);
 
   return (
-    <div className="rounded-md border bg-card/80 backdrop-blur p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex h-full min-h-0 flex-col rounded-md border bg-card/80 p-4 backdrop-blur">
+      <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-primary">Live Streaming Visualization</h3>
         <div className="flex items-center space-x-2">
           <div
@@ -206,21 +251,22 @@ export const StreamingCanvas: React.FC<StreamingCanvasProps> = ({
         </div>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        className="rounded-lg border border-white/10 bg-black/20 backdrop-blur-sm"
-        style={{ maxWidth: '100%', height: 'auto' }}
-      />
+      <div ref={canvasViewportRef} className="min-h-[260px] flex-1 overflow-hidden rounded-lg border border-white/10 bg-black/20">
+        <canvas
+          ref={canvasRef}
+          width={viewportSize.width}
+          height={viewportSize.height}
+          className="h-full w-full bg-[radial-gradient(circle_at_top,rgba(24,40,64,0.45),rgba(2,6,23,0.92))] backdrop-blur-sm"
+        />
+      </div>
 
-      <div className="mt-2 text-xs text-muted-foreground font-mono">
+      <div className="mt-2 font-mono text-xs text-muted-foreground">
         Active sessions: {sessionEntries.length} | Total messages: {totalMessages}
       </div>
 
       {/* Active sessions preview panel */}
       {sessionEntries.length > 0 && (
-        <div className="mt-3 text-xs text-foreground/80 font-mono">
+        <div className="mt-3 max-h-44 overflow-auto font-mono text-xs text-foreground/80">
           <div className="font-medium mb-1 text-primary">Active Sessions</div>
           {sessionEntries.map(([sessionId, session]) => {
             const msgs = session.messages as StreamMessage[];
