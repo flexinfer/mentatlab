@@ -14,6 +14,22 @@ var (
 	ErrAgentExists   = errors.New("agent already exists")
 )
 
+// PinSpec describes an agent input or output.
+type PinSpec struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+}
+
+// CapabilitySpec declares an agent's structured capabilities.
+type CapabilitySpec struct {
+	Inputs            []PinSpec `json:"inputs,omitempty"`
+	Outputs           []PinSpec `json:"outputs,omitempty"`
+	Actions           []string  `json:"actions,omitempty"`
+	SupportsProgress  bool      `json:"supports_progress"`
+	SupportsHeartbeat bool      `json:"supports_heartbeat"`
+}
+
 // Agent represents a registered agent in the system.
 type Agent struct {
 	// ID is the unique identifier (e.g., "mentatlab.echo")
@@ -33,6 +49,9 @@ type Agent struct {
 
 	// Capabilities are tags describing what the agent can do
 	Capabilities []string `json:"capabilities,omitempty"`
+
+	// CapabilitySpec is the structured capability declaration
+	CapabilitySpec *CapabilitySpec `json:"capability_spec,omitempty"`
 
 	// Schema is the JSON Schema for input/output validation
 	Schema json.RawMessage `json:"schema,omitempty"`

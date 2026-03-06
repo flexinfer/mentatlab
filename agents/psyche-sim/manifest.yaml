@@ -22,6 +22,12 @@ outputs:
     metadata:
       description: "Observability metadata (tokens_input, tokens_output, seconds, model)"
 longRunning: false
+
+capabilities:
+  actions: []
+  supports_progress: false
+  supports_heartbeat: false
+
 env:
   - "PYTHONUNBUFFERED=1"
   - "VLLM_BASE_URL=http://vllm-optimized-lb.ai.svc.cluster.local:8000"

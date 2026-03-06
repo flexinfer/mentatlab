@@ -34,8 +34,12 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			Description:  "Simple echo agent for testing",
 			Command:      []string{"python", "agents/echo/main.py"},
 			Capabilities: []string{"echo", "test"},
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			CapabilitySpec: &CapabilitySpec{
+				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
+				Outputs: []PinSpec{{Name: "result", Type: "json"}},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
 		},
 		{
 			ID:           "mentatlab.psyche-sim",
@@ -44,8 +48,12 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			Description:  "Psychological simulation agent",
 			Command:      []string{"python", "agents/psyche-sim/main.py"},
 			Capabilities: []string{"simulation", "psychology"},
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			CapabilitySpec: &CapabilitySpec{
+				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
+				Outputs: []PinSpec{{Name: "result", Type: "json"}, {Name: "mentat_meta", Type: "json"}},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
 		},
 		{
 			ID:           "mentatlab.ctm-cogpack",
@@ -54,8 +62,12 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			Description:  "Cognitive task modeling package",
 			Command:      []string{"python", "agents/ctm-cogpack/main.py"},
 			Capabilities: []string{"cognitive", "modeling"},
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			CapabilitySpec: &CapabilitySpec{
+				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
+				Outputs: []PinSpec{{Name: "output", Type: "stream"}, {Name: "stats", Type: "json"}},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
 		},
 		{
 			ID:           "loom-mcp-executor",
@@ -64,8 +76,13 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			Description:  "Executes MCP tools through loom-core and emits output payloads",
 			Command:      []string{"python", "agents/loom-mcp-executor/main.py"},
 			Capabilities: []string{"mcp", "integration", "tools"},
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			CapabilitySpec: &CapabilitySpec{
+				Inputs:  []PinSpec{{Name: "spec", Type: "json", Description: "MCP tool call specification"}},
+				Outputs: []PinSpec{{Name: "result", Type: "json"}},
+				Actions: []string{"call_tool"},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
 		},
 		{
 			ID:           "mentatlab.flexinfer-adapter",
@@ -75,8 +92,13 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			Command:      []string{"python", "agents/flexinfer-adapter/main.py"},
 			Image:        "registry.harbor.lan/library/mentatlab-flexinfer-adapter:v0.1.0-dev",
 			Capabilities: []string{"inference", "flexinfer", "llm", "image-generation"},
-			CreatedAt:    now,
-			UpdatedAt:    now,
+			CapabilitySpec: &CapabilitySpec{
+				Inputs:  []PinSpec{{Name: "spec", Type: "json", Description: "Action spec: model, action, params"}},
+				Outputs: []PinSpec{{Name: "result", Type: "json"}, {Name: "error", Type: "json"}},
+				Actions: []string{"inference", "list", "get", "activate", "scale", "gpu_status"},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
 		},
 	}
 
