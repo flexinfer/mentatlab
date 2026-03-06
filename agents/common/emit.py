@@ -7,7 +7,9 @@ from typing import Any, Dict, Optional, Union
 import contextvars
 
 # Correlation ID storage (per-process default; can be overridden per-call)
-_correlation_id_ctx: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("correlation_id", default=None)
+_correlation_id_ctx: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "correlation_id", default=None
+)
 
 
 def set_correlation_id(correlation_id: Optional[str]) -> None:
@@ -60,23 +62,126 @@ def emit_event(
     evt["ts"] = ts if ts is not None else _now_iso8601()
 
     try:
-        sys.stdout.write(json.dumps(evt, separators=(",", ":"), ensure_ascii=False) + "\n")
+        sys.stdout.write(
+            json.dumps(evt, separators=(",", ":"), ensure_ascii=False) + "\n"
+        )
         sys.stdout.flush()
     except Exception:
         # Do not raise; agent should keep running even if an emit fails
         pass
 
 
-def log_info(message: str, data: Optional[Dict[str, Any]] = None, *, correlation_id: Optional[str] = None) -> None:
-    emit_event(type="log", level="info", message=message, data=data, correlation_id=correlation_id)
+def log_info(
+    message: str,
+    data: Optional[Dict[str, Any]] = None,
+    *,
+    correlation_id: Optional[str] = None,
+) -> None:
+    emit_event(
+        type="log",
+        level="info",
+        message=message,
+        data=data,
+        correlation_id=correlation_id,
+    )
 
 
-def log_error(message: str, data: Optional[Dict[str, Any]] = None, *, correlation_id: Optional[str] = None) -> None:
-    emit_event(type="log", level="error", message=message, data=data, correlation_id=correlation_id)
+def log_error(
+    message: str,
+    data: Optional[Dict[str, Any]] = None,
+    *,
+    correlation_id: Optional[str] = None,
+) -> None:
+    emit_event(
+        type="log",
+        level="error",
+        message=message,
+        data=data,
+        correlation_id=correlation_id,
+    )
 
 
-def checkpoint(stage: str, progress: Union[int, float], extra: Optional[Dict[str, Any]] = None, *, correlation_id: Optional[str] = None) -> None:
+def checkpoint(
+    stage: str,
+    progress: Union[int, float],
+    extra: Optional[Dict[str, Any]] = None,
+    *,
+    correlation_id: Optional[str] = None,
+) -> None:
     payload = {"stage": stage, "progress": float(progress)}
     if extra:
         payload.update(extra)
     emit_event(type="checkpoint", data=payload, correlation_id=correlation_id)
+
+
+def emit_error(
+    code: str,
+    message: str,
+    *,
+    retryable: bool = False,
+    details: Optional[Dict[str, Any]] = None,
+    correlation_id: Optional[str] = None,
+) -> None:
+    """Emit a structured error event.
+
+    The orchestrator parses type="error" events and uses the `retryable` hint
+    to decide whether to retry the node (transient) or fail permanently.
+
+    Args:
+        code: Machine-readable error code (e.g. MODEL_NOT_READY, TIMEOUT).
+        message: Human-readable description.
+        retryable: If True, scheduler treats this as a transient failure.
+        details: Optional additional context.
+        correlation_id: Override default correlation ID.
+    """
+    payload: Dict[str, Any] = {
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+    }
+    if details:
+        payload["details"] = details
+    emit_event(
+        type="error",
+        level="error",
+        message=message,
+        data=payload,
+        correlation_id=correlation_id,
+    )
+
+
+def emit_progress(
+    current: int,
+    total: int,
+    *,
+    message: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+) -> None:
+    """Emit a progress event.
+
+    Args:
+        current: Current step number.
+        total: Total steps.
+        message: Optional human-readable status (e.g. "Processing batch 3/10").
+        correlation_id: Override default correlation ID.
+    """
+    payload: Dict[str, Any] = {
+        "current": current,
+        "total": total,
+        "percent": round(current / total * 100, 1) if total > 0 else 0,
+    }
+    emit_event(
+        type="progress",
+        level="info",
+        message=message or f"Progress: {current}/{total}",
+        data=payload,
+        correlation_id=correlation_id,
+    )
+
+
+def emit_heartbeat(*, correlation_id: Optional[str] = None) -> None:
+    """Emit a heartbeat event indicating the agent is alive.
+
+    The orchestrator uses heartbeat absence to detect stalled agents.
+    """
+    emit_event(type="heartbeat", correlation_id=correlation_id)

@@ -7,13 +7,38 @@ import ast
 from typing import Any, Dict, Optional, List
 
 try:
-    from agents.common.emit import log_info, log_error, checkpoint, set_correlation_id
+    from agents.common.emit import (
+        log_info,
+        log_error,
+        checkpoint,
+        set_correlation_id,
+        emit_error,
+        emit_progress,
+        emit_heartbeat,
+    )
 except ImportError:
     # Fallback for different execution environments
-    def log_info(msg, data=None): print(f"INFO: {msg} {data or ''}", file=sys.stderr)
-    def log_error(msg, data=None): print(f"ERROR: {msg} {data or ''}", file=sys.stderr)
-    def checkpoint(name, progress, data=None): pass
-    def set_correlation_id(cid): pass
+    def log_info(msg, data=None):
+        print(f"INFO: {msg} {data or ''}", file=sys.stderr)
+
+    def log_error(msg, data=None):
+        print(f"ERROR: {msg} {data or ''}", file=sys.stderr)
+
+    def checkpoint(name, progress, data=None):
+        pass
+
+    def emit_error(code, message, **kwargs):
+        print(f"ERROR [{code}]: {message}", file=sys.stderr)
+
+    def emit_progress(current, total, **kwargs):
+        pass
+
+    def emit_heartbeat(**kwargs):
+        pass
+
+    def set_correlation_id(cid):
+        pass
+
 
 class MentatAgent:
     """
@@ -80,8 +105,10 @@ class MentatAgent:
 
             if spec or ctx:
                 incoming = {}
-                if spec: incoming["spec"] = spec
-                if ctx: incoming["context"] = ctx
+                if spec:
+                    incoming["spec"] = spec
+                if ctx:
+                    incoming["context"] = ctx
                 return incoming
         except Exception:
             pass
@@ -101,10 +128,15 @@ class MentatAgent:
         if self.should_use_cloudevents():
             output = self.wrap_cloudevent(output)
 
-        sys.stdout.write(json.dumps(output, separators=(",", ":"), ensure_ascii=False) + "\n")
+        sys.stdout.write(
+            json.dumps(output, separators=(",", ":"), ensure_ascii=False) + "\n"
+        )
         sys.stdout.flush()
 
-        log_info(f"{self.agent_id}: completed", data={"seconds": round(end_time - self.start_time, 4)})
+        log_info(
+            f"{self.agent_id}: completed",
+            data={"seconds": round(end_time - self.start_time, 4)},
+        )
         checkpoint("end", 1.0)
 
     def teardown(self):
@@ -116,7 +148,9 @@ class MentatAgent:
         err_msg = "No input received on stdin or environment variables."
         log_error(f"{self.agent_id}: {err_msg}")
 
-        out = self.make_output_envelope({"error": err_msg}, self.start_time, time.time())
+        out = self.make_output_envelope(
+            {"error": err_msg}, self.start_time, time.time()
+        )
         print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
         return 1
 
@@ -128,14 +162,16 @@ class MentatAgent:
         err_payload = {
             "error": "Internal agent error",
             "exception": str(exc),
-            "traceback": tb
+            "traceback": tb,
         }
 
         out = self.make_output_envelope(err_payload, self.start_time, time.time())
         print(json.dumps(out, separators=(",", ":"), ensure_ascii=False))
         return 2
 
-    def make_output_envelope(self, result: Dict[str, Any], start_time: float, end_time: float) -> Dict[str, Any]:
+    def make_output_envelope(
+        self, result: Dict[str, Any], start_time: float, end_time: float
+    ) -> Dict[str, Any]:
         """Wraps result with standard mentat_meta block."""
         return {
             "result": result,
@@ -143,8 +179,8 @@ class MentatAgent:
                 "tokens_input": 0,
                 "tokens_output": 0,
                 "seconds": round(end_time - start_time, 4),
-                "model": self.model
-            }
+                "model": self.model,
+            },
         }
 
     def should_use_cloudevents(self) -> bool:
@@ -155,6 +191,7 @@ class MentatAgent:
         """Simple CloudEvent wrapper."""
         import uuid
         from datetime import datetime, timezone
+
         return {
             "specversion": "1.0",
             "id": str(uuid.uuid4()),
@@ -162,11 +199,12 @@ class MentatAgent:
             "type": "agent.final",
             "time": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "datacontenttype": "application/json",
-            "data": payload
+            "data": payload,
         }
 
     def _parse_maybe_json(self, s: str) -> Optional[Dict[str, Any]]:
-        if not s or not s.strip(): return None
+        if not s or not s.strip():
+            return None
         try:
             return json.loads(s)
         except Exception:

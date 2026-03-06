@@ -141,8 +141,14 @@ func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID
 			rctx.remainingPreds[downstream]--
 		}
 	} else {
-		// Failure - check if we should retry
+		// Failure - check if we should retry.
+		// Exit code 3 is the "retryable" convention: agents emit this for
+		// transient failures (e.g. model loading). It enables automatic
+		// retry even when no explicit retry_policy is configured.
 		maxRetries, backoffSec := s.resolveRetryPolicy(spec, attempts)
+		if exitCode == 3 && maxRetries < 3 {
+			maxRetries = 3 // ensure at least 3 retries for transient failures
+		}
 		willRetry := attempts < maxRetries
 		span.SetAttributes(attribute.Bool("will_retry", willRetry))
 		if willRetry {
