@@ -134,11 +134,11 @@
   }
 
   .neon-text {
-    text-shadow: 0 0 4px hsl(var(--primary) / 0.4);
+    text-shadow: 0 0 2px hsl(var(--primary) / 0.2);
   }
 
   .neon-border {
-    box-shadow: 0 0 4px hsl(var(--primary) / 0.3);
+    box-shadow: 0 0 2px hsl(var(--primary) / 0.15);
   }
 }
 
@@ -151,13 +151,12 @@
 
 .react-flow__handle {
   @apply !bg-primary !w-3 !h-3 !border-2 !border-background;
-  box-shadow: 0 0 4px hsl(var(--primary) / 0.4);
+  box-shadow: 0 0 2px hsl(var(--primary) / 0.2);
 }
 
 .react-flow__edge-path {
   stroke: hsl(var(--primary)) !important;
   stroke-width: 2 !important;
-  filter: drop-shadow(0 0 2px hsl(var(--primary) / 0.3));
 }
 
 .react-flow__controls {

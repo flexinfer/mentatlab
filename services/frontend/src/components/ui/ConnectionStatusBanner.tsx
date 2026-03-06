@@ -22,6 +22,12 @@ export function ConnectionStatusBanner({
   className,
 }: ConnectionStatusBannerProps) {
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
+  const [dismissed, setDismissed] = React.useState(false);
+
+  // Reset dismissed state when connection status changes
+  React.useEffect(() => {
+    setDismissed(false);
+  }, [connectionStatus]);
 
   // Hide when connected if requested
   if (hideWhenConnected && connectionStatus === StreamConnectionState.CONNECTED) {
@@ -30,7 +36,7 @@ export function ConnectionStatusBanner({
 
   const statusConfig = getStatusConfig(connectionStatus);
 
-  if (!statusConfig.show) {
+  if (!statusConfig.show || dismissed) {
     return null;
   }
 
@@ -73,9 +79,7 @@ export function ConnectionStatusBanner({
       {/* Dismiss for non-critical states */}
       {!statusConfig.critical && (
         <button
-          onClick={() => {
-            // Could add dismiss logic here
-          }}
+          onClick={() => setDismissed(true)}
           className="ml-1 p-1 rounded hover:bg-white/10 text-muted-foreground hover:text-white transition-colors"
           title="Dismiss"
         >

@@ -32,8 +32,8 @@ export const FeatureFlags = {
   MISSION_CONSOLE: (env.VITE_FF_MISSION_CONSOLE ?? 'true') === 'true',
   // Demo mode: load example flows when backend returns empty
   DEMO_MODE: (env.VITE_FF_DEMO_MODE ?? 'true') === 'true',
-  // Legacy /streaming page (off in prod; on in dev for diagnostics)
-  LEGACY_STREAMING_PAGE: (env.VITE_FF_LEGACY_STREAMING_PAGE ?? (env.DEV ? 'true' : 'false')) === 'true',
+  // Legacy /streaming page (off by default; enable via VITE_FF_LEGACY_STREAMING_PAGE=true for diagnostics)
+  LEGACY_STREAMING_PAGE: (env.VITE_FF_LEGACY_STREAMING_PAGE ?? 'false') === 'true',
 } as const;
 
 /**
