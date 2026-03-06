@@ -67,6 +67,17 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			CreatedAt:    now,
 			UpdatedAt:    now,
 		},
+		{
+			ID:           "mentatlab.flexinfer-adapter",
+			Name:         "FlexInfer Adapter",
+			Version:      "0.1.0",
+			Description:  "Lifecycle-aware adapter for FlexInfer model inference, activation, and scaling",
+			Command:      []string{"python", "agents/flexinfer-adapter/main.py"},
+			Image:        "registry.harbor.lan/library/mentatlab-flexinfer-adapter:v0.1.0-dev",
+			Capabilities: []string{"inference", "flexinfer", "llm", "image-generation"},
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		},
 	}
 
 	for _, agent := range defaults {
