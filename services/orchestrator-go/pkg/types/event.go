@@ -18,6 +18,7 @@ const (
 	EventTypeNodeStatus  EventType = "node_status"
 	EventTypeRunStatus   EventType = "run_status"
 	EventTypeProgress    EventType = "progress"
+	EventTypeHeartbeat   EventType = "heartbeat"
 	EventTypeError       EventType = "error"
 
 	// Control flow events

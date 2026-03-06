@@ -347,6 +347,52 @@ export function useRunGraph(
             )
           );
         }
+        // Progress events from emit_progress() -> update node progress bar
+        else if (typeLc === "progress") {
+          const nxId =
+            ev.nodeId || ev.data?.node_id || ev.data?.id || ev.data?.node;
+          if (!nxId) return;
+          // Prefer pre-computed percent; fall back to current/total
+          let p = Number(ev.data?.percent);
+          if (!Number.isFinite(p)) {
+            const cur = Number(ev.data?.current);
+            const tot = Number(ev.data?.total);
+            if (Number.isFinite(cur) && Number.isFinite(tot) && tot > 0) {
+              p = (cur / tot) * 100;
+            } else {
+              return;
+            }
+          }
+          const nx = nodeMetaRef.current.get(nxId) || {
+            attempts: 0,
+            lastExitCode: null,
+            progress: null,
+            status: "queued",
+            lastSeq: 0,
+          };
+          if (ev.seq <= (nx.lastSeq || 0)) return;
+          nx.lastSeq = ev.seq;
+          nx.progress = Math.max(0, Math.min(100, p));
+          nodeMetaRef.current.set(nxId, nx);
+          setNodes((prev) =>
+            prev.map((n) =>
+              n.id === nxId
+                ? {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      progress: nx.progress,
+                    },
+                  }
+                : n
+            )
+          );
+        }
+        // Heartbeat events - no-op in frontend (orchestrator uses for liveness)
+        else if (typeLc === "heartbeat") {
+          // Intentionally ignored: heartbeats are consumed by the orchestrator
+          // to detect stalled agents, not rendered in the graph.
+        }
         // Run-level status
         else if (
           typeLc === "status" ||
