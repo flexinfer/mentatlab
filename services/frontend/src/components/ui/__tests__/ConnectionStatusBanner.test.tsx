@@ -132,4 +132,45 @@ describe('ConnectionStatusBanner', () => {
     render(<ConnectionStatusBanner />);
     expect(screen.getByTitle('Dismiss')).toBeInTheDocument();
   });
+
+  // ── Dismiss behavior ──────────────────────────────────────────────────
+
+  it('hides banner when dismiss button is clicked', () => {
+    mockConnectionStatus = 'disconnected';
+    render(<ConnectionStatusBanner />);
+    expect(screen.getByTestId('connection-status-banner')).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('Dismiss'));
+    expect(screen.queryByTestId('connection-status-banner')).not.toBeInTheDocument();
+  });
+
+  it('reappears after dismiss when connection status changes', () => {
+    mockConnectionStatus = 'disconnected';
+    const { rerender } = render(<ConnectionStatusBanner />);
+
+    // Dismiss it
+    fireEvent.click(screen.getByTitle('Dismiss'));
+    expect(screen.queryByTestId('connection-status-banner')).not.toBeInTheDocument();
+
+    // Status changes to reconnecting — banner should reappear
+    mockConnectionStatus = 'reconnecting';
+    rerender(<ConnectionStatusBanner />);
+    expect(screen.getByText('Reconnecting')).toBeInTheDocument();
+  });
+
+  // ── Retry path ─────────────────────────────────────────────────────────
+
+  it('calls onRetry from disconnected state via Reconnect button', () => {
+    mockConnectionStatus = 'disconnected';
+    const onRetry = vi.fn();
+    render(<ConnectionStatusBanner onRetry={onRetry} />);
+    fireEvent.click(screen.getByText('Reconnect'));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show retry during reconnecting state', () => {
+    mockConnectionStatus = 'reconnecting';
+    render(<ConnectionStatusBanner onRetry={vi.fn()} />);
+    expect(screen.queryByText('Retry')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reconnect')).not.toBeInTheDocument();
+  });
 });
