@@ -8,6 +8,35 @@ import React from 'react';
 import { render, screen, cleanup } from '@testing-library/react';
 import { describe, test, expect, afterEach, vi } from 'vitest';
 
+const mockLayoutState = {
+  darkMode: false,
+  toggleDarkMode: vi.fn(),
+  mainView: 'canvas' as 'canvas' | 'network' | 'flow' | 'code',
+  setMainView: vi.fn(),
+  leftSidebarOpen: true,
+  setLeftSidebarOpen: vi.fn(),
+  bottomDockTab: 'console' as const,
+  setBottomDockTab: vi.fn(),
+};
+
+const mockCanvasState = {
+  nodes: [] as any[],
+  edges: [] as any[],
+  copySelected: vi.fn().mockReturnValue(0),
+  pasteClipboard: vi.fn().mockReturnValue(0),
+  duplicateSelected: vi.fn().mockReturnValue(0),
+  deleteSelected: vi.fn().mockReturnValue(0),
+  selectAll: vi.fn(),
+  deselectAll: vi.fn(),
+  nudgeSelected: vi.fn(),
+  contextMenu: { isOpen: false },
+  closeContextMenu: vi.fn(),
+  onNodesChange: vi.fn(),
+  onEdgesChange: vi.fn(),
+  onConnect: vi.fn(),
+  setSelectedNodeId: vi.fn(),
+};
+
 // Mock feature flags (must be before any transitive imports that use them)
 vi.mock('@/config/features', () => ({
   FeatureFlags: {
@@ -51,37 +80,16 @@ vi.mock('@/contexts/ToastContext', () => ({
 vi.mock('@/stores', () => ({
   useLayoutStore: Object.assign(
     (selector?: any) => {
-      const state = {
-        darkMode: false,
-        toggleDarkMode: vi.fn(),
-        mainView: 'canvas' as const,
-        setMainView: vi.fn(),
-        leftSidebarOpen: true,
-        setLeftSidebarOpen: vi.fn(),
-        bottomDockTab: 'console' as const,
-        setBottomDockTab: vi.fn(),
-      };
-      return selector ? selector(state) : state;
+      return selector ? selector(mockLayoutState) : mockLayoutState;
     },
-    { getState: () => ({ darkMode: false, mainView: 'canvas', setMainView: vi.fn() }) }
+    { getState: () => mockLayoutState }
   ),
   useFlowStore: (selector?: any) => {
     const state = { undo: vi.fn(), redo: vi.fn(), canUndo: () => false, canRedo: () => false };
     return selector ? selector(state) : state;
   },
   useCanvasStore: (selector?: any) => {
-    const state = {
-      copySelected: vi.fn().mockReturnValue(0),
-      pasteClipboard: vi.fn().mockReturnValue(0),
-      duplicateSelected: vi.fn().mockReturnValue(0),
-      deleteSelected: vi.fn().mockReturnValue(0),
-      selectAll: vi.fn(),
-      deselectAll: vi.fn(),
-      nudgeSelected: vi.fn(),
-      contextMenu: { isOpen: false },
-      closeContextMenu: vi.fn(),
-    };
-    return selector ? selector(state) : state;
+    return selector ? selector(mockCanvasState) : mockCanvasState;
   },
   useStreamingStore: (selector?: any) => {
     const state = { connectionStatus: 'disconnected', activeStreams: new Set() };
@@ -92,10 +100,9 @@ vi.mock('@/stores', () => ({
 vi.mock('@/stores/canvas', () => ({
   useCanvasStore: Object.assign(
     (selector?: any) => {
-      const state = { nodes: [], edges: [], setNodes: vi.fn(), setEdges: vi.fn() };
-      return selector ? selector(state) : state;
+      return selector ? selector(mockCanvasState) : mockCanvasState;
     },
-    { getState: () => ({ nodes: [], edges: [], setNodes: vi.fn(), setEdges: vi.fn() }) }
+    { getState: () => mockCanvasState }
   ),
 }));
 
@@ -136,6 +143,10 @@ vi.mock('@/services/streamingService.enhanced', () => ({
 // Mock react libraries
 vi.mock('reactflow', () => ({
   ReactFlowProvider: ({ children }: any) => <div>{children}</div>,
+  ReactFlow: ({ children }: any) => <div data-testid="mock-reactflow">{children}</div>,
+  Background: () => <div data-testid="mock-reactflow-background" />,
+  Controls: () => <div data-testid="mock-reactflow-controls" />,
+  MiniMap: () => <div data-testid="mock-reactflow-minimap" />,
 }));
 
 vi.mock('react-resizable-panels', () => ({
@@ -165,7 +176,11 @@ vi.mock('../../panels/AgentBrowser', () => ({ default: () => <div /> }));
 vi.mock('../../overlays/LineageOverlay', () => ({ default: () => null }));
 vi.mock('../../overlays/PolicyOverlay', () => ({ default: () => null }));
 vi.mock('../../menus/NodeContextMenu', () => ({ NodeContextMenu: () => null }));
-vi.mock('../../canvas', () => ({ NodePalette: () => null, QuickAddMenu: () => null }));
+vi.mock('../../canvas', () => ({
+  CanvasDropZone: ({ children }: any) => <div data-testid="mock-canvas-dropzone">{children}</div>,
+  NodePalette: () => null,
+  QuickAddMenu: () => null,
+}));
 
 // Mock hooks
 vi.mock('@/hooks/useKeyboardShortcuts', () => ({
@@ -241,6 +256,12 @@ afterEach(() => {
 });
 
 describe('MissionControlLayout rendering', () => {
+  afterEach(() => {
+    mockLayoutState.mainView = 'canvas';
+    mockCanvasState.nodes = [];
+    mockCanvasState.edges = [];
+  });
+
   test('renders the layout with compound components', () => {
     render(<MissionControlLayout />);
 
@@ -253,13 +274,29 @@ describe('MissionControlLayout rendering', () => {
     expect(screen.getByTestId('mock-bottom-dock')).toBeTruthy();
   });
 
-  test('renders the canvas area', () => {
+  test('renders the workflow canvas in canvas mode', () => {
     render(<MissionControlLayout />);
-    expect(screen.getByTestId('mock-canvas')).toBeTruthy();
+    expect(screen.getByTestId('mock-reactflow')).toBeTruthy();
   });
 
   test('renders Inspector panel section', () => {
     render(<MissionControlLayout />);
     expect(screen.getByText('Inspector')).toBeTruthy();
+  });
+
+  test('renders the streaming view in flow mode', () => {
+    mockLayoutState.mainView = 'flow';
+    render(<MissionControlLayout />);
+    expect(screen.getByTestId('mock-canvas')).toBeTruthy();
+  });
+
+  test('renders workflow source in code mode', () => {
+    mockLayoutState.mainView = 'code';
+    mockCanvasState.nodes = [
+      { id: 'node-1', type: 'chat', position: { x: 10, y: 20 }, data: { label: 'Chat' } },
+    ];
+    render(<MissionControlLayout />);
+    expect(screen.getByText('Workflow Source')).toBeTruthy();
+    expect(screen.getByText(/"node-1"/)).toBeTruthy();
   });
 });

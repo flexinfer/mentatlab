@@ -28,7 +28,7 @@ export const PanelShell: React.FC<PanelShellProps> = ({ title, toolbar, classNam
         </div>
       )}
 
-      <div className="relative min-h-[200px]">
+      <div className="relative flex-1 min-h-0 min-w-0">
         {children}
       </div>
     </div>

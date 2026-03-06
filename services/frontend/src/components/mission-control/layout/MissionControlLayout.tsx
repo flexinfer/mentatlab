@@ -9,7 +9,13 @@
 
 import React, { useCallback, useMemo, useEffect, useState } from 'react';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
-import { ReactFlowProvider } from 'reactflow';
+import {
+  Background,
+  Controls,
+  MiniMap,
+  ReactFlow,
+  ReactFlowProvider,
+} from 'reactflow';
 
 // Layout components
 import { WorkspaceProvider, useWorkspace } from './WorkspaceProvider';
@@ -27,6 +33,7 @@ import { PanelErrorBoundary } from '@/components/ui/PanelErrorBoundary';
 import { KeyboardShortcutsDialog } from '@/components/ui/KeyboardShortcutsDialog';
 import { CommandPalette, type Command } from '@/components/ui/CommandPalette';
 import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner';
+import { PanelShell } from '@/components/ui/PanelShell';
 import { NodeContextMenu } from '../menus/NodeContextMenu';
 import InspectorPanel from '../panels/InspectorPanel';
 import NetworkPanel from '../panels/NetworkPanel';
@@ -34,11 +41,28 @@ import LineageOverlay from '../overlays/LineageOverlay';
 import PolicyOverlay from '../overlays/PolicyOverlay';
 
 // Canvas components
-import { NodePalette, QuickAddMenu } from '../canvas';
+import { CanvasDropZone, NodePalette, QuickAddMenu } from '../canvas';
 
 // Hooks
 import { useKeyboardShortcuts, type KeyboardShortcut, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import ChatNode from '@/nodes/ChatNode';
+import ConditionalNode from '@/nodes/ConditionalNode';
+import ForEachNode from '@/nodes/ForEachNode';
+import GateNode from '@/nodes/GateNode';
+import PythonCodeNode from '@/nodes/PythonCodeNode';
+
+const flowNodeTypes = {
+  chat: ChatNode,
+  pythonCode: PythonCodeNode,
+  conditional: ConditionalNode,
+  forEach: ForEachNode,
+  gate: GateNode,
+} as const;
+
+const BackgroundAny = Background as any;
+const ControlsAny = Controls as any;
+const MiniMapAny = MiniMap as any;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Layout Component (exported)
@@ -75,7 +99,6 @@ function MissionControlInner() {
     startDemoRun,
     startLiveConnection,
     startOrchestratorRun,
-    setMainView,
   } = useWorkspace();
 
   const { mainView, setMainView: setLayoutMainView } = useLayoutStore();
@@ -91,6 +114,8 @@ function MissionControlInner() {
 
   // Flow store for undo/redo
   const { undo, redo, canUndo, canRedo } = useFlowStore();
+  const canvasNodes = useCanvasStore((state) => state.nodes);
+  const canvasEdges = useCanvasStore((state) => state.edges);
 
   // ReactFlow store for clipboard/selection
   const {
@@ -191,32 +216,27 @@ function MissionControlInner() {
           <PanelGroup direction="vertical" className="h-full">
             {/* Main Canvas Panel */}
             <Panel defaultSize={75} minSize={40}>
-              <div className="h-full relative flex">
-                {/* Node Palette (collapsible) */}
-                <NodePalette
-                  collapsed={!nodePaletteOpen}
-                  onToggleCollapse={() => setNodePaletteOpen(!nodePaletteOpen)}
-                />
-
-                {/* Canvas Area */}
-                <div className="flex-1 relative">
-                  {mainView === 'network' ? (
-                    <NetworkPanel runId={activeRunId} />
-                  ) : (
-                    <ReactFlowProvider>
-                      <StreamingCanvas />
-                      {/* CogPak Overlay */}
-                      {cogpakUi && (
-                        <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
-                      )}
-                      {/* Quick Add Menu */}
-                      <QuickAddMenu
-                        isOpen={quickAddMenuOpen}
-                        onClose={() => setQuickAddMenuOpen(false)}
-                      />
-                    </ReactFlowProvider>
-                  )}
-                </div>
+              <div className="h-full relative">
+                {mainView === 'canvas' && (
+                  <CanvasWorkspace
+                    activeRunId={activeRunId}
+                    nodePaletteOpen={nodePaletteOpen}
+                    setNodePaletteOpen={setNodePaletteOpen}
+                    quickAddMenuOpen={quickAddMenuOpen}
+                    setQuickAddMenuOpen={setQuickAddMenuOpen}
+                    cogpakUi={cogpakUi}
+                    setCogpakUi={setCogpakUi}
+                  />
+                )}
+                {mainView === 'network' && <NetworkPanel runId={activeRunId} />}
+                {mainView === 'flow' && <FlowWorkspace sessionCount={canvasNodes.length} />}
+                {mainView === 'code' && (
+                  <CodeWorkspace
+                    nodes={canvasNodes}
+                    edges={canvasEdges}
+                    activeRunId={activeRunId}
+                  />
+                )}
               </div>
             </Panel>
 
@@ -252,6 +272,271 @@ function MissionControlInner() {
 
       {/* Node Context Menu */}
       <NodeContextMenu />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Workspace Variants
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CanvasWorkspace({
+  activeRunId,
+  nodePaletteOpen,
+  setNodePaletteOpen,
+  quickAddMenuOpen,
+  setQuickAddMenuOpen,
+  cogpakUi,
+  setCogpakUi,
+}: {
+  activeRunId: string | null;
+  nodePaletteOpen: boolean;
+  setNodePaletteOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  quickAddMenuOpen: boolean;
+  setQuickAddMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  cogpakUi: { url: string; title: string } | null;
+  setCogpakUi: (ui: { url: string; title: string } | null) => void;
+}) {
+  const nodes = useCanvasStore((state) => state.nodes);
+  const edges = useCanvasStore((state) => state.edges);
+  const onNodesChange = useCanvasStore((state) => state.onNodesChange);
+  const onEdgesChange = useCanvasStore((state) => state.onEdgesChange);
+  const onConnect = useCanvasStore((state) => state.onConnect);
+  const setSelectedNodeId = useCanvasStore((state) => state.setSelectedNodeId);
+
+  return (
+    <div className="flex h-full">
+      <NodePalette
+        collapsed={!nodePaletteOpen}
+        onToggleCollapse={() => setNodePaletteOpen((open) => !open)}
+      />
+
+      <div className="min-w-0 flex-1 p-4">
+        <ReactFlowProvider>
+          <PanelShell
+            title={
+              <div className="flex items-center gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+                    Canvas
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">Workflow Builder</div>
+                </div>
+                <div className="hidden items-center gap-2 text-[11px] text-muted-foreground lg:flex">
+                  <span>{nodes.length} nodes</span>
+                  <span className="text-border">/</span>
+                  <span>{edges.length} edges</span>
+                  {activeRunId && (
+                    <>
+                      <span className="text-border">/</span>
+                      <span className="font-mono text-[10px]">{activeRunId}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            }
+            toolbar={
+              <button
+                onClick={() => setQuickAddMenuOpen(true)}
+                className="rounded-md border border-border/70 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                Add Node
+              </button>
+            }
+            className="h-full overflow-hidden"
+          >
+            <CanvasDropZone className="h-full">
+              <div className="relative h-full min-h-[420px]">
+                <ReactFlow
+                  nodeTypes={flowNodeTypes as any}
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  onSelectionChange={(selection: any) => {
+                    const firstNodeId = selection?.nodes?.[0]?.id ?? null;
+                    setSelectedNodeId(firstNodeId);
+                  }}
+                  fitView
+                  fitViewOptions={{ padding: 0.2 }}
+                  proOptions={{ hideAttribution: true }}
+                >
+                  <BackgroundAny gap={20} color="hsl(var(--border))" />
+                  <MiniMapAny className="!bg-card/90" pannable zoomable />
+                  <ControlsAny position="bottom-right" />
+                </ReactFlow>
+
+                {nodes.length === 0 && (
+                  <div className="pointer-events-none absolute inset-x-8 top-8 max-w-sm rounded-xl border border-dashed border-border/80 bg-background/88 p-4 shadow-lg backdrop-blur">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+                      Empty Workflow
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-foreground">
+                      Start by dragging a node into the canvas.
+                    </div>
+                    <div className="mt-1 text-sm text-muted-foreground">
+                      Use the palette on the left or press <span className="font-mono">/</span> to open quick add.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CanvasDropZone>
+
+            {cogpakUi && (
+              <CogpakOverlay cogpakUi={cogpakUi} onClose={() => setCogpakUi(null)} />
+            )}
+            <QuickAddMenu
+              isOpen={quickAddMenuOpen}
+              onClose={() => setQuickAddMenuOpen(false)}
+            />
+          </PanelShell>
+        </ReactFlowProvider>
+      </div>
+    </div>
+  );
+}
+
+function FlowWorkspace({ sessionCount }: { sessionCount: number }) {
+  return (
+    <div className="h-full p-4">
+      <PanelShell
+        title={
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+              Flow
+            </div>
+            <div className="text-sm font-semibold text-foreground">Live Streaming</div>
+          </div>
+        }
+        toolbar={
+          <div className="text-[11px] text-muted-foreground">
+            {sessionCount} workflow node{sessionCount === 1 ? '' : 's'} in the current canvas
+          </div>
+        }
+        className="h-full overflow-hidden"
+      >
+        <div className="h-full p-4">
+          <StreamingCanvas />
+        </div>
+      </PanelShell>
+    </div>
+  );
+}
+
+function CodeWorkspace({
+  nodes,
+  edges,
+  activeRunId,
+}: {
+  nodes: ReturnType<typeof useCanvasStore.getState>['nodes'];
+  edges: ReturnType<typeof useCanvasStore.getState>['edges'];
+  activeRunId: string | null;
+}) {
+  const selectedNodeId = useCanvasStore((state) => state.selectedNodeId);
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
+    [nodes, selectedNodeId]
+  );
+
+  const workflowSource = useMemo(
+    () =>
+      JSON.stringify(
+        {
+          runId: activeRunId,
+          nodes: nodes.map((node) => ({
+            id: node.id,
+            type: node.type,
+            position: node.position,
+            data: node.data,
+          })),
+          edges: edges.map((edge) => ({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: edge.sourceHandle,
+            targetHandle: edge.targetHandle,
+          })),
+        },
+        null,
+        2
+      ),
+    [activeRunId, edges, nodes]
+  );
+
+  return (
+    <div className="grid h-full min-h-0 gap-4 p-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(300px,0.9fr)]">
+      <PanelShell
+        title={
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+              Code
+            </div>
+            <div className="text-sm font-semibold text-foreground">Workflow Source</div>
+          </div>
+        }
+        toolbar={
+          <div className="text-[11px] text-muted-foreground">
+            {nodes.length} nodes / {edges.length} edges
+          </div>
+        }
+        className="min-h-0 overflow-hidden"
+      >
+        <div className="h-full overflow-auto bg-[#07111c]">
+          <pre className="min-h-full whitespace-pre-wrap p-5 font-mono text-[12px] leading-6 text-cyan-100">
+            {workflowSource}
+          </pre>
+        </div>
+      </PanelShell>
+
+      <PanelShell
+        title={
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+              Focus
+            </div>
+            <div className="text-sm font-semibold text-foreground">
+              {selectedNode ? selectedNode.id : 'No node selected'}
+            </div>
+          </div>
+        }
+        className="min-h-0 overflow-hidden"
+      >
+        <div className="h-full overflow-auto p-4">
+          {selectedNode ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Type
+                </div>
+                <div className="mt-1 text-sm font-medium text-foreground">
+                  {selectedNode.type ?? 'unknown'}
+                </div>
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Position
+                </div>
+                <div className="mt-1 font-mono text-xs text-foreground">
+                  x={Math.round(selectedNode.position.x)}, y={Math.round(selectedNode.position.y)}
+                </div>
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Data
+                </div>
+                <pre className="mt-2 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-5 text-muted-foreground">
+                  {JSON.stringify(selectedNode.data ?? {}, null, 2)}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed bg-muted/10 p-4 text-sm text-muted-foreground">
+              Select a node in the canvas to inspect its source payload here.
+            </div>
+          )}
+        </div>
+      </PanelShell>
     </div>
   );
 }
