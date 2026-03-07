@@ -157,6 +157,7 @@ Execution checklist for Mission Control functional UX standardization.
   - [ ] Capture baseline screenshots (offline, connecting, connected, run-active).
   - [ ] Capture post-change screenshots for same states.
   - [ ] Record QA notes on status clarity, hierarchy, and readability.
+  - [x] Place in `docs/architecture/ui/m16-baselines/` (directory initialized)
 - Acceptance:
   - [ ] Screenshot set covers all required states.
   - [ ] QA notes identify no blocker-level UX regressions.

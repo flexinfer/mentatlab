@@ -9,8 +9,6 @@ type IssuesPanelProps = {
 };
 
 export default function IssuesPanel({ onCountChange }: IssuesPanelProps) {
-  const [issues, setIssues] = React.useState(() => [] as ReturnType<typeof linter.analyze>);
-  const [status, setStatus] = React.useState<'idle' | 'running' | 'done'>('idle');
   const toast = useToast();
 
   // Get store state and actions for applying fixes
@@ -20,8 +18,7 @@ export default function IssuesPanel({ onCountChange }: IssuesPanelProps) {
   const setEdges = useCanvasStore((s) => s.setEdges);
 
   // Build current flow from store state
-  // Note: ReactFlow uses source/target, but Flow type uses from/to
-  const buildCurrentFlow = React.useCallback((): Flow => {
+  const currentFlow = React.useMemo((): Flow => {
     return {
       apiVersion: 'v1',
       kind: 'Flow',
@@ -43,44 +40,34 @@ export default function IssuesPanel({ onCountChange }: IssuesPanelProps) {
     };
   }, [nodes, edges]);
 
-  const runLint = React.useCallback(() => {
-    setStatus('running');
+  // Compute issues synchronously based on current flow
+  const issues = React.useMemo(() => {
     try {
-      const targetFlow = buildCurrentFlow();
-      const results = linter.analyze(targetFlow);
-      setIssues(results);
-      setStatus('done');
-      onCountChange?.(results.length);
+      return linter.analyze(currentFlow);
     } catch (e) {
       console.error('[IssuesPanel] Lint failed', e);
-      setIssues([]);
-      setStatus('done');
-      onCountChange?.(0);
+      return [];
     }
-  }, [buildCurrentFlow, onCountChange]);
+  }, [currentFlow]);
 
+  // Notify parent only when the number of issues changes
+  const issuesCount = issues.length;
   React.useEffect(() => {
-    // auto-run once on mount
-    runLint();
-  }, [runLint]);
+    onCountChange?.(issuesCount);
+  }, [issuesCount, onCountChange]);
 
   // Apply a quick fix to the flow and update the store
   const applyQuickFix = React.useCallback((issue: LintIssue) => {
     if (!issue.fix) return;
 
-    // Check if this fix can be auto-applied
     if (!linter.canAutoApply(issue)) {
-      // For UI-only actions, just show a message
       toast.info(`${issue.fix.title} - open the relevant panel to apply`);
       return;
     }
 
     try {
-      const currentFlow = buildCurrentFlow();
       const updatedFlow = linter.applyQuickFix(currentFlow, issue);
 
-      // Update store with modified nodes/edges
-      // Note: Flow uses from/to, ReactFlow uses source/target
       if (updatedFlow.graph) {
         const newNodes = updatedFlow.graph.nodes.map((n) => ({
           id: n.id,
@@ -89,9 +76,9 @@ export default function IssuesPanel({ onCountChange }: IssuesPanelProps) {
           data: n.params ?? {},
         }));
         const newEdges = updatedFlow.graph.edges.map((e, idx) => ({
-          id: `edge-${idx}`,  // Generate id since Flow Edge doesn't have one
-          source: e.from,     // Map Flow 'from' to ReactFlow 'source'
-          target: e.to,       // Map Flow 'to' to ReactFlow 'target'
+          id: `edge-${idx}`,
+          source: e.from,
+          target: e.to,
           sourceHandle: e.sourceHandle,
           targetHandle: e.targetHandle,
         }));
@@ -101,14 +88,11 @@ export default function IssuesPanel({ onCountChange }: IssuesPanelProps) {
       }
 
       toast.success(`Applied: ${issue.fix.title}`);
-
-      // Re-run lint to refresh issues
-      setTimeout(runLint, 100);
     } catch (e) {
       console.error('[IssuesPanel] Failed to apply quick fix', e);
       toast.error('Failed to apply fix');
     }
-  }, [buildCurrentFlow, setNodes, setEdges, runLint, toast]);
+  }, [currentFlow, setNodes, setEdges, toast]);
 
   return (
     <div className="h-full w-full flex flex-col">
@@ -117,20 +101,15 @@ export default function IssuesPanel({ onCountChange }: IssuesPanelProps) {
           <span className="font-medium">Issues</span>
           <span className="mx-1 text-gray-300">|</span>
           <span>{issues.length} found</span>
-          {status === 'running' && (
-            <span className="ml-2 inline-flex items-center gap-1 text-amber-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Analyzing…
-            </span>
-          )}
         </div>
+        {/* Re-run button is purely decorative now since it computes on the fly, but we can keep it for UX consistency if desired */}
         <div className="flex items-center gap-2">
           <button
-            className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80"
-            onClick={runLint}
-            disabled={status === 'running'}
-            title="Re-run linter"
+            className="h-6 px-2 text-[11px] rounded border bg-background hover:bg-muted dark:bg-card dark:hover:bg-muted/80 opacity-50 cursor-not-allowed"
+            disabled
+            title="Analysis is continuous"
           >
-            Re-run
+            Live Analysis
           </button>
         </div>
       </div>
