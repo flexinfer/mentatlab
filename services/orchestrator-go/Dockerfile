@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o orchestrator ./cmd/orchestrator/
 
-FROM ${BASE_REGISTRY}/alpine:latest
+FROM ${BASE_REGISTRY}/alpine:3.21
 RUN apk --no-cache add ca-certificates curl
 WORKDIR /app
 COPY --from=builder /app/orchestrator .
