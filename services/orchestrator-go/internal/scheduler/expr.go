@@ -178,12 +178,10 @@ func BuildEnvironment(nodeOutputs map[string]map[string]interface{}, contextVars
 	}
 
 	// For convenience, also add top-level access to common context vars
-	if contextVars != nil {
-		for k, v := range contextVars {
-			// Don't overwrite inputs/context
-			if k != "inputs" && k != "context" {
-				env[k] = v
-			}
+	for k, v := range contextVars {
+		// Don't overwrite inputs/context
+		if k != "inputs" && k != "context" {
+			env[k] = v
 		}
 	}
 

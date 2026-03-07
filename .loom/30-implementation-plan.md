@@ -13,6 +13,94 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 ---
 
+## 2026-03-03 Reality Check (Actual Functionality vs Vision)
+
+### Verified Current Functionality
+
+- Backend tests are passing now in this environment:
+  - `cd services/orchestrator-go && go test ./...`
+  - `cd services/gateway-go && go test ./...`
+- Frontend automated test validation is not currently runnable in this environment:
+  - `npm test` fails before execution (`vitest: command not found`)
+  - `npm install` fails with `ENOSPC` while restoring frontend dependencies.
+- Loom-mode MCP inventory is available and current (`44` servers, `472` tools).
+- FlexInfer and agent-context catalogs are discoverable through loom inventory resources.
+- Frontend canvas already has MCP-node palette wiring that generates drag metadata with:
+  - `agent_id="loom-mcp-executor"`
+  - `tool_name`, `tool_args`, and `mcp_server`.
+
+### Confirmed Gaps Blocking a Truly Working Composable MCP Workflow Platform
+
+1. MCP palette discovery exists, but backend MCP endpoints do not:
+   - frontend tries `loom://tools/index`, `/api/v1/mcp/tools/index`, `/api/v1/mcp/tools`
+   - orchestrator API routes do not expose `/api/v1/mcp/*`.
+2. Frontend API still calls non-existent run APIs:
+   - `listCheckpoints`, `postCheckpoint`, `retryNodes` call `/runs/{id}/checkpoints` and `/runs/{id}/retry`
+   - orchestrator routes do not define those endpoints.
+3. Graph -> plan transformation drops MCP node execution fields:
+   - `tool_name`, `tool_args`, `mcp_server` are not mapped into `NodeSpec`.
+4. No `loom-mcp-executor` implementation is present in `agents/`, and default registry does not include it.
+5. Input contract mismatch:
+   - orchestrator writes `AGENT_INPUT`
+   - Python agents read stdin or `INPUT_SPEC` / `INPUT_CONTEXT`.
+6. Command/image resolution is still fragile:
+   - fallback command resolver assumes `python agents/<name>/main.py`
+   - K8s driver silently falls back to `python:3.12-slim` when image is missing.
+7. No code-level integration with `agent_context` run/session lifecycle exists yet.
+8. `codebase_memory` and `agent_context` persistence execution remain degraded in-session despite healthy inventory:
+   - `codebase_memory__codebase_stats(repo_id="mentatlab")` fails with `no route to host` (Qdrant path)
+   - `agent_context` task/session persistence calls fail with the same route error.
+
+### Integration Recovery Backlog (M11/M12/M15)
+
+| ID | Priority | Task | Dependencies | Done When |
+|---|---|---|---|---|
+| `INT-001` | P0 | Add orchestrator MCP inventory endpoints (`GET /api/v1/mcp/tools/index`, `GET /api/v1/mcp/tools`) backed by loom proxy/client | none | Node palette loads tool inventory from HTTP endpoint (no `loom://` browser fetch dependency) |
+| `INT-002` | P0 | Extend flow graph parsing to preserve MCP node fields (`tool_name`, `tool_args`, `mcp_server`) into run plan/node env/spec | `INT-001` | Saved flow -> run plan round-trip retains MCP tool execution payload |
+| `INT-003` | P0 | Implement `agents/loom-mcp-executor` (NDJSON contract) and register default manifest/registry entry | `INT-002` | Dragged MCP node executes selected MCP tool and emits `type: \"output\"` payload |
+| `INT-004` | P0 | Normalize agent input contract: pass `INPUT_SPEC` / `INPUT_CONTEXT` (keep `AGENT_INPUT` only as compatibility alias) | none | Echo/psyche/ctm + loom-mcp-executor all run with same input semantics |
+| `INT-005` | P0 | Remove silent execution fallbacks: fail fast on missing image/command in K8s mode; resolve from registry first | `INT-003` | Runs fail with clear API error before scheduling if executable/image cannot be resolved |
+| `INT-006` | P0 | Resolve frontend/backend run API drift: either implement checkpoints+retry endpoints or remove stale UI usage | none | `RunsPanel` and `GraphPanel` only call supported API surface |
+| `INT-007` | P1 | ~~Wire run lifecycle to `agent_context` (`agent_session_start` on run start, `agent_context_add` on node events, `agent_session_end` on completion)~~ **DONE** | `INT-004` | Every run has a stable loom session and persisted summary context |
+| `INT-008` | P1 | Introduce FlexInfer execution adapter path for inference nodes (MCP tool node templates + runtime env contracts) | `INT-003` | A flow can invoke FlexInfer model readiness + inference path as composable nodes |
+| `INT-009` | P1 | Build `mcp-mentatlab` server in `loom-core` exposing flow/run operations as tools | `INT-001` | External agents can create/run/query/cancel MentatLab runs through MCP |
+| `INT-010` | P2 | Add workflow bridge import/export (MentatLab flow <-> loom workflow definition) | `INT-009` | User can import a loom workflow and export a MentatLab flow with dependency parity |
+| `INT-011` | P2 | Add end-to-end gates in CI (MCP-node run, agent_context session linkage, FlexInfer smoke path) | `INT-003`, `INT-007`, `INT-008` | CI fails on integration regressions before merge |
+
+### Execution Sequence (Recommended)
+
+1. **Slice A (P0 platform correctness):** `INT-001` .. `INT-006`
+2. **Slice B (context + inference integration):** `INT-007` + `INT-008`
+3. **Slice C (ecosystem composability):** `INT-009` + `INT-010`
+4. **Slice D (hardening):** `INT-011` and live K3s validation against M10 criteria
+
+### Exit Criteria for "Truly Working" State
+
+- A user can drag an MCP tool node from palette, save flow, run it, and observe MCP tool output in run events/UI.
+- The same run is linked to a loom agent-context session with persisted entries and end-of-run summary.
+- FlexInfer-backed inference nodes can be composed in the same DAG as non-inference MCP tools.
+- External MCP clients can start and monitor MentatLab runs through `mcp-mentatlab`.
+- CI includes at least one fully automated MCP + context + inference integration smoke path.
+
+### Source Anchors (Current-State Evidence)
+
+- Frontend MCP palette + drag data: `services/frontend/src/components/mission-control/canvas/NodePalette.tsx:262`
+- Frontend MCP endpoint attempts: `services/frontend/src/components/mission-control/canvas/NodePalette.tsx:277`
+- Missing orchestrator MCP routes: `services/orchestrator-go/internal/api/routes.go:66`
+- Frontend unsupported checkpoint/retry calls: `services/frontend/src/services/api/orchestratorService.ts:80`
+- UI uses retry API path: `services/frontend/src/components/mission-control/panels/GraphPanel.tsx:115`
+- UI uses checkpoint API path: `services/frontend/src/components/mission-control/panels/RunsPanel.tsx:95`
+- Graph->plan mapping omits MCP fields, writes `AGENT_INPUT`: `services/orchestrator-go/internal/api/handlers_m5m6.go:556`
+- Agent input contract (`INPUT_SPEC`/`INPUT_CONTEXT`): `agents/common/base.py:73`
+- Psyche-sim input contract confirmation: `agents/psyche-sim/src/main.py:88`
+- Command resolver fallback: `services/orchestrator-go/internal/factories/factories.go:118`
+- K8s driver default image fallback: `services/orchestrator-go/internal/driver/k8s.go:68`
+- Job builder enforces image requirement: `services/orchestrator-go/internal/k8s/job.go:101`
+- Default registry agents (no MCP executor): `services/orchestrator-go/internal/registry/memory.go:23`
+- M11 target definition (vision baseline): `ROADMAP.md:143`
+
+---
+
 ## 2026-02-28 Core Completion Focus (User-Reported: Saving Spinner Stuck)
 
 ### Problem Statement
