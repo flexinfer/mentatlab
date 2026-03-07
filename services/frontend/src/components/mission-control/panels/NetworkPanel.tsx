@@ -453,16 +453,6 @@ export default function NetworkPanel({ runId }: Props) {
               )
             );
 
-            // recompute active count based on recent activity (handled by interval below too)
-            setActiveNodes((_) => {
-              const now = Date.now();
-              const count = nodes.reduce((acc, n) => {
-                const la = n.data?.lastActiveAt;
-                return acc + (la && now - la <= 1500 ? 1 : 0);
-              }, 0);
-              return count;
-            });
-
             // clear 'active' style soon
             window.setTimeout(() => {
               setNodes((prev) =>
@@ -588,7 +578,7 @@ export default function NetworkPanel({ runId }: Props) {
       });
       subsRef.current = [];
     };
-  }, [runId, setNodes, setEdges, markMsg, nodes]);
+  }, [runId, setNodes, setEdges]);
 
   // Recompute active nodes metric periodically
   React.useEffect(() => {
