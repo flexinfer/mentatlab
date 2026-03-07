@@ -405,21 +405,18 @@ function buildFlexInferTemplateNodes(tools: MCPToolRecord[]): NodeDefinition[] {
   return nodes;
 }
 
-async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
-  if (typeof fetch !== 'function') return [];
+import apiService from '@/services/api/apiService';
 
+async function loadMCPToolNodes(): Promise<NodeDefinition[]> {
   const endpoints = [
-    'loom://tools/index',
     '/api/v1/mcp/tools/index',
-    '/api/v1/mcp/tools',
+    '/api/v1/mcp/tools', // Fallback endpoint
   ];
 
   for (const endpoint of endpoints) {
     try {
-      const response = await fetch(endpoint);
-      if (!response.ok) continue;
-
-      const payload = (await response.json()) as unknown;
+      const response = await apiService.httpClient.get(endpoint);
+      const payload = response.data;
       const tools = normalizeMCPTools(payload);
       if (tools.length === 0) continue;
 

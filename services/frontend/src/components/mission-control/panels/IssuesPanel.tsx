@@ -5,11 +5,10 @@ import { useCanvasStore } from '@/stores';
 import { useToast } from '../../../contexts/ToastContext';
 
 type IssuesPanelProps = {
-  flow?: Flow;
   onCountChange?: (count: number) => void;
 };
 
-export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
+export default function IssuesPanel({ onCountChange }: IssuesPanelProps) {
   const [issues, setIssues] = React.useState(() => [] as ReturnType<typeof linter.analyze>);
   const [status, setStatus] = React.useState<'idle' | 'running' | 'done'>('idle');
   const toast = useToast();
@@ -20,37 +19,10 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
   const setNodes = useCanvasStore((s) => s.setNodes);
   const setEdges = useCanvasStore((s) => s.setEdges);
 
-  const runLint = React.useCallback(() => {
-    setStatus('running');
-    try {
-      const targetFlow: Flow =
-        flow ?? {
-          apiVersion: 'v1',
-          kind: 'Flow',
-          meta: { id: 'empty', name: 'Empty', version: '0.0.0', createdAt: new Date().toISOString(), description: 'Empty flow' },
-          graph: { nodes: [], edges: [] },
-        };
-      const results = linter.analyze(targetFlow);
-      setIssues(results);
-      setStatus('done');
-      onCountChange?.(results.length);
-    } catch (e) {
-      console.error('[IssuesPanel] Lint failed', e);
-      setIssues([]);
-      setStatus('done');
-      onCountChange?.(0);
-    }
-  }, [flow]);
-
-  React.useEffect(() => {
-    // auto-run once on mount
-    runLint();
-  }, [runLint]);
-
   // Build current flow from store state
   // Note: ReactFlow uses source/target, but Flow type uses from/to
   const buildCurrentFlow = React.useCallback((): Flow => {
-    return flow ?? {
+    return {
       apiVersion: 'v1',
       kind: 'Flow',
       meta: { id: 'current', name: 'Current Flow', version: '0.0.0', createdAt: new Date().toISOString(), description: '' },
@@ -62,14 +34,35 @@ export default function IssuesPanel({ flow, onCountChange }: IssuesPanelProps) {
           position: n.position,
         })),
         edges: edges.map((e) => ({
-          from: e.source,  // Map ReactFlow 'source' to Flow 'from'
-          to: e.target,    // Map ReactFlow 'target' to Flow 'to'
+          from: e.source,
+          to: e.target,
           sourceHandle: e.sourceHandle ?? undefined,
           targetHandle: e.targetHandle ?? undefined,
         })),
       },
     };
-  }, [flow, nodes, edges]);
+  }, [nodes, edges]);
+
+  const runLint = React.useCallback(() => {
+    setStatus('running');
+    try {
+      const targetFlow = buildCurrentFlow();
+      const results = linter.analyze(targetFlow);
+      setIssues(results);
+      setStatus('done');
+      onCountChange?.(results.length);
+    } catch (e) {
+      console.error('[IssuesPanel] Lint failed', e);
+      setIssues([]);
+      setStatus('done');
+      onCountChange?.(0);
+    }
+  }, [buildCurrentFlow, onCountChange]);
+
+  React.useEffect(() => {
+    // auto-run once on mount
+    runLint();
+  }, [runLint]);
 
   // Apply a quick fix to the flow and update the store
   const applyQuickFix = React.useCallback((issue: LintIssue) => {

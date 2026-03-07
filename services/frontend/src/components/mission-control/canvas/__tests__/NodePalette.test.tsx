@@ -3,9 +3,19 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NodePalette } from '../NodePalette';
 
+import apiService from '@/services/api/apiService';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Mocks
 // ─────────────────────────────────────────────────────────────────────────────
+
+vi.mock('@/services/api/apiService', () => ({
+  default: {
+    httpClient: {
+      get: vi.fn(),
+    },
+  },
+}));
 
 vi.mock('@/components/ui/Input', () => ({
   Input: React.forwardRef(
@@ -33,16 +43,11 @@ vi.mock('@/nodes', () => ({
 describe('NodePalette', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new Error('network disabled in tests');
-      })
-    );
+    vi.mocked(apiService.httpClient.get).mockRejectedValue(new Error('network disabled in tests'));
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it('renders expanded palette with header', () => {
@@ -185,11 +190,10 @@ describe('NodePalette', () => {
   });
 
   it('loads MCP tools and groups them by server category', async () => {
-    const fetchMock = vi.fn()
+    const getMock = vi.fn()
       .mockRejectedValueOnce(new Error('unsupported scheme'))
       .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+        data: {
           tools: [
             {
               name: 'k8s_apps_k3s__k8s_get',
@@ -197,9 +201,9 @@ describe('NodePalette', () => {
               description: 'Get Kubernetes resources',
             },
           ],
-        }),
+        },
       });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(apiService.httpClient.get).mockImplementation(getMock);
 
     render(<NodePalette />);
 
@@ -210,11 +214,10 @@ describe('NodePalette', () => {
   });
 
   it('attaches MCP tool metadata to drag payload', async () => {
-    const fetchMock = vi.fn()
+    const getMock = vi.fn()
       .mockRejectedValueOnce(new Error('unsupported scheme'))
       .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+        data: {
           tools: [
             {
               name: 'k8s_apps_k3s__k8s_get',
@@ -228,9 +231,9 @@ describe('NodePalette', () => {
               },
             },
           ],
-        }),
+        },
       });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(apiService.httpClient.get).mockImplementation(getMock);
 
     render(<NodePalette />);
 
@@ -259,11 +262,10 @@ describe('NodePalette', () => {
   });
 
   it('adds FlexInfer template nodes with runtime contracts', async () => {
-    const fetchMock = vi.fn()
+    const getMock = vi.fn()
       .mockRejectedValueOnce(new Error('unsupported scheme'))
       .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+        data: {
           tools: [
             {
               name: 'flexinfer__flexinfer_proxy_models',
@@ -276,9 +278,9 @@ describe('NodePalette', () => {
               description: 'Activate model',
             },
           ],
-        }),
+        },
       });
-    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(apiService.httpClient.get).mockImplementation(getMock);
 
     render(<NodePalette />);
 

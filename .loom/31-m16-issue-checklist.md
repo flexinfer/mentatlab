@@ -66,13 +66,13 @@ Execution checklist for Mission Control functional UX standardization.
   - `services/frontend/src/stores/streaming/*`
   - `services/frontend/src/hooks/useStreamingTransport.ts`
 - Tasks:
-  - [ ] Remove direct `/api/v1/streams` polling loop from canvas.
-  - [ ] Remove direct `new WebSocket(...)` lifecycle in canvas.
-  - [ ] Subscribe canvas to store/session data populated by connection authority.
+  - [x] Remove direct `/api/v1/streams` polling loop from canvas.
+  - [x] Remove direct `new WebSocket(...)` lifecycle in canvas.
+  - [x] Subscribe canvas to store/session data populated by connection authority.
 - Acceptance:
-  - [ ] Canvas still renders active stream visuals.
-  - [ ] No duplicate websocket clients created by canvas.
-  - [ ] `npm test -- --run --reporter=dot` passes in `services/frontend`.
+  - [x] Canvas still renders active stream visuals.
+  - [x] No duplicate websocket clients created by canvas.
+  - [x] `npm test -- --run --reporter=dot` passes in `services/frontend`.
 
 ## Issue 4: Normalize URL Defaults and Kill `localhost:8000` Drift
 
@@ -85,13 +85,13 @@ Execution checklist for Mission Control functional UX standardization.
   - `services/frontend/src/services/streaming/orchestratorSSE.ts`
   - `services/frontend/src/services/api/websocketClient.ts`
 - Tasks:
-  - [ ] Replace `localhost:8000` defaults in active code paths.
-  - [ ] Centralize base URL derivation through config helpers.
-  - [ ] Keep dev fallback behavior explicit and documented.
+  - [x] Replace `localhost:8000` defaults in active code paths.
+  - [x] Centralize base URL derivation through config helpers.
+  - [x] Keep dev fallback behavior explicit and documented.
 - Acceptance:
-  - [ ] Search check has no active-path `localhost:8000` defaults.
-  - [ ] Local dev works with gateway `8080` and orchestrator `7070`.
-  - [ ] Add/update unit tests for URL resolver behavior.
+  - [x] Search check has no active-path `localhost:8000` defaults.
+  - [x] Local dev works with gateway `8080` and orchestrator `7070`.
+  - [x] Add/update unit tests for URL resolver behavior.
 
 ## Issue 5: Resolve Legacy `/streaming` Route Strategy
 
@@ -103,12 +103,12 @@ Execution checklist for Mission Control functional UX standardization.
   - `services/frontend/src/components/StreamingPage.new.tsx`
   - `services/frontend/src/config/features.ts`
 - Tasks:
-  - [ ] Decide: remove route or gate behind feature flag.
-  - [ ] If gated, add clear non-primary labeling.
-  - [ ] Update routing tests accordingly.
+  - [x] Decide: remove route or gate behind feature flag.
+  - [x] If gated, add clear non-primary labeling.
+  - [x] Update routing tests accordingly.
 - Acceptance:
-  - [ ] Primary path is unambiguous (`/` Mission Control).
-  - [ ] No accidental navigation to legacy path in normal flow.
+  - [x] Primary path is unambiguous (`/` Mission Control).
+  - [x] No accidental navigation to legacy path in normal flow.
 
 ## Issue 6: Visual Token and Panel Chrome Standardization
 
@@ -138,13 +138,13 @@ Execution checklist for Mission Control functional UX standardization.
   - `services/frontend/src/services/api/__tests__/*`
   - `services/frontend/src/config/__tests__/*` (new if needed)
 - Tasks:
-  - [ ] Add test that only one `ConnectionStatusBanner` renders in error state.
-  - [ ] Add test that retry calls unified connect action.
-  - [ ] Add tests for URL resolver defaults.
+  - [x] Add test that only one `ConnectionStatusBanner` renders in error state.
+  - [x] Add test that retry calls unified connect action.
+  - [x] Add tests for URL resolver defaults.
 - Acceptance:
-  - [ ] Tests fail on banner duplication regressions.
-  - [ ] Tests fail on `8000` fallback regressions.
-  - [ ] Full frontend test suite remains green.
+  - [x] Tests fail on banner duplication regressions.
+  - [x] Tests fail on `8000` fallback regressions.
+  - [x] Full frontend test suite remains green.
 
 ## Issue 8: Visual QA Snapshot Pass
 
