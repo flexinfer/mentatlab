@@ -73,10 +73,11 @@ Mission Control currently looks feature-rich but behaves inconsistently under re
    - Source: `services/frontend/tailwind.config.js:18`
    - Source: `services/frontend/tailwind.config.js:19`
 10. Baseline quality gates are green but noisy:
-   - TypeScript lint pass: `npm run lint` (frontend),
-   - tests pass: `49 files`, `713 tests`.
-   - Source (command): `npm run lint` in `services/frontend`
-   - Source (command): `npm test -- --run --reporter=dot` in `services/frontend`
+
+- TypeScript lint pass: `npm run lint` (frontend),
+- tests pass: `49 files`, `713 tests`.
+- Source (command): `npm run lint` in `services/frontend`
+- Source (command): `npm test -- --run --reporter=dot` in `services/frontend`
 
 ### Assumptions
 
@@ -156,6 +157,7 @@ MentatLab docs were linked externally from the FlexInfer product surface (`gitla
 ## Method
 
 Five parallel exploration agents examined:
+
 1. All planning/roadmap/milestone documents (15+ docs)
 2. Go services code (gateway-go, orchestrator-go) with test execution
 3. Frontend code (React + ReactFlow + Mission Control)
@@ -168,26 +170,29 @@ Five parallel exploration agents examined:
 
 ### 1. Documentation vs Reality Gap
 
-| Claim (Docs) | Reality (Code) | Source |
-|---|---|---|
-| v1.0 "complete" including WASM runtime | No WASM code exists anywhere | `ROADMAP.md:1-20`, `v1.0_milestone_spec.md` |
-| PKI infrastructure and attestations | No PKI code exists | `v1.0_milestone_spec.md:1047-1070` |
-| Multi-language SDKs (Rust, AssemblyScript, TinyGo) | No SDK code exists | `v1.0_milestone_spec.md:1057-1059` |
-| Agent Marketplace (v1.1) | No marketplace code | `v1.1_milestone_spec.md` |
-| Distributed tracing + cost metering (v2.0) | No implementation | `v2.0_milestone_spec.md` |
-| 10 enhancements complete | Verified in code | `ENHANCEMENTS_SUMMARY.md` |
+| Claim (Docs)                                       | Reality (Code)               | Source                                      |
+| -------------------------------------------------- | ---------------------------- | ------------------------------------------- |
+| v1.0 "complete" including WASM runtime             | No WASM code exists anywhere | `ROADMAP.md:1-20`, `v1.0_milestone_spec.md` |
+| PKI infrastructure and attestations                | No PKI code exists           | `v1.0_milestone_spec.md:1047-1070`          |
+| Multi-language SDKs (Rust, AssemblyScript, TinyGo) | No SDK code exists           | `v1.0_milestone_spec.md:1057-1059`          |
+| Agent Marketplace (v1.1)                           | No marketplace code          | `v1.1_milestone_spec.md`                    |
+| Distributed tracing + cost metering (v2.0)         | No implementation            | `v2.0_milestone_spec.md`                    |
+| 10 enhancements complete                           | Verified in code             | `ENHANCEMENTS_SUMMARY.md`                   |
 
 **Docs that are accurate:**
+
 - `ENHANCEMENTS_SUMMARY.md` - reflects actual completed frontend features
 - `docs/mvp-roadmap.md` - realistic 90-day plan for Mission Control features
 
 **Docs that are aspirational/stale:**
+
 - `v1.0_milestone_spec.md` - 14-week WASM+PKI plan, zero implementation
 - `v1.1_milestone_spec.md` - Marketplace with PostgreSQL/Elasticsearch, zero implementation
 - `v2.0_milestone_spec.md` - Observability platform, zero implementation
 - `ROADMAP.md` - Claims v1.0 complete, overstates what exists
 
 **Disconnected docs:**
+
 - MVP roadmap and milestone specs describe different products
 - Feature flags in MVP roadmap don't match feature flags in code
 - Reconciliation docs (Feb 12-14) created GitLab issues but didn't set milestones
@@ -195,6 +200,7 @@ Five parallel exploration agents examined:
 ### 2. Go Services (Production Target)
 
 **Gateway-Go** (`services/gateway-go/`) - **FUNCTIONAL**
+
 - WebSocket hub with stream filtering, auth, origin validation
 - Reverse proxy to orchestrator with auth header forwarding
 - Middleware: auth (Cloudflare Access JWT), rate limiting, CORS, security headers
@@ -203,6 +209,7 @@ Five parallel exploration agents examined:
 - Source: `services/gateway-go/main.go`, `services/gateway-go/hub/`, `services/gateway-go/middleware/`
 
 **Orchestrator-Go** (`services/orchestrator-go/`) - **FUNCTIONAL with gaps**
+
 - Two parallel code paths exist:
   - `internal/` - Mature: DAG scheduler with foreach loops, conditional execution, expression evaluation, Redis/memory runstore, agent registry, K8s job driver, manifest validation
   - `engine/` - MVP stub: `time.Sleep(1 * time.Second)` simulation, no real execution
@@ -217,12 +224,14 @@ Five parallel exploration agents examined:
 ### 3. Frontend
 
 **Architecture** - **COHERENT but incomplete wiring**
+
 - React + Vite + Tailwind + ReactFlow canvas
 - Zustand store with domain-specific slices (layout, canvas, run state)
 - Mission Control layout with compound components (TopBar, Sidebar, Canvas, Panels)
 - Feature flags in `src/config/features.ts`
 
 **What works:**
+
 - Canvas with custom nodes: Agent, ForEach, Conditional, plus standard nodes
 - Overlays: Contract, Lineage, Policy (all implemented with real UI)
 - Panels: Console (virtualized for 100K+ events), Issues (with linter), Timeline
@@ -232,6 +241,7 @@ Five parallel exploration agents examined:
 - Dark/light mode
 
 **What's incomplete/broken:**
+
 - API clients point to backend endpoints that may not all be wired
 - E2E tests exist but are basic (healthcheck + orchestrator smoke tests)
 - Unit test coverage: ~1,138 LOC of test code, limited scope
@@ -251,12 +261,12 @@ Source: `services/frontend/package.json`, `services/frontend/src/components/miss
 
 ### 5. Agents
 
-| Agent | Status | LOC | Notes |
-|---|---|---|---|
-| Echo | Functional | 64 | Reference implementation, NDJSON output |
-| Psyche-Sim | Functional | 972 | Sophisticated streaming simulation, vLLM integration |
+| Agent       | Status       | LOC   | Notes                                                        |
+| ----------- | ------------ | ----- | ------------------------------------------------------------ |
+| Echo        | Functional   | 64    | Reference implementation, NDJSON output                      |
+| Psyche-Sim  | Functional   | 972   | Sophisticated streaming simulation, vLLM integration         |
 | CTM-CogPack | Experimental | 1200+ | Research-grade cognitive architecture, partially implemented |
-| Common lib | Production | 82 | NDJSON emission shared by all agents |
+| Common lib  | Production   | 82    | NDJSON emission shared by all agents                         |
 
 **Agent contract:** stdin JSON -> NDJSON events to stdout -> final JSON result. Well-defined but only 2 functional agents exist.
 
@@ -284,6 +294,7 @@ Functional Typer CLI with agent scaffolding (python/nodejs/rust templates) and r
 5. **Frontend serves via `vite preview`** in production Dockerfile (should use nginx/caddy)
 
 **What works:**
+
 - Pre-commit hooks: go vet, go test, npm lint, YAML validation
 - CI lint + test stages pass for Go services
 - K8s manifests are well-structured with RBAC, PDB, HPA, NetworkPolicies, ServiceMonitor
@@ -343,3 +354,17 @@ Document that docker-compose = Python (dev), K8s = Go (prod), and maintain both.
 - [S17] `agents/common/emit.py` - Agent NDJSON protocol
 - [S18] `agents/psyche-sim/src/main.py` - Psyche-Sim streaming agent
 - [S19] `docs/roadmap-reconciliation-2026-02-14.md` - GitLab issue mapping
+
+## 2026-03-07 Addendum: Zero-Latency Native Execution for LLMs (INT-008)
+
+### Problem
+
+When scheduling LLM inference calls via a generic DAG orchestrator, spinning up isolated worker pods per inference introduces significant scheduling latency (anti-pattern) for operations that take only milliseconds to process (HTTP API calls).
+
+### Solution Pattern
+
+Follow the control-plane pattern used by Temporal and LangGraph:
+
+- **Fast-Path HTTP Executions**: Instead of passing `flexinfer__inference_chat` nodes to the K8s/Local scheduled driver, the Orchestrator's Go backend natively intercepts them.
+- **Native Execution**: The Orchestrator performs the synchronous HTTP request to the FlexInfer proxy itself.
+- **Result Simulation**: The Orchestrator constructs the standardized NDJSON `output` payload and emits it to the RunStore directly, making it completely transparent to downstream dependent nodes while bypassing all container/subprocess overhead.

@@ -38,7 +38,7 @@ class OrchestratorService {
    * Supports both legacy (mode arg) and new (request body) signatures.
    */
   async createRun(
-    requestOrMode?: CreateRunRequest | RunMode
+    requestOrMode?: CreateRunRequest | RunMode,
   ): Promise<CreateRunResponse> {
     if (typeof requestOrMode === "string") {
       // Legacy: just mode
@@ -57,7 +57,7 @@ class OrchestratorService {
 
   async getRun(runId: string): Promise<Run> {
     const res = await this.client.get(
-      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}`
+      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}`,
     );
     const payload = this.extract<any>(res);
     // server might return { run: {...} } or the run object directly
@@ -77,45 +77,12 @@ class OrchestratorService {
     }
   }
 
-  async listCheckpoints(runId: string): Promise<Checkpoint[]> {
-    const res = await this.client.get(
-      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/checkpoints`
-    );
-    const payload = this.extract<any>(res);
-    return (payload.checkpoints ?? payload) as Checkpoint[];
-  }
-
-  async postCheckpoint(
-    runId: string,
-    payload: { type: string; data?: unknown }
-  ): Promise<{ checkpointId: string }> {
-    const res = await this.client.post(
-      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/checkpoints`,
-      payload
-    );
-    return this.extract<{ checkpointId: string }>(res);
-  }
-
-  /**
-   * Retry failed nodes in a run.
-   */
-  async retryNodes(
-    runId: string,
-    nodeIds: string[]
-  ): Promise<{ status: RunStatus; retriedNodes: string[] }> {
-    const res = await this.client.post(
-      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/retry`,
-      { nodeIds }
-    );
-    return this.extract<{ status: RunStatus; retriedNodes: string[] }>(res);
-  }
-
   /**
    * List artifacts for a run.
    */
   async listArtifacts(runId: string): Promise<Artifact[]> {
     const res = await this.client.get(
-      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/artifacts`
+      `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/artifacts`,
     );
     const payload = this.extract<any>(res);
     return (payload.artifacts ?? payload) as Artifact[];
@@ -127,7 +94,7 @@ class OrchestratorService {
   async uploadArtifact(
     runId: string,
     file: File,
-    metadata?: { name?: string; type?: string }
+    metadata?: { name?: string; type?: string },
   ): Promise<Artifact> {
     const formData = new FormData();
     formData.append("file", file);
@@ -137,7 +104,7 @@ class OrchestratorService {
     const res = await this.client.post(
       `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/artifacts`,
       formData,
-      { headers: { "Content-Type": "multipart/form-data" } }
+      { headers: { "Content-Type": "multipart/form-data" } },
     );
     return this.extract<Artifact>(res);
   }
@@ -157,7 +124,7 @@ class OrchestratorService {
   async getArtifactDownloadUrl(uri: string): Promise<{ url: string }> {
     const res = await this.client.post(
       `${this.baseUrl()}/artifacts/download-url`,
-      { uri }
+      { uri },
     );
     return this.extract<{ url: string }>(res);
   }
@@ -170,13 +137,13 @@ class OrchestratorService {
     try {
       const res = await this.client.post(
         `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/cancel`,
-        {}
+        {},
       );
       return this.extract<{ status: RunStatus }>(res);
     } catch (e: any) {
       if (e.status === 404 || e.status === 405) {
         const res = await this.client.delete(
-          `${this.baseUrl()}/runs/${encodeURIComponent(runId)}`
+          `${this.baseUrl()}/runs/${encodeURIComponent(runId)}`,
         );
         return this.extract<{ status: RunStatus }>(res);
       }
@@ -186,10 +153,13 @@ class OrchestratorService {
 
   // --- Gate Operations ---
 
-  async approveGate(runId: string, nodeId: string): Promise<{ status: string }> {
+  async approveGate(
+    runId: string,
+    nodeId: string,
+  ): Promise<{ status: string }> {
     const res = await this.client.post(
       `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/approve`,
-      {}
+      {},
     );
     return this.extract<{ status: string }>(res);
   }
@@ -197,7 +167,7 @@ class OrchestratorService {
   async rejectGate(runId: string, nodeId: string): Promise<{ status: string }> {
     const res = await this.client.post(
       `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(nodeId)}/reject`,
-      {}
+      {},
     );
     return this.extract<{ status: string }>(res);
   }
@@ -207,17 +177,20 @@ class OrchestratorService {
   async cloneRun(runId: string, autoStart = false): Promise<CreateRunResponse> {
     const res = await this.client.post(
       `${this.baseUrl()}/runs/${encodeURIComponent(runId)}/clone`,
-      { auto_start: autoStart }
+      { auto_start: autoStart },
     );
     return this.extract<CreateRunResponse>(res);
   }
 
   // --- Flow Run ---
 
-  async runFlow(flowId: string, opts?: { timeout?: string; input_params?: Record<string, unknown> }): Promise<CreateRunResponse> {
+  async runFlow(
+    flowId: string,
+    opts?: { timeout?: string; input_params?: Record<string, unknown> },
+  ): Promise<CreateRunResponse> {
     const res = await this.client.post(
       `${this.baseUrl()}/flows/${encodeURIComponent(flowId)}/run`,
-      opts || {}
+      opts || {},
     );
     return this.extract<CreateRunResponse>(res);
   }
@@ -239,7 +212,7 @@ class OrchestratorService {
    * Used by MissionControlLayout for visual testing.
    */
   async startDemoRunAndStream(
-    handlers: any
+    handlers: any,
   ): Promise<{ runId: string; sseUrl?: string; stop: () => void }> {
     const plan: RunPlan = {
       nodes: [

@@ -121,15 +121,6 @@ func CreateCommandResolver(cfg *config.Config) scheduler.CommandResolver {
 		if len(node.Command) > 0 {
 			return node.Command
 		}
-		// Fallback: resolve agent by convention from agents/ directory.
-		// Agent IDs use dotted notation (e.g. "mentatlab.echo") mapping to agents/echo/main.py.
-		if node.AgentID != "" {
-			name := node.AgentID
-			if idx := strings.LastIndex(name, "."); idx >= 0 {
-				name = name[idx+1:]
-			}
-			return []string{"python", "agents/" + name + "/main.py"}
-		}
 		return nil
 	}
 }

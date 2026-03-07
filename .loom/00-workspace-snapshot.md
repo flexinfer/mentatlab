@@ -1,17 +1,29 @@
 # Workspace Snapshot
 
-- Generated: 2026-02-20T09:27:55-05:00
+- Generated: 2026-03-07T09:36:12-05:00
 - Root: `/Users/cblevins/workspace/services/mentatlab`
 - Git toplevel: `/Users/cblevins/workspace/services/mentatlab`
-- Platform: `macOS-26.3-arm64-arm-64bit`
+- Platform: `macOS-26.4-arm64-arm-64bit`
 - Python: `3.12.11`
 
 ## Git
 ```
-## main...origin/main
- M .loom/tech-debt-backlog.md
- M ROADMAP.md
-?? docs/roadmap-reconciliation-2026-02-20.md
+## codex/fix-mission-control-layout...origin/codex/fix-mission-control-layout
+ M .loom/00-index.md
+ M .loom/00-mcp-inventory.md
+ M .loom/00-workspace-snapshot.md
+ M .loom/30-implementation-plan.md
+?? docs/roadmap-reconciliation-2026-02-25.md
+?? docs/roadmap-reconciliation-2026-02-26.md
+?? docs/roadmap-reconciliation-2026-02-27.md
+?? docs/roadmap-reconciliation-2026-03-01.md
+?? docs/roadmap-reconciliation-2026-03-02.md
+?? docs/roadmap-reconciliation-2026-03-03.md
+?? docs/roadmap-reconciliation-2026-03-04.md
+?? docs/roadmap-reconciliation-2026-03-05.md
+?? docs/roadmap-reconciliation-2026-03-06.md
+?? docs/roadmap-reconciliation-2026-03-07.md
+?? sdk/typescript/package-lock.json
 ```
 
 ### Remotes
@@ -22,13 +34,13 @@ gitlab-vm	git@gitlab.flexinfer.ai:services/mentatlab.git (fetch)
 gitlab-vm	git@gitlab.flexinfer.ai:services/mentatlab.git (push)
 old-origin	https://github.com/flexinfer/mentatlab.git (fetch)
 old-origin	https://github.com/flexinfer/mentatlab.git (push)
-origin	https://gitlab.flexinfer.ai/services/mentatlab.git (fetch)
-origin	https://gitlab.flexinfer.ai/services/mentatlab.git (push)
+origin	https://oauth2:glpat-vFFCVHmo_LOPh6lq1tk3p286MQp1OjEH.01.0w0ycoylq@gitlab.flexinfer.ai/services/mentatlab.git (fetch)
+origin	https://oauth2:glpat-vFFCVHmo_LOPh6lq1tk3p286MQp1OjEH.01.0w0ycoylq@gitlab.flexinfer.ai/services/mentatlab.git (push)
 ```
 
 ### HEAD
 ```
-a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
+4c59822 Fix mission control view layouts
 ```
 
 ## Top-Level Layout
@@ -49,9 +61,11 @@ a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
 - `examples/`
 - `k8s/`
 - `logs/`
+- `node_modules/`
 - `observability/`
 - `schemas/`
 - `scripts/`
+- `sdk/`
 - `services/`
 - `tests/`
 
@@ -109,8 +123,10 @@ a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
 - `.loom/10-research.md`
 - `.loom/20-product-spec.md`
 - `.loom/30-implementation-plan.md`
+- `.loom/31-m16-issue-checklist.md`
 - `.loom/40-decisions.md`
 - `.loom/50-worklog.md`
+- `.loom/m16-visual-qa-notes.md`
 - `.loom/tech-debt-backlog.md`
 - `.loom/tech-debt-inventory.json`
 - `.loom/tech-debt-inventory.md`
@@ -131,7 +147,9 @@ a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
 - `ROADMAP.md`
 - `agents/__init__.py`
 - `agents/common/__init__.py`
+- `agents/common/base.py`
 - `agents/common/emit.py`
+- `agents/common/input_contract.py`
 - `agents/ctm-cogpack/.dockerignore`
 - `agents/ctm-cogpack/Dockerfile`
 - `agents/ctm-cogpack/manifest.yaml`
@@ -150,6 +168,14 @@ a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
 - `agents/ctm-cogpack/ui/remoteEntry.js`
 - `agents/echo/__init__.py`
 - `agents/echo/main.py`
+- `agents/flexinfer-adapter/Dockerfile`
+- `agents/flexinfer-adapter/__init__.py`
+- `agents/flexinfer-adapter/main.py`
+- `agents/flexinfer-adapter/manifest.yaml`
+- `agents/flexinfer-adapter/requirements.txt`
+- `agents/loom-mcp-executor/__init__.py`
+- `agents/loom-mcp-executor/main.py`
+- `agents/loom-mcp-executor/test_main.py`
 - `agents/psyche-sim/.dockerignore`
 - `agents/psyche-sim/Dockerfile`
 - `agents/psyche-sim/README.md`
@@ -160,6 +186,7 @@ a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
 - `agents/psyche-sim/pyproject.toml`
 - `agents/psyche-sim/src/main.py`
 - `agents/psyche-sim/ui/remoteEntry.js`
+- `agents/test_input_contract.py`
 - `archive/gateway-python/.pdm-python`
 - `archive/gateway-python/Dockerfile`
 - `archive/gateway-python/__init__.py`
@@ -228,6 +255,11 @@ a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
 - `cli/mentatctl/templates/rust/Dockerfile`
 - `cli/mentatctl/templates/rust/manifest.yaml`
 - `cli/mentatctl/templates/rust/src/main.rs`
+- `cli/mentatctl/templates/typescript/Dockerfile`
+- `cli/mentatctl/templates/typescript/manifest.yaml`
+- `cli/mentatctl/templates/typescript/package.json`
+- `cli/mentatctl/templates/typescript/src/main.ts`
+- `cli/mentatctl/templates/typescript/tsconfig.json`
 - `docker-compose.dev.yml`
 - `docker-compose.yml`
 - `docs/README.md`
@@ -277,24 +309,6 @@ a7fff14 refactor(tech-debt): split scheduler.go into focused files (DEBT-008)
 - `docs/plans/2025-10-28-phase-1-ui-cogpaks.md`
 - `docs/plans/2025-10-28-phase-2-deprecations.md`
 - `docs/plans/2025-10-28-phase-3-runtime-polish.md`
-- `docs/plans/2025-10-28-phase-4-observability-and-scale.md`
-- `docs/pr/PR-D2.md`
-- `docs/pr/demo-orchestrator.md`
-- `docs/references/agents-contract.md`
-- `docs/references/frontend-orchestrator.md`
-- `docs/references/history/README.md`
-- `docs/references/orchestrator-api.md`
-- `docs/roadmap-reconciliation-2026-02-12.md`
-- `docs/roadmap-reconciliation-2026-02-14.md`
-- `docs/roadmap-reconciliation-2026-02-15.md`
-- `docs/roadmap-reconciliation-2026-02-16.md`
-- `docs/roadmap-reconciliation-2026-02-17.md`
-- `docs/roadmap-reconciliation-2026-02-19.md`
-- `docs/site/README.md`
-- `docs/site/api-reference.md`
-- `docs/site/architecture.md`
-- `docs/site/deployment.md`
-- `docs/site/getting-started.md`
 - `…`
 
 ## AGENTS.md Files

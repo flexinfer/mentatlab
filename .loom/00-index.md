@@ -35,6 +35,14 @@
 - [ ] M14: Frontend UX & Performance (artifact browser, console virtualization, large DAG perf)
 - [ ] M15: E2E Testing & CI Hardening (smoke tests, Playwright suite, load regression gate)
 
+## Key Findings (2026-03-03 Integration Reality Check)
+
+1. **M11 vision is partially scaffolded in UI only** - MCP node palette metadata exists, but backend MCP endpoints and runtime execution path are not complete.
+2. **Frontend/back-end run API contracts have drifted** - checkpoint/retry calls in UI do not map to current orchestrator routes.
+3. **Agent execution contract is inconsistent** - orchestrator writes `AGENT_INPUT` while Python agents read stdin or `INPUT_SPEC`/`INPUT_CONTEXT`.
+4. **Loom inventory is healthy, but codebase-memory execution path is not** - catalog discovery works; `codebase_memory` calls fail due backend network route.
+5. **Recovery backlog established in implementation plan** - prioritized `INT-001` .. `INT-011` tasks define the path to composable MCP + agent-context + FlexInfer workflows.
+
 ## Key Findings (2026-02-19)
 
 1. **M0-M9 Complete** — Go-first backend, CI/CD, core loop, workflow features, hardening, dev experience, multi-user, API maturity, frontend quality, observability & tracing

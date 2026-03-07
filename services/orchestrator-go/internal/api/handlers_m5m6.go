@@ -592,11 +592,6 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 			}
 		}
 		if len(d.Input) > 0 && string(d.Input) != "null" {
-			if plan.Nodes[i].Env == nil {
-				plan.Nodes[i].Env = make(map[string]string)
-			}
-			plan.Nodes[i].Env["AGENT_INPUT"] = string(d.Input)
-
 			var parsedInput any
 			if err := json.Unmarshal(d.Input, &parsedInput); err == nil {
 				if asMap, ok := parsedInput.(map[string]any); ok {

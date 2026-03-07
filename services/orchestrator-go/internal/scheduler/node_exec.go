@@ -1,11 +1,16 @@
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
+	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -292,9 +297,29 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 		}
 	}
 
+	// Populate global run and predecessor context into INPUT_CONTEXT
+	if env["INPUT_CONTEXT"] == "" {
+		evalEnv := s.buildExprEnvironment(ctx, rctx, spec)
+		if b, err := json.Marshal(evalEnv); err == nil {
+			env["INPUT_CONTEXT"] = string(b)
+		}
+	}
+
 	timeout := 0.0
 	if spec.Timeout > 0 {
 		timeout = spec.Timeout.Seconds()
+	}
+
+	// [NEW] Fast-Path Native Execution for FlexInfer inferences
+	if spec.MCP != nil && spec.MCP.ToolName == "flexinfer__inference_chat" {
+		exitCode, err := s.runFlexInferNode(ctx, rctx, nodeID, spec, env)
+		if err != nil {
+			return exitCode, err
+		}
+		if exitCode == 0 {
+			s.captureNodeOutputs(ctx, rctx.runID, nodeID)
+		}
+		return exitCode, nil
 	}
 
 	exitCode, err := s.driver.RunNode(ctx, rctx.runID, nodeID, cmd, env, timeout)
@@ -332,5 +357,136 @@ func (e *forEachExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCo
 	if err != nil {
 		return 1, err
 	}
+	return 0, nil
+}
+
+// runFlexInferNode executes a flexinfer__inference_chat node natively via HTTP, bypassing pod scheduling.
+func (s *Scheduler) runFlexInferNode(ctx context.Context, rctx *runContext, nodeID string, spec *types.NodeSpec, env map[string]string) (int, error) {
+	proxyURL := strings.TrimSpace(os.Getenv("FLEXINFER_PROXY_URL"))
+	model := strings.TrimSpace(os.Getenv("FLEXINFER_MODEL"))
+	apiKey := strings.TrimSpace(os.Getenv("FLEXINFER_API_KEY"))
+
+	if spec.MCP != nil && len(spec.MCP.ToolArgs) > 0 {
+		if rawURL, ok := spec.MCP.ToolArgs["proxy_url"].(string); ok && strings.TrimSpace(rawURL) != "" {
+			proxyURL = strings.TrimSpace(rawURL)
+		}
+		if rawModel, ok := spec.MCP.ToolArgs["model"].(string); ok && strings.TrimSpace(rawModel) != "" {
+			model = strings.TrimSpace(rawModel)
+		}
+		if rawKey, ok := spec.MCP.ToolArgs["api_key"].(string); ok && strings.TrimSpace(rawKey) != "" {
+			apiKey = strings.TrimSpace(rawKey)
+		}
+	}
+
+	if proxyURL == "" || model == "" {
+		err := fmt.Errorf("missing flexinfer configuration: proxy_url and model must be set")
+		s.emitNodeStatus(ctx, rctx.runID, nodeID, "failed", map[string]interface{}{
+			"reason": "flexinfer_config_missing",
+			"error":  err.Error(),
+		})
+		return 1, err
+	}
+
+	var messages interface{}
+	if spec.MCP != nil {
+		if msg, hasMsg := spec.MCP.ToolArgs["messages"]; hasMsg {
+			messages = msg
+		} else if prompt, ok := spec.MCP.ToolArgs["prompt"].(string); ok && prompt != "" {
+			messages = []map[string]string{{"role": "user", "content": prompt}}
+		}
+	}
+	if messages == nil {
+		prompt := strings.TrimSpace(os.Getenv("FLEXINFER_PROMPT"))
+		if prompt != "" {
+			messages = []map[string]string{{"role": "user", "content": prompt}}
+		} else {
+			err := fmt.Errorf("missing messages or prompt for flexinfer inference")
+			s.emitNodeStatus(ctx, rctx.runID, nodeID, "failed", map[string]interface{}{"error": err.Error()})
+			return 1, err
+		}
+	}
+
+	bodyMap := map[string]interface{}{
+		"model":    model,
+		"messages": messages,
+	}
+	if spec.MCP != nil {
+		if temp, ok := spec.MCP.ToolArgs["temperature"]; ok {
+			bodyMap["temperature"] = temp
+		}
+		if mt, ok := spec.MCP.ToolArgs["max_tokens"]; ok {
+			bodyMap["max_tokens"] = mt
+		}
+	}
+
+	bodyBytes, err := json.Marshal(bodyMap)
+	if err != nil {
+		return 1, err
+	}
+
+	endpoint := strings.TrimRight(proxyURL, "/") + "/v1/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return 1, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	start := time.Now()
+	client := &http.Client{Timeout: 30 * time.Second}
+	if spec.Timeout > 0 {
+		client.Timeout = spec.Timeout
+	}
+
+	resp, err := client.Do(req)
+	durationSeconds := time.Since(start).Seconds()
+
+	if err != nil {
+		s.emitEvent(ctx, rctx.runID, "output", map[string]interface{}{
+			"key": "error",
+			"value": map[string]interface{}{
+				"error":     "flexinfer HTTP call failed",
+				"tool_name": "flexinfer__inference_chat",
+				"details":   err.Error(),
+			},
+		}, nodeID, "error")
+		return 1, err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var parsedResult interface{}
+	if err := json.Unmarshal(respBody, &parsedResult); err != nil {
+		parsedResult = map[string]string{"raw": string(respBody)}
+	}
+
+	payload := map[string]interface{}{
+		"tool_name": "flexinfer__inference_chat",
+		"tool_args": spec.MCP.ToolArgs,
+		"result":    parsedResult,
+		"mentat_meta": map[string]interface{}{
+			"seconds": durationSeconds,
+			"model":   "orchestrator-native/1.0",
+		},
+	}
+	if spec.MCP != nil {
+		payload["mcp_server"] = spec.MCP.Server
+	}
+	if resp.StatusCode >= 400 {
+		payload["stderr"] = fmt.Sprintf("HTTP ERROR %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	s.emitEvent(ctx, rctx.runID, "output", map[string]interface{}{
+		"key":   "result",
+		"value": payload,
+	}, nodeID, "")
+
+	if resp.StatusCode >= 400 {
+		return 1, fmt.Errorf("flexinfer returned status %d", resp.StatusCode)
+	}
+
 	return 0, nil
 }
