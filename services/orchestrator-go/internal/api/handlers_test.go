@@ -259,6 +259,53 @@ func TestGetAgentNotFound(t *testing.T) {
 	}
 }
 
+func TestReloadAgent(t *testing.T) {
+	srv := newTestServer(t)
+
+	// Create an agent first
+	payload := registry.CreateAgentRequest{
+		ID:      "reload.test",
+		Name:    "Reload Test Agent",
+		Version: "1.0.0",
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/agents", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("setup: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Reload the agent
+	req = httptest.NewRequest("POST", "/api/v1/agents/reload.test/reload", nil)
+	w = httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]interface{}
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["reloaded"] != true {
+		t.Fatalf("expected reloaded=true, got %v", resp["reloaded"])
+	}
+}
+
+func TestReloadAgentNotFound(t *testing.T) {
+	srv := newTestServer(t)
+	req := httptest.NewRequest("POST", "/api/v1/agents/nonexistent/reload", nil)
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 // --- Flow CRUD ---
 
 func TestCreateFlow(t *testing.T) {

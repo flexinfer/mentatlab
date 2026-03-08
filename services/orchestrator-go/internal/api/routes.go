@@ -81,6 +81,7 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/agents/{id}", s.handlers.GetAgent).Methods("GET")
 	api.HandleFunc("/agents/{id}", s.handlers.UpdateAgent).Methods("PUT")
 	api.HandleFunc("/agents/{id}", s.handlers.DeleteAgent).Methods("DELETE")
+	api.HandleFunc("/agents/{id}/reload", s.handlers.ReloadAgent).Methods("POST")
 
 	// Agent scheduling
 	api.HandleFunc("/agents/schedule", s.handlers.ScheduleAgent).Methods("POST")

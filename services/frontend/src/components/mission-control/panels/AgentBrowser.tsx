@@ -1,10 +1,8 @@
-/**
- * AgentBrowser - Panel for browsing and inspecting registered agents
- */
-
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAgentList } from '@/hooks/useAgentList';
 import type { Agent } from '@/services/api/agentService';
+import { getAgentService } from '@/services/api/agentService';
+import { httpClient } from '@/services/api/httpClient';
 import { ManifestValidatorOverlay } from '@/components/mission-control/overlays/ManifestValidatorOverlay';
 
 function StatusBadge({ status }: { status: Agent['status'] }) {
@@ -20,16 +18,44 @@ function StatusBadge({ status }: { status: Agent['status'] }) {
 }
 
 function AgentDetail({ agent, onBack }: { agent: Agent; onBack: () => void }) {
+  const [reloadStatus, setReloadStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  const handleReload = useCallback(async () => {
+    setReloadStatus('loading');
+    try {
+      const service = getAgentService(httpClient, null);
+      await service.reloadAgent(agent.id);
+      setReloadStatus('success');
+      setTimeout(() => setReloadStatus('idle'), 2000);
+    } catch {
+      setReloadStatus('error');
+      setTimeout(() => setReloadStatus('idle'), 3000);
+    }
+  }, [agent.id]);
+
   return (
     <div className="h-full flex flex-col">
-      <div className="px-3 py-2 border-b flex items-center gap-2">
+      <div className="px-3 py-2 border-b flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            &larr; Back
+          </button>
+          <span className="text-[11px] font-medium">{agent.name || agent.id}</span>
+        </div>
         <button
-          onClick={onBack}
-          className="text-[11px] text-muted-foreground hover:text-foreground"
+          onClick={handleReload}
+          disabled={reloadStatus === 'loading'}
+          className="text-[11px] px-2 py-0.5 rounded bg-muted hover:bg-muted/70 text-muted-foreground hover:text-foreground disabled:opacity-40 transition-all"
+          data-testid="reload-agent-btn"
         >
-          &larr; Back
+          {reloadStatus === 'loading' && 'Reloading…'}
+          {reloadStatus === 'success' && '✓ Reloaded'}
+          {reloadStatus === 'error' && '✕ Failed'}
+          {reloadStatus === 'idle' && 'Reload'}
         </button>
-        <span className="text-[11px] font-medium">{agent.name || agent.id}</span>
       </div>
       <div className="flex-1 overflow-auto p-3 space-y-3">
         <div className="space-y-1">
