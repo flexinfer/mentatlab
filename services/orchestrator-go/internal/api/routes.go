@@ -133,9 +133,10 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/runstore/info", s.handlers.RunStoreInfo).Methods("GET")
 	api.HandleFunc("/runstore/selfcheck", s.handlers.RunStoreSelfCheck).Methods("GET")
 
-	// MCP tooling inventory
+	// MCP tooling inventory and execution
 	api.HandleFunc("/mcp/tools", s.handlers.ListMCPTools).Methods("GET")
 	api.HandleFunc("/mcp/tools/index", s.handlers.ListMCPToolsIndex).Methods("GET")
+	api.HandleFunc("/mcp/tools/{name}/call", s.handlers.CallMCPTool).Methods("POST")
 
 	// Apply middleware
 	s.router.Use(s.handlers.CORSMiddleware)

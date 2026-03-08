@@ -32,6 +32,12 @@ const mockConnection = vi.hoisted(() => ({
 
 vi.mock('@/stores', () => ({
   useLayoutStore: () => mockLayoutStore,
+  useCanvasStore: () => ({
+    nodes: [],
+    edges: [],
+    setNodes: vi.fn(),
+    setEdges: vi.fn(),
+  }),
   useStreamingStore: (selector?: (s: Record<string, unknown>) => unknown) => {
     const state = { connectionStatus: mockConnection.status, transportType: mockConnection.transport };
     return typeof selector === 'function' ? selector(state) : state;
@@ -44,6 +50,11 @@ vi.mock('../WorkspaceProvider', () => ({
 
 vi.mock('@/components/ui/SaveStatusIndicator', () => ({
   SaveStatusIndicator: () => <div data-testid="save-status">SaveStatus</div>,
+}));
+
+vi.mock('@/utils/loomWorkflowBridge', () => ({
+  exportFlowToLoom: vi.fn(() => ({ name: 'test', steps: [] })),
+  importLoomToFlow: vi.fn(() => ({ nodes: [], edges: [] })),
 }));
 
 vi.mock('@/components/ui/button', () => ({
