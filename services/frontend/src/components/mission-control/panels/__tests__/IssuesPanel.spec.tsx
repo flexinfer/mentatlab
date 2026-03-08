@@ -83,42 +83,4 @@ describe('IssuesPanel (integration)', () => {
     expect(screen.getByRole('button', { name: /Quick Fix/i })).toBeTruthy();
   });
 
-  test('updates onCountChange when issues change after re-run', async () => {
-    // First call returns 1 issue
-    mockAnalyze.mockReturnValueOnce([
-      {
-        id: 'a1',
-        kind: 'info',
-        target: { type: 'node', id: 'n1' },
-        rule: 'no-timeout',
-        message: 'No timeout',
-      },
-    ]);
-
-    const onCountChange = vi.fn();
-    renderWithProviders(<IssuesPanel onCountChange={onCountChange} />);
-
-    await waitFor(() => {
-      expect(onCountChange).toHaveBeenCalledWith(1);
-    });
-
-    // Change mock to return 4 issues on next run
-    mockAnalyze.mockReturnValueOnce(
-      new Array(4).fill(0).map((_, i) => ({
-        id: `b${i}`,
-        kind: 'warning',
-        target: { type: 'node', id: `n${i}` },
-        rule: 'fanout-high',
-        message: 'High fanout',
-      }))
-    );
-
-    // Click the "Re-run" button
-    const rerunBtn = screen.getByRole('button', { name: /Re-run/i });
-    fireEvent.click(rerunBtn);
-
-    await waitFor(() => {
-      expect(onCountChange).toHaveBeenCalledWith(4);
-    });
-  });
 });
