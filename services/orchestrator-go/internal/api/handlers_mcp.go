@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 const (
@@ -194,4 +196,60 @@ func serverFilterOrAll(server string) string {
 		return "all"
 	}
 	return server
+}
+
+// CallMCPTool proxies an executing request to the Loom CLI:
+// loom tools call <name> --json --args '<body_json>'
+func (h *Handlers) CallMCPTool(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	toolName := strings.TrimSpace(vars["name"])
+	if toolName == "" {
+		h.respondError(w, r, http.StatusBadRequest, "tool name is required", nil)
+		return
+	}
+
+	// Read request body as arguments.
+	var args map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&args); err != nil {
+		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
+		return
+	}
+
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		h.respondError(w, r, http.StatusInternalServerError, "failed to parse arguments", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), mcpCLITimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "loom", "tools", "call", toolName, "--json", "--args", string(argsJSON))
+
+	// We want both stdout and stderr (which may contain JSON error details from loom CLI)
+	// but currently loom tools call typically outputs JSON to stdout. We'll grab output.
+	out, err := cmd.CombinedOutput()
+
+	// The loom CLI outputs JSON. We can just pipe its JSON directly to the response.
+	// But let's check if it's valid JSON to ensure we wrap it properly if it's a raw string or error.
+	w.Header().Set("Content-Type", "application/json")
+
+	if err != nil {
+		// If command failed but output is valid JSON (e.g., loom emitted a structured error),
+		// we should still return it with an appropriate HTTP status (e.g., 500 or 400).
+		var structuredErr map[string]interface{}
+		if jsonErr := json.Unmarshal(out, &structuredErr); jsonErr == nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write(out)
+			return
+		}
+
+		// Fallback for non-JSON errors
+		h.respondError(w, r, http.StatusInternalServerError, "mcp tool execution failed", fmt.Errorf("%s: %s", err, string(out)))
+		return
+	}
+
+	// Success case: return the JSON output
+	w.WriteHeader(http.StatusOK)
+	w.Write(out)
 }

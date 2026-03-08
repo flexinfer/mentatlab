@@ -12,9 +12,10 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { useLayoutStore } from '@/stores';
+import { useLayoutStore, useCanvasStore } from '@/stores';
 import { useWorkspace } from './WorkspaceProvider';
 import { useStreamingStore } from '@/stores';
+import { exportFlowToLoom, importLoomToFlow } from '@/utils/loomWorkflowBridge';
 import { StreamConnectionState } from '@/types/streaming';
 import { SaveStatusIndicator } from '@/components/ui/SaveStatusIndicator';
 import type { AutoSaveState } from '@/hooks/useAutoSave';
@@ -61,6 +62,7 @@ export interface TopBarProps {
 
 export function TopBar({ className = '', saveState }: TopBarProps) {
   const { mainView, setMainView, darkMode, toggleDarkMode } = useLayoutStore();
+  const { nodes, edges, setNodes, setEdges } = useCanvasStore();
   const {
     isEnabled,
     setSettingsOpen,
@@ -83,6 +85,54 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
     { mode: 'flow', label: 'Flow' },
     { mode: 'code', label: 'Code' },
   ];
+
+  const handleExportToLoom = async () => {
+    try {
+      const name = window.prompt('Enter Loom Workflow Name:', 'mentatlab-export');
+      if (!name) return;
+      const description = window.prompt('Enter Description:', 'Exported from MentatLab');
+      
+      const payload = exportFlowToLoom({ name, description: description || '' }, nodes, edges);
+      
+      const res = await fetch('/api/v1/mcp/tools/agent_workflow_define/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Failed to export: ${res.statusText}`);
+      }
+      const data = await res.json();
+      alert(`Exported successfully! Response: ${JSON.stringify(data)}`);
+    } catch (e: any) {
+      alert(`Export failed: ${e.message}`);
+    }
+  };
+
+  const handleImportClick = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const json = JSON.parse(event.target?.result as string);
+          const { nodes: newNodes, edges: newEdges } = importLoomToFlow(json);
+          setNodes(newNodes);
+          setEdges(newEdges);
+          alert('Imported Loom workflow successfully');
+        } catch (err: any) {
+          alert(`Import failed: ${err.message}`);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
 
   return (
     <header
@@ -126,8 +176,26 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={startDemoRun}
+            onClick={handleImportClick}
             className="text-xs h-7"
+            title="Import Loom Workflow"
+          >
+            Import
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExportToLoom}
+            className="text-xs h-7"
+            title="Export to Loom Workflow"
+          >
+            Export
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={startDemoRun}
+            className="text-xs h-7 border-l pl-2 ml-1"
             title="Start demo run (Cmd+D)"
           >
             Demo
