@@ -24,7 +24,7 @@ func (h *Handlers) ScheduleAgent(w http.ResponseWriter, r *http.Request) {
 
 	var req types.AgentScheduleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
@@ -77,7 +77,7 @@ func (h *Handlers) ScheduleAgent(w http.ResponseWriter, r *http.Request) {
 
 	runID, err := h.store.CreateRun(ctx, agentID, plan, getOwnerFromRequest(r))
 	if err != nil {
-		h.respondError(w, r,http.StatusInternalServerError, "failed to schedule agent", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to schedule agent", err)
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *Handlers) ScheduleAgent(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ValidateManifest(w http.ResponseWriter, r *http.Request) {
 	var manifest map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&manifest); err != nil {
-		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
@@ -150,7 +150,7 @@ func (h *Handlers) ListAgents(w http.ResponseWriter, r *http.Request) {
 	if h.registry != nil {
 		agents, err := h.registry.List(ctx, opts)
 		if err != nil {
-			h.respondError(w, r,http.StatusInternalServerError, "failed to list agents", err)
+			h.respondError(w, r, http.StatusInternalServerError, "failed to list agents", err)
 			return
 		}
 		h.respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -177,23 +177,23 @@ func (h *Handlers) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.registry == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
 		return
 	}
 
 	var req registry.CreateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	agent, err := h.registry.Create(ctx, &req)
 	if err != nil {
 		if errors.Is(err, registry.ErrAgentExists) {
-			h.respondError(w, r,http.StatusConflict, "agent already exists", err)
+			h.respondError(w, r, http.StatusConflict, "agent already exists", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to create agent", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to create agent", err)
 		return
 	}
 
@@ -212,17 +212,17 @@ func (h *Handlers) GetAgent(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.registry == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
 		return
 	}
 
 	agent, err := h.registry.Get(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, registry.ErrAgentNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "agent not found", err)
+			h.respondError(w, r, http.StatusNotFound, "agent not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to get agent", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to get agent", err)
 		return
 	}
 
@@ -240,23 +240,23 @@ func (h *Handlers) UpdateAgent(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.registry == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
 		return
 	}
 
 	var req registry.UpdateAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
 		return
 	}
 
 	agent, err := h.registry.Update(ctx, agentID, &req)
 	if err != nil {
 		if errors.Is(err, registry.ErrAgentNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "agent not found", err)
+			h.respondError(w, r, http.StatusNotFound, "agent not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to update agent", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to update agent", err)
 		return
 	}
 
@@ -275,19 +275,62 @@ func (h *Handlers) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.registry == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
 		return
 	}
 
 	if err := h.registry.Delete(ctx, agentID); err != nil {
 		if errors.Is(err, registry.ErrAgentNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "agent not found", err)
+			h.respondError(w, r, http.StatusNotFound, "agent not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to delete agent", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to delete agent", err)
 		return
 	}
 
 	h.logger.Info("agent deleted", slog.String("id", agentID))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ReloadAgent handles POST /api/v1/agents/{id}/reload
+// Re-reads the agent configuration and bumps UpdatedAt to signal a hot reload.
+func (h *Handlers) ReloadAgent(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	agentID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.ReloadAgent",
+		trace.WithAttributes(attribute.String("agent_id", agentID)),
+	)
+	defer span.End()
+
+	if h.registry == nil {
+		h.respondError(w, r, http.StatusServiceUnavailable, "agent registry not available", errors.New("registry not configured"))
+		return
+	}
+
+	// Verify the agent exists
+	agent, err := h.registry.Get(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, registry.ErrAgentNotFound) {
+			h.respondError(w, r, http.StatusNotFound, "agent not found", err)
+			return
+		}
+		h.respondError(w, r, http.StatusInternalServerError, "failed to get agent", err)
+		return
+	}
+
+	// Perform reload by touching the agent record (bumps UpdatedAt)
+	reloaded, err := h.registry.Update(ctx, agentID, &registry.UpdateAgentRequest{
+		Version: &agent.Version,
+	})
+	if err != nil {
+		h.respondError(w, r, http.StatusInternalServerError, "failed to reload agent", err)
+		return
+	}
+
+	h.logger.Info("agent reloaded", slog.String("id", agentID))
+	h.respondJSON(w, http.StatusOK, map[string]interface{}{
+		"agent":    reloaded,
+		"reloaded": true,
+	})
 }

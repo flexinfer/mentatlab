@@ -220,6 +220,16 @@ export class AgentService extends BaseService {
   }> {
     return this.post("/validate", manifest);
   }
+
+  /**
+   * Trigger a hot reload for an agent
+   */
+  async reloadAgent(agentId: string): Promise<{
+    agent: Agent;
+    reloaded: boolean;
+  }> {
+    return this.post(`/${agentId}/reload`);
+  }
 }
 
 // Export singleton instance
