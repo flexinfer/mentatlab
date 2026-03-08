@@ -2,9 +2,10 @@
  * AgentBrowser - Panel for browsing and inspecting registered agents
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAgentList } from '@/hooks/useAgentList';
 import type { Agent } from '@/services/api/agentService';
+import { ManifestValidatorOverlay } from '@/components/mission-control/overlays/ManifestValidatorOverlay';
 
 function StatusBadge({ status }: { status: Agent['status'] }) {
   const colors: Record<string, string> = {
@@ -84,6 +85,7 @@ function AgentDetail({ agent, onBack }: { agent: Agent; onBack: () => void }) {
 
 export function AgentBrowser() {
   const { agents, loading, error, refresh, selectedAgent, selectAgent } = useAgentList();
+  const [validatorOpen, setValidatorOpen] = useState(false);
 
   if (selectedAgent) {
     return <AgentDetail agent={selectedAgent} onBack={() => selectAgent(null)} />;
@@ -95,12 +97,21 @@ export function AgentBrowser() {
         <span className="text-[11px] text-muted-foreground">
           {loading ? 'Loading...' : `${agents.length} agent${agents.length !== 1 ? 's' : ''}`}
         </span>
-        <button
-          onClick={refresh}
-          className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setValidatorOpen(true)}
+            className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted"
+            data-testid="open-validator-btn"
+          >
+            Validate
+          </button>
+          <button
+            onClick={refresh}
+            className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -149,8 +160,14 @@ export function AgentBrowser() {
           </ul>
         )}
       </div>
+
+      <ManifestValidatorOverlay
+        open={validatorOpen}
+        onClose={() => setValidatorOpen(false)}
+      />
     </div>
   );
 }
 
 export default AgentBrowser;
+
