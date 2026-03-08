@@ -1,6 +1,7 @@
 # Project Roadmap
 
 ## Tracking
+
 - [Roadmap tracking issue](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/1)
 - [Detailed implementation plan](.loom/30-implementation-plan.md)
 
@@ -157,19 +158,19 @@ Create a universal "loom-mcp-executor" agent that wraps any loom MCP tool as a M
 - Initial targets: `k8s_apps_k3s`, `gitlab`, `docker`, `prometheus` tools as canvas-draggable nodes
 - Source: `agents/common/emit.py`, `platform/gitops/mcp/context/registry.yaml`
 
-#### M11.2 MentatLab-as-MCP-server
+#### M11.2 MentatLab-as-MCP-server ✅
 
-Tracking issue: [#38](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/38)
+Tracking issue: [#38](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/38) (Closed)
 
 Create `mcp-mentatlab` server in loom-core exposing orchestrator operations as MCP tools.
 
-- `mentatlab__create_flow` — POST `/api/v1/flows`
-- `mentatlab__run_flow` — POST `/api/v1/flows/{id}/run`
-- `mentatlab__get_run` — GET `/api/v1/runs/{id}`
-- `mentatlab__list_runs` — GET `/api/v1/runs` with cursor pagination
-- `mentatlab__cancel_run` — POST `/api/v1/runs/{id}/cancel`
-- `mentatlab__stream_events` — SSE `/api/v1/runs/{id}/events` (returns events as tool result)
-- Register in `platform/gitops/mcp/context/registry.yaml` under `orchestration` category
+- ✅ `mentatlab__create_flow` — POST `/api/v1/flows`
+- ✅ `mentatlab__run_flow` — POST `/api/v1/flows/{id}/run`
+- ✅ `mentatlab__get_run` — GET `/api/v1/runs/{id}`
+- ✅ `mentatlab__list_runs` — GET `/api/v1/runs` with cursor pagination
+- ✅ `mentatlab__cancel_run` — POST `/api/v1/runs/{id}/cancel`
+- ✅ `mentatlab__stream_events` — SSE `/api/v1/runs/{id}/events` (returns events as tool result)
+- ✅ Register in `platform/gitops/mcp/context/registry.yaml` under `orchestration` category
 - Source: `services/orchestrator-go/internal/api/`, `services/loom-core/cmd/`
 
 #### M11.3 Agent context integration
@@ -420,12 +421,12 @@ M0-M9 (Complete)
 
 ## References
 
-| Document | Purpose |
-|----------|---------|
-| [README.md](README.md) | Project overview |
-| [AGENTS.md](AGENTS.md) | Agent guidance |
-| [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md) | Detailed M0-M9 plan |
-| [.loom/00-index.md](.loom/00-index.md) | Progress tracking |
-| [docs/archive/milestone-specs/](docs/archive/milestone-specs/) | Archived aspirational specs (WASM, PKI, etc.) |
+| Document                                                                                        | Purpose                                       |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| [README.md](README.md)                                                                          | Project overview                              |
+| [AGENTS.md](AGENTS.md)                                                                          | Agent guidance                                |
+| [.loom/30-implementation-plan.md](.loom/30-implementation-plan.md)                              | Detailed M0-M9 plan                           |
+| [.loom/00-index.md](.loom/00-index.md)                                                          | Progress tracking                             |
+| [docs/archive/milestone-specs/](docs/archive/milestone-specs/)                                  | Archived aspirational specs (WASM, PKI, etc.) |
 | [platform/gitops/mcp/context/registry.yaml](../../../platform/gitops/mcp/context/registry.yaml) | MCP server registry (loom integration source) |
-| [services/loom-core/](../../loom-core/) | Loom MCP server framework |
+| [services/loom-core/](../../loom-core/)                                                         | Loom MCP server framework                     |
