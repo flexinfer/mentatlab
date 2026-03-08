@@ -51,7 +51,7 @@ func NewLoomRunSessionManager(cfg LoomRunSessionManagerConfig) *LoomRunSessionMa
 }
 
 // StartRunSession creates an agent-context session and returns its session ID.
-func (m *LoomRunSessionManager) StartRunSession(ctx context.Context, runID, runName, owner string) (string, error) {
+func (m *LoomRunSessionManager) StartRunSession(ctx context.Context, runID, runName, flowID, owner string) (string, error) {
 	description := fmt.Sprintf("MentatLab run %s (%s)", runID, runName)
 	if owner != "" {
 		description = fmt.Sprintf("%s owner=%s", description, owner)
@@ -60,8 +60,12 @@ func (m *LoomRunSessionManager) StartRunSession(ctx context.Context, runID, runN
 		"agent_id":    m.agentID,
 		"description": description,
 	}
-	if m.namespace != "" {
-		args["namespace"] = m.namespace
+	namespace := m.namespace
+	if flowID != "" {
+		namespace = fmt.Sprintf("mentatlab/%s", flowID)
+	}
+	if namespace != "" {
+		args["namespace"] = namespace
 	}
 
 	raw, err := m.callTool(ctx, "agent_context__agent_session_start", args)

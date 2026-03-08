@@ -277,6 +277,13 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 	}
 	env["ATTEMPT"] = fmt.Sprintf("%d", attempts+1)
 
+	rctx.sessionMu.Lock()
+	sessionID := rctx.sessionID
+	rctx.sessionMu.Unlock()
+	if sessionID != "" {
+		env["LOOM_SESSION_ID"] = sessionID
+	}
+
 	if spec.Image != "" {
 		env["AGENT_IMAGE"] = spec.Image
 	}

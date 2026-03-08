@@ -26,7 +26,7 @@ type mockRunSessionManager struct {
 	ended   []string
 }
 
-func (m *mockRunSessionManager) StartRunSession(_ context.Context, runID, _ string, _ string) (string, error) {
+func (m *mockRunSessionManager) StartRunSession(_ context.Context, runID, _, _, _ string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	sessionID := "session-" + runID

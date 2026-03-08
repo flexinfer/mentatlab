@@ -41,7 +41,7 @@ exit 1
 		Logger:  slog.Default(),
 	})
 
-	sessionID, err := m.StartRunSession(context.Background(), "run-1", "test", "owner@example.com")
+	sessionID, err := m.StartRunSession(context.Background(), "run-1", "test", "", "owner@example.com")
 	if err != nil {
 		t.Fatalf("StartRunSession: %v", err)
 	}

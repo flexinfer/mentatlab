@@ -9,7 +9,7 @@ import (
 
 // RunSessionManager bridges run lifecycle state to an external session system.
 type RunSessionManager interface {
-	StartRunSession(ctx context.Context, runID, runName, owner string) (string, error)
+	StartRunSession(ctx context.Context, runID, runName, flowID, owner string) (string, error)
 	AddRunUpdate(ctx context.Context, sessionID, runID, status, content string, metadata map[string]interface{}) error
 	EndRunSession(ctx context.Context, sessionID string) error
 }
@@ -20,11 +20,13 @@ func (s *Scheduler) startRunSession(ctx context.Context, rctx *runContext) {
 	}
 
 	owner := ""
+	flowID := ""
 	if run, err := s.store.GetRun(ctx, rctx.runID); err == nil && run != nil {
 		owner = run.Owner
+		flowID = run.FlowID
 	}
 
-	sessionID, err := s.runSessionManager.StartRunSession(ctx, rctx.runID, rctx.name, owner)
+	sessionID, err := s.runSessionManager.StartRunSession(ctx, rctx.runID, rctx.name, flowID, owner)
 	if err != nil {
 		s.logger.Warn("failed to start run session",
 			"run_id", rctx.runID,
