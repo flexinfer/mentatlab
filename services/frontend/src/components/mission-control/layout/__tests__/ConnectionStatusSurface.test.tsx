@@ -28,6 +28,13 @@ vi.mock('@/stores', () => ({
   },
   useCanvasStore: (selector?: (s: Record<string, unknown>) => unknown) => {
     const state = {
+      nodes: [],
+      edges: [],
+      onNodesChange: vi.fn(),
+      onEdgesChange: vi.fn(),
+      onConnect: vi.fn(),
+      setSelectedNodeId: vi.fn(),
+      selectedNodeId: null,
       copySelected: vi.fn(),
       pasteClipboard: vi.fn(),
       duplicateSelected: vi.fn(),
@@ -87,6 +94,9 @@ vi.mock('@/components/mission-control/panels/NetworkPanel', () => ({ default: ()
 vi.mock('@/components/mission-control/overlays/LineageOverlay', () => ({ default: () => null }));
 vi.mock('@/components/mission-control/overlays/PolicyOverlay', () => ({ default: () => null }));
 vi.mock('@/components/mission-control/canvas', () => ({
+  CanvasDropZone: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="canvas-dropzone">{children}</div>
+  ),
   NodePalette: () => <div data-testid="node-palette" />,
   QuickAddMenu: () => null,
 }));
@@ -114,12 +124,23 @@ vi.mock('@/hooks/useKeyboardShortcuts', () => ({
   },
 }));
 vi.mock('@/hooks/useAutoSave', () => ({ useAutoSave: () => ({ saveNow: vi.fn() }) }));
+vi.mock('@/nodes/ChatNode', () => ({ __esModule: true, default: () => <div /> }));
+vi.mock('@/nodes/ConditionalNode', () => ({ __esModule: true, default: () => <div /> }));
+vi.mock('@/nodes/ForEachNode', () => ({ __esModule: true, default: () => <div /> }));
+vi.mock('@/nodes/GateNode', () => ({ __esModule: true, default: () => <div /> }));
+vi.mock('@/nodes/PythonCodeNode', () => ({ __esModule: true, default: () => <div /> }));
 vi.mock('react-resizable-panels', () => ({
   PanelGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   PanelResizeHandle: () => <div />,
 }));
-vi.mock('reactflow', () => ({ ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+vi.mock('reactflow', () => ({
+  ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ReactFlow: ({ children }: { children: React.ReactNode }) => <div data-testid="reactflow">{children}</div>,
+  Background: () => <div data-testid="reactflow-background" />,
+  Controls: () => <div data-testid="reactflow-controls" />,
+  MiniMap: () => <div data-testid="reactflow-minimap" />,
+}));
 
 describe('MissionControl connection status surface', () => {
   beforeEach(() => {
