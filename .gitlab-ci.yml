@@ -232,6 +232,7 @@ test-integration-smoke-agent:
       - stuck_or_timeout_failure
   variables:
     BUILDKIT_STEP_LOG_MAX_SIZE: "50000000"
+    BUILDKIT_ATTEMPT_TIMEOUT: "15m"
   before_script:
     - *clone_repo
     - |
@@ -247,6 +248,15 @@ test-integration-smoke-agent:
       # Shared build_image function with zstd compression and retry-with-fallback
       CACHE_REPO="registry.harbor.lan/library/build-cache"
 
+      run_buildctl() {
+        if command -v timeout >/dev/null 2>&1; then
+          timeout "${BUILDKIT_ATTEMPT_TIMEOUT}" buildctl --addr "${BUILDKIT_HOST}" build "$@"
+        else
+          echo "WARNING: timeout command not available in ci-builder image; running buildctl without per-attempt timeout"
+          buildctl --addr "${BUILDKIT_HOST}" build "$@"
+        fi
+      }
+
       build_image() {
         local name="$1" context="$2"
         echo "=== Building ${name} from ${context} ==="
@@ -258,7 +268,7 @@ test-integration-smoke-agent:
         fi
 
         # First attempt: build with cache
-        if buildctl --addr "${BUILDKIT_HOST}" build \
+        if run_buildctl \
           --frontend dockerfile.v0 \
           --local "context=${context}" \
           --local "dockerfile=${context}" \
@@ -277,7 +287,7 @@ test-integration-smoke-agent:
 
         # Second attempt: retry without import-cache (handles cold/corrupt cache)
         echo "WARNING: ${name} build failed with cache, retrying without cache..."
-        buildctl --addr "${BUILDKIT_HOST}" build \
+        run_buildctl \
           --frontend dockerfile.v0 \
           --local "context=${context}" \
           --local "dockerfile=${context}" \
