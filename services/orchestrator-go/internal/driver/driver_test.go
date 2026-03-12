@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -204,8 +205,9 @@ func TestSubprocessDriver_Timeout(t *testing.T) {
 func TestProcessStdoutLine_PlainText(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
 
-	d.processStdoutLine(context.Background(), "run1", "node1", "plain text message")
+	d.processStdoutLine(context.Background(), "run1", "node1", "plain text message", &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -222,8 +224,9 @@ func TestProcessStdoutLine_PlainText(t *testing.T) {
 func TestProcessStdoutLine_ValidJSON(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -364,8 +367,9 @@ func TestSubprocessDriver_EnvInjection(t *testing.T) {
 func TestProcessStdoutLine_EmptyType(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -373,5 +377,83 @@ func TestProcessStdoutLine_EmptyType(t *testing.T) {
 	}
 	if events[0].EventType != "log" {
 		t.Errorf("event type: got %q, want %q (empty type should default to log)", events[0].EventType, "log")
+	}
+}
+
+// --- Structured error events (M12.1) ---
+
+func TestSubprocessDriver_RetryableErrorRewritesExitCode(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	script := `echo '{"type":"error","level":"error","message":"model loading","data":{"code":"MODEL_NOT_READY","message":"model loading","retryable":true}}'
+exit 1`
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", script},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 3 {
+		t.Errorf("exit code: got %d, want 3 (retryable rewrite)", code)
+	}
+
+	events := emitter.getEvents()
+	foundError := false
+	for _, e := range events {
+		if e.EventType == "error" {
+			foundError = true
+			break
+		}
+	}
+	if !foundError {
+		t.Error("expected an 'error' event to be emitted")
+	}
+}
+
+func TestSubprocessDriver_NonRetryableErrorKeepsExitCode(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	script := `echo '{"type":"error","level":"error","message":"bad input","data":{"code":"INVALID_INPUT","message":"bad input","retryable":false}}'
+exit 1`
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", script},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1 (non-retryable should not rewrite)", code)
+	}
+}
+
+func TestProcessStdoutLine_RetryableErrorSetsFlag(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
+
+	d.processStdoutLine(context.Background(), "run1", "node1",
+		`{"type":"error","data":{"code":"TIMEOUT","message":"upstream timeout","retryable":true}}`, &saw)
+
+	if saw.Load() != 1 {
+		t.Error("expected sawRetryable to be set for retryable error event")
+	}
+}
+
+func TestProcessStdoutLine_NonRetryableErrorDoesNotSetFlag(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
+
+	d.processStdoutLine(context.Background(), "run1", "node1",
+		`{"type":"error","data":{"code":"PERM_FAIL","message":"permanent","retryable":false}}`, &saw)
+
+	if saw.Load() != 0 {
+		t.Error("expected sawRetryable to NOT be set for non-retryable error event")
 	}
 }

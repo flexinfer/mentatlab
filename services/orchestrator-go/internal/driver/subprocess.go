@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -110,6 +111,10 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	// sawRetryable is set to 1 if the agent emits a structured error event
+	// with retryable:true. Checked after process exit to rewrite exit code.
+	var sawRetryable atomic.Int32
+
 	// Stdout reader - parse NDJSON
 	go func() {
 		defer wg.Done()
@@ -123,7 +128,7 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 			if line == "" {
 				continue
 			}
-			d.processStdoutLine(ctx, runID, nodeID, line)
+			d.processStdoutLine(ctx, runID, nodeID, line, &sawRetryable)
 		}
 	}()
 
@@ -188,6 +193,13 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 		}
 	}
 
+	// If agent failed but emitted a retryable error event, rewrite to
+	// exit code 3 (the transient-retry convention) so the scheduler
+	// applies the node's retry policy.
+	if exitCode != 0 && sawRetryable.Load() != 0 {
+		exitCode = 3
+	}
+
 	// Emit final node status
 	if exitCode == 0 {
 		d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
@@ -208,7 +220,9 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 }
 
 // processStdoutLine attempts to parse NDJSON and emit structured events.
-func (d *LocalSubprocessDriver) processStdoutLine(ctx context.Context, runID, nodeID, line string) {
+// If the line is a structured error event with retryable:true, sawRetryable
+// is set so the caller can rewrite the exit code to trigger a retry.
+func (d *LocalSubprocessDriver) processStdoutLine(ctx context.Context, runID, nodeID, line string, sawRetryable *atomic.Int32) {
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(line), &obj); err != nil {
 		// Not valid JSON - emit as plain log
@@ -225,6 +239,19 @@ func (d *LocalSubprocessDriver) processStdoutLine(ctx context.Context, runID, no
 	eventType := "log"
 	if t, ok := obj["type"].(string); ok && t != "" {
 		eventType = t
+	}
+
+	// Detect structured error events with retryable hint
+	if eventType == "error" {
+		if data, ok := obj["data"].(map[string]interface{}); ok {
+			if retryable, ok := data["retryable"].(bool); ok && retryable {
+				sawRetryable.Store(1)
+			}
+		}
+		// Also check top-level retryable (agents may emit flat events)
+		if retryable, ok := obj["retryable"].(bool); ok && retryable {
+			sawRetryable.Store(1)
+		}
 	}
 
 	// Extract level if present

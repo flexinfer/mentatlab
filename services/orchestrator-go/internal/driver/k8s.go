@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
@@ -136,9 +137,12 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 	exitErr := error(nil)
 	done := make(chan struct{})
 
+	// sawRetryable tracks whether the agent emitted a retryable error event.
+	var sawRetryable atomic.Int32
+
 	watcher := k8s.NewJobWatcher(d.client, jobName, runID, nodeID, &k8s.WatchConfig{
 		OnLog: func(line string, isStderr bool) {
-			d.processLogLine(ctx, runID, nodeID, line, isStderr)
+			d.processLogLine(ctx, runID, nodeID, line, isStderr, &sawRetryable)
 		},
 		OnStatus: func(status *k8s.JobStatus) {
 			slog.Debug("job status update", slog.String("job_name", jobName), slog.String("phase", status.Phase))
@@ -184,6 +188,12 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 		return exitCode, exitErr
 	}
 
+	// If agent failed but emitted a retryable error event, rewrite to
+	// exit code 3 (the transient-retry convention).
+	if exitCode != 0 && sawRetryable.Load() != 0 {
+		exitCode = 3
+	}
+
 	// Emit final status
 	if exitCode == 0 {
 		d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
@@ -204,7 +214,7 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 }
 
 // processLogLine handles a log line from the pod.
-func (d *K8sDriver) processLogLine(ctx context.Context, runID, nodeID, line string, isStderr bool) {
+func (d *K8sDriver) processLogLine(ctx context.Context, runID, nodeID, line string, isStderr bool, sawRetryable *atomic.Int32) {
 	// Try to parse as NDJSON
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(line), &obj); err == nil {
@@ -212,6 +222,18 @@ func (d *K8sDriver) processLogLine(ctx context.Context, runID, nodeID, line stri
 		eventType := "log"
 		if t, ok := obj["type"].(string); ok && t != "" {
 			eventType = t
+		}
+
+		// Detect structured error events with retryable hint
+		if eventType == "error" {
+			if data, ok := obj["data"].(map[string]interface{}); ok {
+				if retryable, ok := data["retryable"].(bool); ok && retryable {
+					sawRetryable.Store(1)
+				}
+			}
+			if retryable, ok := obj["retryable"].(bool); ok && retryable {
+				sawRetryable.Store(1)
+			}
 		}
 
 		level := ""

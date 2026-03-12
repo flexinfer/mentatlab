@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,8 +23,9 @@ import (
 func TestK8sDriver_ProcessLogLine_PlainStdout(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	var saw atomic.Int32
 
-	d.processLogLine(context.Background(), "run1", "node1", "plain text output", false)
+	d.processLogLine(context.Background(), "run1", "node1", "plain text output", false, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -43,8 +45,9 @@ func TestK8sDriver_ProcessLogLine_PlainStdout(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_PlainStderr(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	var saw atomic.Int32
 
-	d.processLogLine(context.Background(), "run1", "node1", "error message", true)
+	d.processLogLine(context.Background(), "run1", "node1", "error message", true, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -58,8 +61,9 @@ func TestK8sDriver_ProcessLogLine_PlainStderr(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_ValidJSON(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	var saw atomic.Int32
 
-	d.processLogLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`, false)
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`, false, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -73,8 +77,9 @@ func TestK8sDriver_ProcessLogLine_ValidJSON(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_JSONWithLevel(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	var saw atomic.Int32
 
-	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","level":"warn","message":"low disk"}`, false)
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","level":"warn","message":"low disk"}`, false, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -88,8 +93,9 @@ func TestK8sDriver_ProcessLogLine_JSONWithLevel(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_JSONInjectsRunNodeID(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	var saw atomic.Int32
 
-	d.processLogLine(context.Background(), "run1", "node1", `{"type":"output","data":"test"}`, false)
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"output","data":"test"}`, false, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -106,8 +112,9 @@ func TestK8sDriver_ProcessLogLine_JSONInjectsRunNodeID(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_JSONPreservesExistingIDs(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	var saw atomic.Int32
 
-	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","runId":"orig-run","nodeId":"orig-node"}`, false)
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","runId":"orig-run","nodeId":"orig-node"}`, false, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -240,9 +247,10 @@ func TestK8sDriver_EmitEvent_Error(t *testing.T) {
 func TestProcessStdoutLine_JSONNoType(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
 
 	// JSON without "type" field defaults to "log"
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"message":"hello"}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"message":"hello"}`, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -256,8 +264,9 @@ func TestProcessStdoutLine_JSONNoType(t *testing.T) {
 func TestProcessStdoutLine_JSONEmptyType(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -271,8 +280,9 @@ func TestProcessStdoutLine_JSONEmptyType(t *testing.T) {
 func TestProcessStdoutLine_InvalidJSON(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{invalid json`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{invalid json`, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -289,8 +299,9 @@ func TestProcessStdoutLine_InvalidJSON(t *testing.T) {
 func TestProcessStdoutLine_JSONWithLevel(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	var saw atomic.Int32
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"log","level":"debug","message":"trace"}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"log","level":"debug","message":"trace"}`, &saw)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {

@@ -131,6 +131,23 @@ Final output of the agent (optional, can also use exit code + stdout).
 {"type":"result","data":{"summary":"The quick brown fox...","word_count":150},"ts":"2024-01-15T10:30:10Z"}
 ```
 
+#### 6. Error Events
+Emit structured errors when the agent can classify a failure as transient or permanent.
+
+```json
+{"type":"error","level":"error","message":"Model not ready","data":{"code":"MODEL_NOT_READY","message":"Model not ready","retryable":true},"ts":"2024-01-15T10:30:10Z"}
+{"type":"error","level":"error","message":"Invalid input","data":{"code":"INVALID_INPUT","message":"Missing required field 'text'","retryable":false},"ts":"2024-01-15T10:30:10Z"}
+```
+
+Inside `data`, the orchestrator recognizes:
+
+- `code`: machine-readable error code
+- `message`: human-readable description
+- `retryable`: `true` for transient failures, `false` for permanent failures
+- `details`: optional structured context
+
+If an agent emits an error event with `retryable: true` and then exits non-zero, the orchestrator rewrites the terminal exit code to `3` so the node's retry policy is applied.
+
 ---
 
 ## Python SDK
