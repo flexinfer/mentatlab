@@ -2,7 +2,6 @@ import apiService from "./apiService";
 import { getApiBaseUrl } from "@/config/orchestrator";
 import {
   Run,
-  Checkpoint,
   RunMode,
   RunStatus,
   CreateRunRequest,
@@ -14,7 +13,7 @@ import OrchestratorSSE from "./streaming/orchestratorSSE";
 
 /**
  * Orchestrator API client.
- * Unified service for all Run/Plan/Checkpoint operations.
+ * Unified service for run, plan, artifact, and gate operations.
  */
 
 class OrchestratorService {
