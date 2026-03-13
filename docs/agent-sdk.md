@@ -167,6 +167,7 @@ from agents.common.emit import (
     log_info,
     log_error,
     checkpoint,
+    emit_error,
     emit_event,
     set_correlation_id,
 )
@@ -191,6 +192,12 @@ def main():
         checkpoint("end", 1.0)
 
     except Exception as e:
+        emit_error(
+            "INTERNAL_ERROR",
+            str(e),
+            retryable=False,
+            details={"traceback": traceback.format_exc()},
+        )
         log_error(f"Agent failed: {e}", {"traceback": traceback.format_exc()})
         checkpoint("error", 0.0, {"error": str(e)})
         return 1
@@ -221,6 +228,12 @@ emit_event(
 log_info(message: str, data: Optional[Dict] = None) -> None
 log_error(message: str, data: Optional[Dict] = None) -> None
 checkpoint(stage: str, progress: float, extra: Optional[Dict] = None) -> None
+emit_error(
+    code: str,
+    message: str,
+    retryable: bool = False,
+    details: Optional[Dict] = None,
+) -> None
 ```
 
 ---
@@ -258,6 +271,18 @@ func logInfo(message string, data map[string]interface{}) {
     emit(Event{Type: "log", Level: "info", Message: message, Data: data})
 }
 
+func emitError(code, message string, retryable bool, details map[string]interface{}) {
+    payload := map[string]interface{}{
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+    }
+    if len(details) > 0 {
+        payload["details"] = details
+    }
+    emit(Event{Type: "error", Level: "error", Message: message, Data: payload})
+}
+
 func checkpoint(stage string, progress float64, extra map[string]interface{}) {
     data := map[string]interface{}{
         "stage":    stage,
@@ -276,6 +301,16 @@ func emitOutput(key string, value interface{}) {
 func main() {
     checkpoint("start", 0.0, nil)
     logInfo("Processing started", map[string]interface{}{"args": os.Args[1:]})
+
+    // Permanent failure example
+    if len(os.Args) < 2 {
+        emitError("INVALID_INPUT", "missing required CLI argument", false, nil)
+        os.Exit(1)
+    }
+
+    // Transient failure example
+    // emitError("MODEL_NOT_READY", "model is still loading", true, map[string]interface{}{"model": "my-model"})
+    // os.Exit(1)
 
     // Do work...
     emitOutput("result", "processed data")
