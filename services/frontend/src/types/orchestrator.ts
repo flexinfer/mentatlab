@@ -97,6 +97,7 @@ export interface PlanNode {
   env?: Record<string, string>; // Environment variables
   inputs?: string[]; // Node IDs this depends on
   timeout?: number; // Timeout in nanoseconds (Go duration)
+  heartbeat_timeout?: number; // Heartbeat timeout in nanoseconds (Go duration)
   retries?: number; // Max retry attempts (backend: NodeSpec.Retries)
 
   // Legacy fields (UI-specific, may not be sent to backend)

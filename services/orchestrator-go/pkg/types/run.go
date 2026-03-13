@@ -96,15 +96,16 @@ type MCPConfig struct {
 
 // NodeSpec describes a single node in the execution plan.
 type NodeSpec struct {
-	ID      string            `json:"id"`
-	Type    string            `json:"type"`
-	AgentID string            `json:"agent_id,omitempty"`
-	Command []string          `json:"command,omitempty"`
-	Image   string            `json:"image,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
-	Inputs  []string          `json:"inputs,omitempty"` // Node IDs this depends on
-	Timeout time.Duration     `json:"timeout,omitempty"`
-	Retries int               `json:"retries,omitempty"`
+	ID               string            `json:"id"`
+	Type             string            `json:"type"`
+	AgentID          string            `json:"agent_id,omitempty"`
+	Command          []string          `json:"command,omitempty"`
+	Image            string            `json:"image,omitempty"`
+	Env              map[string]string `json:"env,omitempty"`
+	Inputs           []string          `json:"inputs,omitempty"` // Node IDs this depends on
+	Timeout          time.Duration     `json:"timeout,omitempty"`
+	HeartbeatTimeout time.Duration     `json:"heartbeat_timeout,omitempty"`
+	Retries          int               `json:"retries,omitempty"`
 
 	// MCP tool configuration (populated from canvas MCP node data)
 	MCP *MCPConfig `json:"mcp,omitempty"`

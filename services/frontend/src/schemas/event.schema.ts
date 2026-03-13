@@ -22,6 +22,7 @@ export const EventTypeSchema = z.enum([
   'node_status',
   'run_status',
   'progress',
+  'heartbeat',
   'error',
   // Control flow
   'condition_evaluated',
@@ -121,8 +122,17 @@ export const ProgressEventDataSchema = z.object({
   current: z.number().int(),
   total: z.number().int(),
   message: z.string().optional(),
+  percent: z.number().optional(),
+  eta_seconds: z.number().optional(),
 });
 export type ProgressEventData = z.infer<typeof ProgressEventDataSchema>;
+
+/**
+ * HeartbeatEvent - agent liveness ping
+ * Backend: agents/common/emit.py
+ */
+export const HeartbeatEventDataSchema = z.object({}).passthrough();
+export type HeartbeatEventData = z.infer<typeof HeartbeatEventDataSchema>;
 
 /**
  * StreamDataEvent - generic streaming data from agent
@@ -244,6 +254,8 @@ export function parseEventData(type: string, data: unknown): unknown {
       return safeParseEvent(RunStatusEventDataSchema, data);
     case 'progress':
       return safeParseEvent(ProgressEventDataSchema, data);
+    case 'heartbeat':
+      return safeParseEvent(HeartbeatEventDataSchema, data ?? {});
     case 'stream_data':
       return safeParseEvent(StreamDataEventDataSchema, data);
     case 'hello':

@@ -104,6 +104,7 @@ export const EVENT_TYPES = [
   'node_status',
   'run_status',
   'progress',
+  'heartbeat',
   'error',
   'condition_evaluated',
   'branch_selected',

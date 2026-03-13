@@ -135,10 +135,18 @@ describe('Event Schema Contracts', () => {
       const data = {
         current: 50,
         total: 100,
+        percent: 50,
         message: 'Processing files...',
       };
       const result = ProgressEventDataSchema.safeParse(data);
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('HeartbeatEventData', () => {
+    it('should parse heartbeat event payload', () => {
+      const result = parseEventData('heartbeat', {});
+      expect(result).toEqual({});
     });
   });
 
@@ -160,7 +168,7 @@ describe('Event Schema Contracts', () => {
       const event = {
         id: '1',
         run_id: 'run-1',
-        type: 'hello',
+        type: 'heartbeat',
         timestamp: '2024-01-15T10:30:00Z',
       };
       const result = BaseEventSchema.safeParse(event);
