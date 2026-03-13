@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -69,13 +70,10 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 		fmt.Sprintf("NODE_ID=%s", nodeID),
 	)
 
-	// Create context with timeout if specified
-	execCtx := ctx
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		execCtx, cancel = context.WithTimeout(ctx, time.Duration(timeout*float64(time.Second)))
-		defer cancel()
-	}
+	// Create a cancellable context so node timeout and heartbeat timeout can
+	// terminate the process even when the parent run context is still active.
+	execCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	// Create command
 	c := exec.CommandContext(execCtx, cmd[0], cmd[1:]...)
@@ -110,6 +108,48 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	state := &driverEventState{}
+	heartbeatTimeout := resolveHeartbeatTimeout(env)
+	const (
+		stopReasonNone = iota
+		stopReasonTimeout
+		stopReasonCancelled
+		stopReasonHeartbeatTimeout
+	)
+	var stopReason int32
+
+	if timeout > 0 {
+		go func() {
+			timer := time.NewTimer(time.Duration(timeout * float64(time.Second)))
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				if atomic.CompareAndSwapInt32(&stopReason, stopReasonNone, stopReasonTimeout) {
+					cancel()
+				}
+			case <-execCtx.Done():
+			}
+		}()
+	}
+
+	go func() {
+		ticker := time.NewTicker(heartbeatPollInterval(heartbeatTimeout))
+		defer ticker.Stop()
+		for {
+			select {
+			case <-execCtx.Done():
+				return
+			case now := <-ticker.C:
+				if state.heartbeatExpired(now, heartbeatTimeout) {
+					if atomic.CompareAndSwapInt32(&stopReason, stopReasonNone, stopReasonHeartbeatTimeout) {
+						cancel()
+					}
+					return
+				}
+			}
+		}
+	}()
+
 	// Stdout reader - parse NDJSON
 	go func() {
 		defer wg.Done()
@@ -123,7 +163,7 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 			if line == "" {
 				continue
 			}
-			d.processStdoutLine(ctx, runID, nodeID, line)
+			d.processStdoutLine(ctx, runID, nodeID, line, state)
 		}
 	}()
 
@@ -155,9 +195,7 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 	err = c.Wait()
 	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else if execCtx.Err() == context.DeadlineExceeded {
+		if atomic.LoadInt32(&stopReason) == stopReasonTimeout {
 			// Timeout
 			exitCode = 124 // Standard timeout exit code
 			d.emitEvent(ctx, runID, "log", map[string]interface{}{
@@ -173,7 +211,24 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 				"nodeId": nodeID,
 			}, nodeID, "")
 			return exitCode, nil
-		} else if execCtx.Err() == context.Canceled {
+		} else if atomic.LoadInt32(&stopReason) == stopReasonHeartbeatTimeout {
+			exitCode = 124
+			d.emitEvent(ctx, runID, "log", map[string]interface{}{
+				"message": fmt.Sprintf("node %s missed heartbeat deadline after %s", nodeID, heartbeatTimeout),
+				"level":   "error",
+				"runId":   runID,
+				"nodeId":  nodeID,
+			}, nodeID, "error")
+			d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
+				"status": "failed",
+				"reason": "heartbeat_timeout",
+				"runId":  runID,
+				"nodeId": nodeID,
+			}, nodeID, "")
+			return exitCode, nil
+		} else if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else if execCtx.Err() == context.Canceled || ctx.Err() == context.Canceled {
 			// Cancelled
 			exitCode = 130 // Standard interrupt exit code
 			d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
@@ -186,6 +241,13 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 		} else {
 			exitCode = 1
 		}
+	}
+
+	// If agent failed but emitted a retryable error event, rewrite to
+	// exit code 3 (the transient-retry convention) so the scheduler
+	// applies the node's retry policy.
+	if exitCode != 0 && state.retryable() {
+		exitCode = 3
 	}
 
 	// Emit final node status
@@ -208,7 +270,9 @@ func (d *LocalSubprocessDriver) RunNode(ctx context.Context, runID, nodeID strin
 }
 
 // processStdoutLine attempts to parse NDJSON and emit structured events.
-func (d *LocalSubprocessDriver) processStdoutLine(ctx context.Context, runID, nodeID, line string) {
+// If the line is a structured error event with retryable:true, sawRetryable
+// is set so the caller can rewrite the exit code to trigger a retry.
+func (d *LocalSubprocessDriver) processStdoutLine(ctx context.Context, runID, nodeID, line string, state *driverEventState) {
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(line), &obj); err != nil {
 		// Not valid JSON - emit as plain log
@@ -225,6 +289,21 @@ func (d *LocalSubprocessDriver) processStdoutLine(ctx context.Context, runID, no
 	eventType := "log"
 	if t, ok := obj["type"].(string); ok && t != "" {
 		eventType = t
+	}
+
+	// Detect structured error events with retryable hint
+	if eventType == "error" {
+		if data, ok := obj["data"].(map[string]interface{}); ok {
+			if retryable, ok := data["retryable"].(bool); ok && retryable {
+				state.markRetryable()
+			}
+		}
+		// Also check top-level retryable (agents may emit flat events)
+		if retryable, ok := obj["retryable"].(bool); ok && retryable {
+			state.markRetryable()
+		}
+	} else if eventType == "heartbeat" {
+		state.noteHeartbeat(time.Now())
 	}
 
 	// Extract level if present

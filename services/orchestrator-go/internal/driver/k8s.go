@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
@@ -17,6 +18,11 @@ type K8sDriver struct {
 	client     *k8s.Client
 	jobBuilder *k8s.JobBuilder
 	emitter    EventEmitter
+	newWatcher func(client *k8s.Client, jobName, runID, nodeID string, cfg *k8s.WatchConfig) jobWatcher
+}
+
+type jobWatcher interface {
+	Watch(ctx context.Context) error
 }
 
 // K8sDriverConfig holds configuration for the K8s driver.
@@ -49,6 +55,9 @@ func NewK8sDriver(emitter EventEmitter, cfg *K8sDriverConfig) (*K8sDriver, error
 		client:     client,
 		jobBuilder: k8s.NewJobBuilder(jobCfg),
 		emitter:    emitter,
+		newWatcher: func(client *k8s.Client, jobName, runID, nodeID string, cfg *k8s.WatchConfig) jobWatcher {
+			return k8s.NewJobWatcher(client, jobName, runID, nodeID, cfg)
+		},
 	}, nil
 }
 
@@ -132,32 +141,119 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 	watchCtx, watchCancel := context.WithCancel(ctx)
 	defer watchCancel()
 
-	exitCode := 0
-	exitErr := error(nil)
-	done := make(chan struct{})
+	type runResult struct {
+		exitCode int
+		err      error
+		reason   string
+	}
+	resultCh := make(chan runResult, 1)
+	var completeOnce sync.Once
+	complete := func(result runResult) {
+		completeOnce.Do(func() {
+			resultCh <- result
+			watchCancel()
+		})
+	}
 
-	watcher := k8s.NewJobWatcher(d.client, jobName, runID, nodeID, &k8s.WatchConfig{
+	state := &driverEventState{}
+	heartbeatTimeout := resolveHeartbeatTimeout(env)
+
+	watcherFactory := d.newWatcher
+	if watcherFactory == nil {
+		watcherFactory = func(client *k8s.Client, jobName, runID, nodeID string, cfg *k8s.WatchConfig) jobWatcher {
+			return k8s.NewJobWatcher(client, jobName, runID, nodeID, cfg)
+		}
+	}
+
+	watcher := watcherFactory(d.client, jobName, runID, nodeID, &k8s.WatchConfig{
 		OnLog: func(line string, isStderr bool) {
-			d.processLogLine(ctx, runID, nodeID, line, isStderr)
+			d.processLogLine(ctx, runID, nodeID, line, isStderr, state)
 		},
 		OnStatus: func(status *k8s.JobStatus) {
 			slog.Debug("job status update", slog.String("job_name", jobName), slog.String("phase", status.Phase))
 		},
 		OnComplete: func(code int, err error) {
-			exitCode = code
-			exitErr = err
-			close(done)
-			watchCancel()
+			complete(runResult{exitCode: code, err: err})
 		},
 	})
 
 	// Start watching in background
-	go watcher.Watch(watchCtx)
+	go func() {
+		if err := watcher.Watch(watchCtx); err != nil && watchCtx.Err() == nil {
+			complete(runResult{exitCode: 1, err: err, reason: "watch_failed"})
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(heartbeatPollInterval(heartbeatTimeout))
+		defer ticker.Stop()
+		for {
+			select {
+			case <-watchCtx.Done():
+				return
+			case now := <-ticker.C:
+				if state.heartbeatExpired(now, heartbeatTimeout) {
+					d.emitEvent(ctx, runID, "log", map[string]interface{}{
+						"message": fmt.Sprintf("node %s missed heartbeat deadline after %s", nodeID, heartbeatTimeout),
+						"level":   "error",
+						"runId":   runID,
+						"nodeId":  nodeID,
+					}, nodeID, "error")
+					if err := d.client.DeleteJob(context.Background(), jobName); err != nil {
+						slog.Error("failed to delete job after heartbeat timeout", slog.String("job_name", jobName), slog.Any("error", err))
+					}
+					complete(runResult{exitCode: 124, reason: "heartbeat_timeout"})
+					return
+				}
+			}
+		}
+	}()
 
 	// Wait for completion or context cancellation
 	select {
-	case <-done:
-		// Job completed
+	case result := <-resultCh:
+		if result.reason == "heartbeat_timeout" {
+			d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
+				"status": "failed",
+				"reason": "heartbeat_timeout",
+				"runId":  runID,
+				"nodeId": nodeID,
+			}, nodeID, "")
+			return result.exitCode, nil
+		}
+
+		if result.err != nil {
+			d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
+				"status":   "failed",
+				"exitCode": result.exitCode,
+				"error":    result.err.Error(),
+				"runId":    runID,
+				"nodeId":   nodeID,
+			}, nodeID, "")
+			return result.exitCode, result.err
+		}
+
+		exitCode := result.exitCode
+		if exitCode != 0 && state.retryable() {
+			exitCode = 3
+		}
+
+		if exitCode == 0 {
+			d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
+				"status": "succeeded",
+				"runId":  runID,
+				"nodeId": nodeID,
+			}, nodeID, "")
+		} else {
+			d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
+				"status":   "failed",
+				"exitCode": exitCode,
+				"runId":    runID,
+				"nodeId":   nodeID,
+			}, nodeID, "")
+		}
+
+		return exitCode, nil
 	case <-ctx.Done():
 		// Context cancelled - delete the job
 		if err := d.client.DeleteJob(context.Background(), jobName); err != nil {
@@ -171,40 +267,10 @@ func (d *K8sDriver) RunNode(ctx context.Context, runID, nodeID string, cmd []str
 		}, nodeID, "")
 		return 130, ctx.Err()
 	}
-
-	// Handle errors
-	if exitErr != nil {
-		d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
-			"status":   "failed",
-			"exitCode": exitCode,
-			"error":    exitErr.Error(),
-			"runId":    runID,
-			"nodeId":   nodeID,
-		}, nodeID, "")
-		return exitCode, exitErr
-	}
-
-	// Emit final status
-	if exitCode == 0 {
-		d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
-			"status": "succeeded",
-			"runId":  runID,
-			"nodeId": nodeID,
-		}, nodeID, "")
-	} else {
-		d.emitEvent(ctx, runID, "node_status", map[string]interface{}{
-			"status":   "failed",
-			"exitCode": exitCode,
-			"runId":    runID,
-			"nodeId":   nodeID,
-		}, nodeID, "")
-	}
-
-	return exitCode, nil
 }
 
 // processLogLine handles a log line from the pod.
-func (d *K8sDriver) processLogLine(ctx context.Context, runID, nodeID, line string, isStderr bool) {
+func (d *K8sDriver) processLogLine(ctx context.Context, runID, nodeID, line string, isStderr bool, state *driverEventState) {
 	// Try to parse as NDJSON
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(line), &obj); err == nil {
@@ -212,6 +278,20 @@ func (d *K8sDriver) processLogLine(ctx context.Context, runID, nodeID, line stri
 		eventType := "log"
 		if t, ok := obj["type"].(string); ok && t != "" {
 			eventType = t
+		}
+
+		// Detect structured error events with retryable hint
+		if eventType == "error" {
+			if data, ok := obj["data"].(map[string]interface{}); ok {
+				if retryable, ok := data["retryable"].(bool); ok && retryable {
+					state.markRetryable()
+				}
+			}
+			if retryable, ok := obj["retryable"].(bool); ok && retryable {
+				state.markRetryable()
+			}
+		} else if eventType == "heartbeat" {
+			state.noteHeartbeat(time.Now())
 		}
 
 		level := ""

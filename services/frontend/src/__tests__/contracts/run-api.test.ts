@@ -99,6 +99,7 @@ describe('Run Schema Contracts', () => {
         image: 'python:3.9',
         command: ['python', '-c', 'print("hello")'],
         env: { DEBUG: 'true' },
+        heartbeat_timeout: 15_000_000_000,
       };
       const result = NodeSpecSchema.safeParse(node);
       expect(result.success).toBe(true);

@@ -22,8 +22,9 @@ import (
 func TestK8sDriver_ProcessLogLine_PlainStdout(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
 
-	d.processLogLine(context.Background(), "run1", "node1", "plain text output", false)
+	d.processLogLine(context.Background(), "run1", "node1", "plain text output", false, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -43,8 +44,9 @@ func TestK8sDriver_ProcessLogLine_PlainStdout(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_PlainStderr(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
 
-	d.processLogLine(context.Background(), "run1", "node1", "error message", true)
+	d.processLogLine(context.Background(), "run1", "node1", "error message", true, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -58,8 +60,9 @@ func TestK8sDriver_ProcessLogLine_PlainStderr(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_ValidJSON(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
 
-	d.processLogLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`, false)
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`, false, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -73,8 +76,9 @@ func TestK8sDriver_ProcessLogLine_ValidJSON(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_JSONWithLevel(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
 
-	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","level":"warn","message":"low disk"}`, false)
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","level":"warn","message":"low disk"}`, false, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -88,8 +92,9 @@ func TestK8sDriver_ProcessLogLine_JSONWithLevel(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_JSONInjectsRunNodeID(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
 
-	d.processLogLine(context.Background(), "run1", "node1", `{"type":"output","data":"test"}`, false)
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"output","data":"test"}`, false, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -106,8 +111,9 @@ func TestK8sDriver_ProcessLogLine_JSONInjectsRunNodeID(t *testing.T) {
 func TestK8sDriver_ProcessLogLine_JSONPreservesExistingIDs(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
 
-	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","runId":"orig-run","nodeId":"orig-node"}`, false)
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","runId":"orig-run","nodeId":"orig-node"}`, false, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -120,6 +126,33 @@ func TestK8sDriver_ProcessLogLine_JSONPreservesExistingIDs(t *testing.T) {
 	if events[0].Data["nodeId"] != "orig-node" {
 		t.Errorf("nodeId: got %v, want %q", events[0].Data["nodeId"], "orig-node")
 	}
+}
+
+func TestK8sDriver_ProcessLogLine_HeartbeatMarksState(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
+
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"heartbeat"}`, false, state)
+
+	if !state.hasHeartbeat() {
+		t.Fatal("expected heartbeat event to mark state")
+	}
+	if state.lastHeartbeat.Load() == 0 {
+		t.Fatal("expected heartbeat timestamp to be recorded")
+	}
+}
+
+type fakeJobWatcher struct {
+	watch func(ctx context.Context) error
+}
+
+func (f *fakeJobWatcher) Watch(ctx context.Context) error {
+	if f.watch != nil {
+		return f.watch(ctx)
+	}
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 // --- K8sDriver.emitEvent nil safety ---
@@ -240,9 +273,10 @@ func TestK8sDriver_EmitEvent_Error(t *testing.T) {
 func TestProcessStdoutLine_JSONNoType(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
 
 	// JSON without "type" field defaults to "log"
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"message":"hello"}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"message":"hello"}`, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -256,8 +290,9 @@ func TestProcessStdoutLine_JSONNoType(t *testing.T) {
 func TestProcessStdoutLine_JSONEmptyType(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -271,8 +306,9 @@ func TestProcessStdoutLine_JSONEmptyType(t *testing.T) {
 func TestProcessStdoutLine_InvalidJSON(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{invalid json`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{invalid json`, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -289,9 +325,9 @@ func TestProcessStdoutLine_InvalidJSON(t *testing.T) {
 func TestProcessStdoutLine_JSONWithLevel(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"log","level":"debug","message":"trace"}`)
-
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"log","level":"debug","message":"trace"}`, state)
 	events := emitter.getEvents()
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
@@ -712,5 +748,65 @@ func TestK8sDriver_RunNode_JobFails(t *testing.T) {
 	}
 	if !foundFailed {
 		t.Error("expected failed status event with exitCode 1")
+	}
+}
+
+func TestK8sDriver_RunNode_HeartbeatTimeout(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+		newWatcher: func(_ *k8s.Client, _ string, runID, nodeID string, cfg *k8s.WatchConfig) jobWatcher {
+			return &fakeJobWatcher{
+				watch: func(ctx context.Context) error {
+					cfg.OnLog(`{"type":"heartbeat","runId":"`+runID+`","nodeId":"`+nodeID+`"}`, false)
+					<-ctx.Done()
+					return nil
+				},
+			}
+		},
+	}
+
+	code, err := d.RunNode(context.Background(), "run-heartbeat", "node1",
+		[]string{"echo", "hello"},
+		map[string]string{
+			"AGENT_IMAGE":          "python:3.12-slim",
+			heartbeatTimeoutEnvVar: "100ms",
+		},
+		0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 124 {
+		t.Fatalf("exit code: got %d, want 124", code)
+	}
+
+	jobs, listErr := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if listErr != nil {
+		t.Fatalf("list jobs: %v", listErr)
+	}
+	if len(jobs.Items) != 0 {
+		t.Fatalf("expected job to be deleted after heartbeat timeout, found %d", len(jobs.Items))
+	}
+
+	events := emitter.getEvents()
+	foundTimeout := false
+	for _, e := range events {
+		if e.EventType != "node_status" {
+			continue
+		}
+		if e.Data["status"] == "failed" && e.Data["reason"] == "heartbeat_timeout" {
+			foundTimeout = true
+			break
+		}
+	}
+	if !foundTimeout {
+		t.Fatal("expected failed node_status event with heartbeat_timeout reason")
 	}
 }

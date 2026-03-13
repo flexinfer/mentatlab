@@ -357,6 +357,9 @@ func (s *Scheduler) executeBodyNode(ctx context.Context, rctx *runContext, spec 
 	if spec.Image != "" {
 		env["AGENT_IMAGE"] = spec.Image
 	}
+	if spec.HeartbeatTimeout > 0 {
+		env["MENTAT_HEARTBEAT_TIMEOUT"] = spec.HeartbeatTimeout.String()
+	}
 
 	// Add iteration env as JSON-encoded strings for complex values
 	for k, v := range iterEnv {

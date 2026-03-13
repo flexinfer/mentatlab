@@ -287,6 +287,9 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 	if spec.Image != "" {
 		env["AGENT_IMAGE"] = spec.Image
 	}
+	if spec.HeartbeatTimeout > 0 {
+		env["MENTAT_HEARTBEAT_TIMEOUT"] = spec.HeartbeatTimeout.String()
+	}
 
 	// Serialize MCP config into INPUT_SPEC if present and not already set
 	if spec.MCP != nil && spec.MCP.ToolName != "" && env["INPUT_SPEC"] == "" {

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -504,6 +505,34 @@ func TestFlowGraphToPlanPreservesMCPPayload(t *testing.T) {
 	}
 	if got := args["kind"]; got != "pods" {
 		t.Fatalf("expected tool_args.kind=pods, got %v", got)
+	}
+}
+
+func TestFlowGraphToPlanParsesHeartbeatTimeout(t *testing.T) {
+	graph := json.RawMessage(`{
+		"nodes":[
+			{
+				"id":"n1",
+				"type":"agent",
+				"data":{
+					"agent_id":"echo",
+					"command":["python","-m","echo_agent"],
+					"heartbeat_timeout":"15s"
+				}
+			}
+		],
+		"edges":[]
+	}`)
+
+	plan, err := flowGraphToPlan(graph)
+	if err != nil {
+		t.Fatalf("flowGraphToPlan failed: %v", err)
+	}
+	if len(plan.Nodes) != 1 {
+		t.Fatalf("expected 1 node, got %d", len(plan.Nodes))
+	}
+	if got := plan.Nodes[0].HeartbeatTimeout; got != 15*time.Second {
+		t.Fatalf("expected heartbeat timeout 15s, got %s", got)
 	}
 }
 

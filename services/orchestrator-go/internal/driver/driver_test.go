@@ -204,8 +204,9 @@ func TestSubprocessDriver_Timeout(t *testing.T) {
 func TestProcessStdoutLine_PlainText(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
 
-	d.processStdoutLine(context.Background(), "run1", "node1", "plain text message")
+	d.processStdoutLine(context.Background(), "run1", "node1", "plain text message", state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -222,8 +223,9 @@ func TestProcessStdoutLine_PlainText(t *testing.T) {
 func TestProcessStdoutLine_ValidJSON(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -364,8 +366,9 @@ func TestSubprocessDriver_EnvInjection(t *testing.T) {
 func TestProcessStdoutLine_EmptyType(t *testing.T) {
 	emitter := &mockEmitter{}
 	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
 
-	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`)
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`, state)
 
 	events := emitter.getEvents()
 	if len(events) != 1 {
@@ -373,5 +376,157 @@ func TestProcessStdoutLine_EmptyType(t *testing.T) {
 	}
 	if events[0].EventType != "log" {
 		t.Errorf("event type: got %q, want %q (empty type should default to log)", events[0].EventType, "log")
+	}
+}
+
+// --- Structured error events (M12.1) ---
+
+func TestSubprocessDriver_RetryableErrorRewritesExitCode(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	// Agent emits a retryable error event then exits 1.
+	script := `echo '{"type":"error","level":"error","message":"model loading","data":{"code":"MODEL_NOT_READY","message":"model loading","retryable":true}}'
+exit 1`
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", script},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Exit code should be rewritten to 3 (transient retry convention)
+	if code != 3 {
+		t.Errorf("exit code: got %d, want 3 (retryable rewrite)", code)
+	}
+
+	// Verify the error event was emitted
+	events := emitter.getEvents()
+	foundError := false
+	for _, e := range events {
+		if e.EventType == "error" {
+			foundError = true
+			break
+		}
+	}
+	if !foundError {
+		t.Error("expected an 'error' event to be emitted")
+	}
+}
+
+func TestSubprocessDriver_NonRetryableErrorKeepsExitCode(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	// Agent emits a non-retryable (permanent) error event then exits 1.
+	script := `echo '{"type":"error","level":"error","message":"bad input","data":{"code":"INVALID_INPUT","message":"bad input","retryable":false}}'
+exit 1`
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", script},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Exit code should remain 1 (permanent failure, no rewrite)
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1 (non-retryable should not rewrite)", code)
+	}
+}
+
+func TestProcessStdoutLine_RetryableErrorSetsFlag(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
+
+	// Error event with retryable:true in data
+	d.processStdoutLine(context.Background(), "run1", "node1",
+		`{"type":"error","data":{"code":"TIMEOUT","message":"upstream timeout","retryable":true}}`, state)
+
+	if !state.retryable() {
+		t.Error("expected sawRetryable to be set for retryable error event")
+	}
+}
+
+func TestProcessStdoutLine_NonRetryableErrorDoesNotSetFlag(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
+
+	// Error event with retryable:false
+	d.processStdoutLine(context.Background(), "run1", "node1",
+		`{"type":"error","data":{"code":"PERM_FAIL","message":"permanent","retryable":false}}`, state)
+
+	if state.retryable() {
+		t.Error("expected sawRetryable to NOT be set for non-retryable error event")
+	}
+}
+
+func TestProcessStdoutLine_HeartbeatMarksState(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
+
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"heartbeat"}`, state)
+
+	if !state.hasHeartbeat() {
+		t.Fatal("expected heartbeat event to mark state")
+	}
+	if state.lastHeartbeat.Load() == 0 {
+		t.Fatal("expected heartbeat timestamp to be recorded")
+	}
+}
+
+func TestSubprocessDriver_HeartbeatTimeoutTriggersFailure(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	script := `echo '{"type":"heartbeat"}'
+sleep 1`
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", script},
+		map[string]string{heartbeatTimeoutEnvVar: "100ms"},
+		0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 124 {
+		t.Fatalf("exit code: got %d, want 124", code)
+	}
+
+	events := emitter.getEvents()
+	foundTimeout := false
+	for _, e := range events {
+		if e.EventType != "node_status" {
+			continue
+		}
+		if e.Data["status"] == "failed" && e.Data["reason"] == "heartbeat_timeout" {
+			foundTimeout = true
+			break
+		}
+	}
+	if !foundTimeout {
+		t.Fatal("expected failed node_status event with heartbeat_timeout reason")
+	}
+}
+
+func TestSubprocessDriver_HeartbeatTimeoutIgnoredWithoutHeartbeat(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", "sleep 0.2"},
+		map[string]string{heartbeatTimeoutEnvVar: "50ms"},
+		0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("exit code: got %d, want 0", code)
 	}
 }

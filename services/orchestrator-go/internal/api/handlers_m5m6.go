@@ -551,16 +551,17 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 		// Check for ReactFlow "data" object with nested fields.
 		var nodeWithData struct {
 			Data struct {
-				AgentID         string            `json:"agent_id"`
-				Image           string            `json:"image"`
-				Command         []string          `json:"command"`
-				Env             map[string]string `json:"env"`
-				Input           json.RawMessage   `json:"input"`
-				ToolName        string            `json:"tool_name"`
-				ToolArgs        json.RawMessage   `json:"tool_args"`
-				MCPServer       string            `json:"mcp_server"`
-				RuntimeContract json.RawMessage   `json:"runtime_contract"`
-				Timeout         string            `json:"timeout"`
+				AgentID          string            `json:"agent_id"`
+				Image            string            `json:"image"`
+				Command          []string          `json:"command"`
+				Env              map[string]string `json:"env"`
+				Input            json.RawMessage   `json:"input"`
+				ToolName         string            `json:"tool_name"`
+				ToolArgs         json.RawMessage   `json:"tool_args"`
+				MCPServer        string            `json:"mcp_server"`
+				RuntimeContract  json.RawMessage   `json:"runtime_contract"`
+				Timeout          string            `json:"timeout"`
+				HeartbeatTimeout string            `json:"heartbeat_timeout"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal(rawNode, &nodeWithData); err != nil {
@@ -662,6 +663,11 @@ func flowGraphToPlan(graph json.RawMessage) (*types.Plan, error) {
 		if d.Timeout != "" {
 			if dur, err := time.ParseDuration(d.Timeout); err == nil {
 				plan.Nodes[i].Timeout = dur
+			}
+		}
+		if d.HeartbeatTimeout != "" {
+			if dur, err := time.ParseDuration(d.HeartbeatTimeout); err == nil {
+				plan.Nodes[i].HeartbeatTimeout = dur
 			}
 		}
 	}

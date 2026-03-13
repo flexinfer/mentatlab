@@ -76,6 +76,7 @@ export const NodeSpecSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
   inputs: z.array(z.string()).optional(),
   timeout: z.number().optional(), // Duration in nanoseconds from Go
+  heartbeat_timeout: z.number().optional(), // Duration in nanoseconds from Go
   retries: z.number().int().optional(),
   // Control flow (only one should be set)
   conditional: ConditionalConfigSchema.optional(),
