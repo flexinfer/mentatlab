@@ -217,7 +217,7 @@ Populate the frontend node palette with available MCP tools from the loom proxy.
 
 **Goal:** Strengthen the agent contract, add multi-language SDK support, and enable richer agent-to-orchestrator communication.
 
-#### M12.1 Structured error events
+#### M12.1 Structured error events ([Issue #63](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/63))
 
 - Add `type: "error"` event with `code` (transient/permanent/timeout), `message`, `retryable` fields
 - Orchestrator distinguishes transient errors (retry) from permanent (fail node immediately)
@@ -225,7 +225,7 @@ Populate the frontend node palette with available MCP tools from the loom proxy.
 - Add Go SDK equivalent in `cli/mentatctl/templates/go/`
 - Source: `agents/common/emit.py`, `services/orchestrator-go/internal/scheduler/scheduler.go:554`
 
-#### M12.2 Progress and heartbeat events
+#### M12.2 Progress and heartbeat events ([Issue #64](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/64))
 
 - Add `type: "progress"` event with `percent`, `message`, `eta_seconds` fields
 - Frontend: progress bar on agent nodes during execution
@@ -233,7 +233,7 @@ Populate the frontend node palette with available MCP tools from the loom proxy.
 - Configurable heartbeat timeout per node (default 60s)
 - Source: `services/orchestrator-go/internal/driver/subprocess.go`
 
-#### M12.3 Agent capability declarations
+#### M12.3 Agent capability declarations ([Issue #65](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/65))
 
 - Extend `manifest.yaml` with `capabilities` section: `gpu`, `network`, `storage`, `secrets`
 - Add `resources` section: `cpu`, `memory`, `timeout`, `max_concurrent`
@@ -241,7 +241,7 @@ Populate the frontend node palette with available MCP tools from the loom proxy.
 - Validator rejects flows that pair agents with unsupported node types
 - Source: `schemas/agent.schema.json`, `services/orchestrator-go/internal/driver/k8s.go:70`
 
-#### M12.4 TypeScript agent SDK
+#### M12.4 TypeScript agent SDK ([Issue #66](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/66))
 
 - Create `agents/sdk-ts/` with TypeScript agent SDK (Node.js)
 - NDJSON stdin/stdout contract with typed event emitters
@@ -249,7 +249,7 @@ Populate the frontend node palette with available MCP tools from the loom proxy.
 - Publish as npm package for external agent authors
 - Source: `agents/common/emit.py` (reference implementation)
 
-#### M12.5 Agent state persistence
+#### M12.5 Agent state persistence ([Issue #67](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/67))
 
 - Add `type: "checkpoint"` event with `state` payload (arbitrary JSON, max 1MB)
 - Orchestrator stores checkpoint in Redis/MinIO keyed by `run_id:node_id`

@@ -5,6 +5,7 @@ This guide covers everything you need to build agents for the MentatLab orchestr
 ## Overview
 
 Agents are containerized units of work that:
+
 - Execute tasks within a DAG (directed acyclic graph) workflow
 - Communicate via NDJSON events over stdout
 - Run in Kubernetes Jobs or subprocess mode
@@ -50,23 +51,23 @@ Every agent must be registered with a manifest. Here's the complete schema:
 
 ### Required Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Unique identifier (e.g., `myorg.agent-name`) |
-| `name` | string | Human-readable display name |
-| `version` | string | Semantic version (e.g., `1.0.0`) |
+| Field     | Type   | Description                                  |
+| --------- | ------ | -------------------------------------------- |
+| `id`      | string | Unique identifier (e.g., `myorg.agent-name`) |
+| `name`    | string | Human-readable display name                  |
+| `version` | string | Semantic version (e.g., `1.0.0`)             |
 
 ### Optional Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `image` | string | Container image URL for K8s execution |
-| `command` | string[] | Entrypoint command override |
-| `capabilities` | string[] | Tags for filtering/discovery |
-| `schema` | object | JSON Schema for input/output validation |
-| `description` | string | Agent description |
-| `author` | string | Author name/email |
-| `metadata` | object | Custom key-value pairs |
+| Field          | Type     | Description                             |
+| -------------- | -------- | --------------------------------------- |
+| `image`        | string   | Container image URL for K8s execution   |
+| `command`      | string[] | Entrypoint command override             |
+| `capabilities` | string[] | Tags for filtering/discovery            |
+| `schema`       | object   | JSON Schema for input/output validation |
+| `description`  | string   | Agent description                       |
+| `author`       | string   | Author name/email                       |
+| `metadata`     | object   | Custom key-value pairs                  |
 
 ---
 
@@ -90,6 +91,7 @@ Agents communicate with the orchestrator via **newline-delimited JSON (NDJSON)**
 ### Event Types
 
 #### 1. Log Events
+
 Used for general logging and debugging.
 
 ```json
@@ -98,6 +100,7 @@ Used for general logging and debugging.
 ```
 
 #### 2. Checkpoint Events
+
 Report progress through execution stages.
 
 ```json
@@ -107,6 +110,7 @@ Report progress through execution stages.
 ```
 
 #### 3. Metric Events
+
 Emit metrics for monitoring and cost tracking.
 
 ```json
@@ -115,6 +119,7 @@ Emit metrics for monitoring and cost tracking.
 ```
 
 #### 4. Output Events
+
 Emit structured outputs for downstream nodes in a DAG. The orchestrator captures these and stores them via `runstore.SetNodeOutputs()`. Downstream nodes access values through the expression environment as `inputs.nodeId.key`.
 
 ```json
@@ -125,13 +130,36 @@ Emit structured outputs for downstream nodes in a DAG. The orchestrator captures
 Each output event must have `key` (string) and `value` (any JSON type) in its `data` field.
 
 #### 5. Result Events
+
 Final output of the agent (optional, can also use exit code + stdout).
 
 ```json
-{"type":"result","data":{"summary":"The quick brown fox...","word_count":150},"ts":"2024-01-15T10:30:10Z"}
+{
+  "type": "result",
+  "data": { "summary": "The quick brown fox...", "word_count": 150 },
+  "ts": "2024-01-15T10:30:10Z"
+}
 ```
 
----
+#### 6. Error Events
+
+Emit structured errors to classify failures as transient (retryable) or permanent. The orchestrator uses the `retryable` hint to decide whether to retry the node or fail permanently.
+
+```json
+{"type":"error","level":"error","message":"Model not ready","data":{"code":"MODEL_NOT_READY","message":"Model not ready","retryable":true},"ts":"2024-01-15T10:30:10Z"}
+{"type":"error","level":"error","message":"Invalid input","data":{"code":"INVALID_INPUT","message":"Missing required field 'text'","retryable":false},"ts":"2024-01-15T10:30:10Z"}
+```
+
+**Error fields** (inside `data`):
+
+| Field       | Type    | Description                                                                       |
+| ----------- | ------- | --------------------------------------------------------------------------------- |
+| `code`      | string  | Machine-readable error code (e.g., `MODEL_NOT_READY`, `TIMEOUT`, `INVALID_INPUT`) |
+| `message`   | string  | Human-readable description                                                        |
+| `retryable` | boolean | `true` = transient failure (scheduler retries), `false` = permanent failure       |
+| `details`   | object  | Optional additional context                                                       |
+
+**Retry contract**: When an agent emits `{"type":"error","data":{"retryable":true}}` and then exits with a non-zero code, the orchestrator rewrites the exit code to `3` (the transient-retry convention), which triggers the node's retry policy. Non-retryable errors leave the exit code unchanged and the node fails permanently.
 
 ## Python SDK
 
@@ -283,31 +311,30 @@ function emit(event) {
 }
 
 function logInfo(message, data = {}) {
-  emit({ type: 'log', level: 'info', message, data });
+  emit({ type: "log", level: "info", message, data });
 }
 
 function logError(message, data = {}) {
-  emit({ type: 'log', level: 'error', message, data });
+  emit({ type: "log", level: "error", message, data });
 }
 
 function checkpoint(stage, progress, extra = {}) {
-  emit({ type: 'checkpoint', data: { stage, progress, ...extra } });
+  emit({ type: "checkpoint", data: { stage, progress, ...extra } });
 }
 
 // Main
-checkpoint('start', 0.0, { args: process.argv.slice(2) });
-logInfo('Agent starting');
+checkpoint("start", 0.0, { args: process.argv.slice(2) });
+logInfo("Agent starting");
 
 try {
   // Do work...
   const result = processInput();
 
-  emit({ type: 'result', data: { output: result } });
-  checkpoint('end', 1.0);
-
+  emit({ type: "result", data: { output: result } });
+  checkpoint("end", 1.0);
 } catch (error) {
-  logError('Agent failed', { error: error.message });
-  checkpoint('error', 0.0, { error: error.message });
+  logError("Agent failed", { error: error.message });
+  checkpoint("error", 0.0, { error: error.message });
   process.exit(1);
 }
 ```
@@ -415,12 +442,12 @@ python -m my_agent 2>&1 | jq -c '.'
 
 ### Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| Events not appearing | stdout not flushed | Call `sys.stdout.flush()` after each emit |
-| Invalid JSON errors | Non-JSON in stdout | Ensure only NDJSON on stdout, use stderr for debug |
-| Agent timeout | Long-running without checkpoints | Emit checkpoints regularly |
-| K8s OOMKilled | Memory limit exceeded | Set appropriate resource limits |
+| Issue                | Cause                            | Solution                                           |
+| -------------------- | -------------------------------- | -------------------------------------------------- |
+| Events not appearing | stdout not flushed               | Call `sys.stdout.flush()` after each emit          |
+| Invalid JSON errors  | Non-JSON in stdout               | Ensure only NDJSON on stdout, use stderr for debug |
+| Agent timeout        | Long-running without checkpoints | Emit checkpoints regularly                         |
+| K8s OOMKilled        | Memory limit exceeded            | Set appropriate resource limits                    |
 
 ### Viewing Logs in K8s
 
@@ -555,17 +582,21 @@ Gate nodes pause execution until an external signal (approve/reject). Use them f
 ```json
 {
   "nodes": [
-    {"id": "process", "agent_id": "myorg.processor"},
-    {"id": "review", "type": "gate", "gate": {
-      "description": "Review output before publishing",
-      "timeout": 3600,
-      "auto_reject": true
-    }},
-    {"id": "publish", "agent_id": "myorg.publisher"}
+    { "id": "process", "agent_id": "myorg.processor" },
+    {
+      "id": "review",
+      "type": "gate",
+      "gate": {
+        "description": "Review output before publishing",
+        "timeout": 3600,
+        "auto_reject": true
+      }
+    },
+    { "id": "publish", "agent_id": "myorg.publisher" }
   ],
   "edges": [
-    {"from": "process", "to": "review"},
-    {"from": "review", "to": "publish"}
+    { "from": "process", "to": "review" },
+    { "from": "review", "to": "publish" }
   ]
 }
 ```

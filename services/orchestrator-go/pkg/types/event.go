@@ -98,6 +98,17 @@ type StreamDataEvent struct {
 	Raw         json.RawMessage `json:"raw,omitempty"`
 }
 
+// ErrorEvent represents the data payload for structured error events.
+// Agents emit these to classify failures as transient (retryable) or permanent.
+// When Retryable is true the scheduler treats the failure as transient and
+// applies the node's retry policy even if the exit code is not 3.
+type ErrorEvent struct {
+	Code      string                 `json:"code"`
+	Message   string                 `json:"message"`
+	Retryable bool                   `json:"retryable"`
+	Details   map[string]interface{} `json:"details,omitempty"`
+}
+
 // ToSSE formats the event for Server-Sent Events protocol.
 // Format: id: <id>\nevent: <type>\ndata: <json>\n\n
 func (e *Event) ToSSE() []byte {
