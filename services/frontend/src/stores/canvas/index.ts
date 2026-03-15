@@ -191,7 +191,15 @@ export const useCanvasStore = create<CanvasState>()(
         });
       },
 
-      setSelectedNodeId: (nodeId: string | null) => set({ selectedNodeId: nodeId }),
+      setSelectedNodeId: (nodeId: string | null) => {
+        set((state) => {
+          if (state.selectedNodeId === nodeId) {
+            return state;
+          }
+
+          return { selectedNodeId: nodeId };
+        });
+      },
 
       updateNodeConfig: (nodeId: string, data: object) => {
         set((state) => ({

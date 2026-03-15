@@ -244,6 +244,24 @@ describe('Canvas Store - setSelectedNodeId', () => {
     act(() => { getState().setSelectedNodeId(null); });
     expect(getState().selectedNodeId).toBeNull();
   });
+
+  it('ignores unchanged selection updates', () => {
+    const updates: Array<string | null> = [];
+    const unsubscribe = useCanvasStore.subscribe((state) => state.selectedNodeId, (nodeId) => {
+      updates.push(nodeId);
+    });
+
+    try {
+      act(() => { getState().setSelectedNodeId('abc'); });
+      act(() => { getState().setSelectedNodeId('abc'); });
+      act(() => { getState().setSelectedNodeId(null); });
+      act(() => { getState().setSelectedNodeId(null); });
+    } finally {
+      unsubscribe();
+    }
+
+    expect(updates).toEqual(['abc', null]);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
