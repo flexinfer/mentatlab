@@ -91,14 +91,15 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
   const fitView = React.useCallback(() => {
     try {
       const inst = reactFlowRef.current;
-      if (inst?.fitView) inst.fitView({ padding: 0.2, includeHiddenNodes: true });
+      if (!inst?.fitView || nodes.length === 0) return;
+      inst.fitView({ padding: 0.2, includeHiddenNodes: true });
     } catch {}
-  }, []);
+  }, [nodes.length]);
 
   React.useEffect(() => {
     // request fit view on first load and any subsequent nonce bumps
     fitView();
-  }, [fitViewNonce]);
+  }, [fitView, fitViewNonce]);
 
   // selection bridging
   const handleSelectionChange = React.useCallback(
@@ -217,11 +218,7 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
             onNodeContextMenu={handleNodeContextMenu as any}
             onInit={(instance: any) => {
               reactFlowRef.current = instance;
-              // initial fit at first mount handled by fitViewNonce effect as well
-              try { fitView(); } catch {}
             }}
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
             defaultEdgeOptions={{ animated: true }}
           >
             <BackgroundAny gap={16} color="hsl(var(--muted))" />
