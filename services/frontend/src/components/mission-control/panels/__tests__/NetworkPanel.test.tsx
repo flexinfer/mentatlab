@@ -3,8 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 
 // Hoisted mocks
-const { mockConnectionStatus } = vi.hoisted(() => ({
+const { mockConnectionStatus, mockNetworkFitView } = vi.hoisted(() => ({
   mockConnectionStatus: { current: 'disconnected' as string },
+  mockNetworkFitView: vi.fn(),
 }));
 
 const { mockStartLiveConnection } = vi.hoisted(() => ({
@@ -63,13 +64,22 @@ vi.mock('../network/CanvasUnderlay', () => ({
 
 // Mock ReactFlow
 vi.mock('reactflow', () => ({
-  ReactFlow: ({ nodes, edges }: any) => (
-    <div data-testid="react-flow-network" data-node-count={nodes?.length ?? 0} data-edge-count={edges?.length ?? 0}>
-      {nodes?.map((n: any) => (
-        <div key={n.id} data-testid={`net-node-${n.id}`}>{n.data?.label}</div>
-      ))}
-    </div>
-  ),
+  ReactFlow: ({ nodes, edges, onInit }: any) => {
+    React.useLayoutEffect(() => {
+      onInit?.({
+        getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+        fitView: mockNetworkFitView,
+      });
+    }, [onInit]);
+
+    return (
+      <div data-testid="react-flow-network" data-node-count={nodes?.length ?? 0} data-edge-count={edges?.length ?? 0}>
+        {nodes?.map((n: any) => (
+          <div key={n.id} data-testid={`net-node-${n.id}`}>{n.data?.label}</div>
+        ))}
+      </div>
+    );
+  },
   ReactFlowProvider: ({ children }: any) => <>{children}</>,
   Background: () => <div data-testid="rf-bg" />,
   Controls: () => <div data-testid="rf-controls" />,
@@ -101,6 +111,7 @@ describe('NetworkPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConnectionStatus.current = 'disconnected';
+    mockNetworkFitView.mockReset();
 
     // Mock global fetch to return 3 agents
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -169,6 +180,14 @@ describe('NetworkPanel', () => {
     await waitFor(() => {
       const flow = screen.getByTestId('react-flow-network');
       expect(Number(flow.getAttribute('data-node-count'))).toBeGreaterThan(0);
+    });
+  });
+
+  test('fits the network view once after nodes load', async () => {
+    render(<NetworkPanel runId={null} />);
+
+    await waitFor(() => {
+      expect(mockNetworkFitView).toHaveBeenCalledTimes(1);
     });
   });
 

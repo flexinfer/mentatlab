@@ -183,6 +183,8 @@ export default function NetworkPanel({ runId }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState<AgentNodeData>([] as RFNode[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const underlayRef = React.useRef<PixiUnderlayHandle | null>(null);
+  const reactFlowRef = React.useRef<any>(null);
+  const didAutoFitRef = React.useRef(false);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = React.useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
   const [canvasSize, setCanvasSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -626,6 +628,22 @@ export default function NetworkPanel({ runId }: Props) {
     try { underlayRef.current?.setViewport(vp); } catch {}
   }, []);
 
+  React.useEffect(() => {
+    if (nodes.length === 0) {
+      didAutoFitRef.current = false;
+      return;
+    }
+    if (didAutoFitRef.current) return;
+
+    const instance = reactFlowRef.current;
+    if (!instance?.fitView) return;
+
+    didAutoFitRef.current = true;
+    try {
+      instance.fitView({ padding: 0.2, includeHiddenNodes: true });
+    } catch {}
+  }, [edges.length, nodes.length]);
+
   const underlayNodes = React.useMemo(() => nodes.map(n => ({ id: n.id, position: n.position })), [nodes]);
 
   return (
@@ -703,6 +721,7 @@ export default function NetworkPanel({ runId }: Props) {
             onConnect={onConnect}
             // Initialize underlay viewport on first mount
             onInit={(instance: any) => {
+              reactFlowRef.current = instance;
               try {
                 const vp = instance?.getViewport?.() || { x: 0, y: 0, zoom: 1 };
                 setViewport(vp);
@@ -711,8 +730,6 @@ export default function NetworkPanel({ runId }: Props) {
             }}
             // keep underlay in sync with pan/zoom
             onMove={onMove}
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
             defaultEdgeOptions={{ animated: true, markerEnd: { type: MarkerType.ArrowClosed } }}
           >
             <BackgroundAny gap={24} size={1} color="hsl(var(--primary)/0.1)" />

@@ -303,6 +303,24 @@ function CanvasWorkspace({
   const onEdgesChange = useCanvasStore((state) => state.onEdgesChange);
   const onConnect = useCanvasStore((state) => state.onConnect);
   const setSelectedNodeId = useCanvasStore((state) => state.setSelectedNodeId);
+  const reactFlowRef = React.useRef<any>(null);
+  const didAutoFitRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (nodes.length === 0) {
+      didAutoFitRef.current = false;
+      return;
+    }
+    if (didAutoFitRef.current) return;
+
+    const instance = reactFlowRef.current;
+    if (!instance?.fitView) return;
+
+    didAutoFitRef.current = true;
+    try {
+      instance.fitView({ padding: 0.2, includeHiddenNodes: true });
+    } catch {}
+  }, [edges.length, nodes.length]);
 
   return (
     <div className="flex h-full">
@@ -358,8 +376,9 @@ function CanvasWorkspace({
                     const firstNodeId = selection?.nodes?.[0]?.id ?? null;
                     setSelectedNodeId(firstNodeId);
                   }}
-                  fitView
-                  fitViewOptions={{ padding: 0.2 }}
+                  onInit={(instance: any) => {
+                    reactFlowRef.current = instance;
+                  }}
                   proOptions={{ hideAttribution: true }}
                 >
                   <BackgroundAny gap={20} color="hsl(var(--border))" />
