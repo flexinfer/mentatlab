@@ -266,14 +266,14 @@ test-integration-smoke-agent:
         local name="$1" context="$2"
         echo "=== Building ${name} from ${context} ==="
 
-        local tags=(-t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}")
+        local latest_tag_args=""
         if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-          tags+=(-t "${REGISTRY}/${name}:latest")
+          latest_tag_args="-t ${REGISTRY}/${name}:latest"
         fi
 
-        if ! DOCKER_BUILDKIT=1 docker build "${tags[@]}" "${context}"; then
+        if ! DOCKER_BUILDKIT=1 docker build -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${latest_tag_args} "${context}"; then
           echo "WARNING: ${name} build failed, retrying without cache..."
-          DOCKER_BUILDKIT=1 docker build --no-cache "${tags[@]}" "${context}"
+          DOCKER_BUILDKIT=1 docker build --no-cache -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${latest_tag_args} "${context}"
         fi
 
         docker push "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
