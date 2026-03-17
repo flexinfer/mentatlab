@@ -105,6 +105,28 @@ describe('Run Schema Contracts', () => {
       expect(result.success).toBe(true);
     });
 
+    it('should parse node with runtime capability metadata', () => {
+      const node = {
+        id: 'node-2',
+        type: 'mcp:flexinfer-template-inference',
+        agent_id: 'loom-mcp-executor',
+        capabilities: {
+          actions: ['call_tool'],
+          network: true,
+          secrets: true,
+        },
+        resources: {
+          cpu: '250m',
+          memory: '256Mi',
+          max_concurrent: 6,
+          timeout_seconds: 180,
+        },
+      };
+      const result = NodeSpecSchema.safeParse(node);
+      expect(result.success).toBe(true);
+      expect(result.data?.resources?.max_concurrent).toBe(6);
+    });
+
     it('should parse conditional control flow node', () => {
       const node = {
         id: 'cond-1',

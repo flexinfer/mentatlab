@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
 // MemoryRegistry implements AgentRegistry using in-memory storage.
@@ -28,46 +30,40 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 	// Add default agents (the previously hardcoded ones)
 	defaults := []*Agent{
 		{
-			ID:           "mentatlab.echo",
-			Name:         "Echo Agent",
-			Version:      "1.0.0",
-			Description:  "Simple echo agent for testing",
-			Command:      []string{"python", "agents/echo/main.py"},
-			Capabilities: []string{"echo", "test"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
-				Outputs: []PinSpec{{Name: "result", Type: "json"}},
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
+			ID:             "mentatlab.echo",
+			Name:           "Echo Agent",
+			Version:        "1.0.0",
+			Description:    "Simple echo agent for testing",
+			Command:        []string{"python", "agents/echo/main.py"},
+			Capabilities:   []string{"echo", "test"},
+			CapabilitySpec: &types.CapabilityDeclaration{},
+			Resources:      &types.ResourceRequirements{CPU: "100m", Memory: "128Mi", TimeoutSeconds: 60, MaxConcurrent: 8},
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		},
 		{
-			ID:           "mentatlab.psyche-sim",
-			Name:         "Psyche Simulation",
-			Version:      "1.0.0",
-			Description:  "Psychological simulation agent",
-			Command:      []string{"python", "agents/psyche-sim/main.py"},
-			Capabilities: []string{"simulation", "psychology"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
-				Outputs: []PinSpec{{Name: "result", Type: "json"}, {Name: "mentat_meta", Type: "json"}},
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
+			ID:             "mentatlab.psyche-sim",
+			Name:           "Psyche Simulation",
+			Version:        "1.0.0",
+			Description:    "Psychological simulation agent",
+			Command:        []string{"python", "agents/psyche-sim/main.py"},
+			Capabilities:   []string{"simulation", "psychology"},
+			CapabilitySpec: &types.CapabilityDeclaration{},
+			Resources:      &types.ResourceRequirements{CPU: "500m", Memory: "512Mi", TimeoutSeconds: 300, MaxConcurrent: 2},
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		},
 		{
-			ID:           "mentatlab.ctm-cogpack",
-			Name:         "CTM CogPack",
-			Version:      "1.0.0",
-			Description:  "Cognitive task modeling package",
-			Command:      []string{"python", "agents/ctm-cogpack/main.py"},
-			Capabilities: []string{"cognitive", "modeling"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
-				Outputs: []PinSpec{{Name: "output", Type: "stream"}, {Name: "stats", Type: "json"}},
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
+			ID:             "mentatlab.ctm-cogpack",
+			Name:           "CTM CogPack",
+			Version:        "1.0.0",
+			Description:    "Cognitive task modeling package",
+			Command:        []string{"python", "agents/ctm-cogpack/main.py"},
+			Capabilities:   []string{"cognitive", "modeling"},
+			CapabilitySpec: &types.CapabilityDeclaration{GPU: true},
+			Resources:      &types.ResourceRequirements{CPU: "1000m", Memory: "2Gi", TimeoutSeconds: 600, MaxConcurrent: 1},
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		},
 		{
 			ID:           "loom-mcp-executor",
@@ -76,11 +72,12 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			Description:  "Executes MCP tools through loom-core and emits output payloads",
 			Command:      []string{"python", "agents/loom-mcp-executor/main.py"},
 			Capabilities: []string{"mcp", "integration", "tools"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json", Description: "MCP tool call specification"}},
-				Outputs: []PinSpec{{Name: "result", Type: "json"}},
-				Actions: []string{"call_tool"},
+			CapabilitySpec: &types.CapabilityDeclaration{
+				Actions: []string{"call_tool", "get", "list", "activate", "inference"},
+				Network: true,
+				Secrets: true,
 			},
+			Resources: &types.ResourceRequirements{CPU: "250m", Memory: "256Mi", TimeoutSeconds: 180, MaxConcurrent: 6},
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
@@ -92,11 +89,12 @@ func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 			Command:      []string{"python", "agents/flexinfer-adapter/main.py"},
 			Image:        "registry.harbor.lan/library/mentatlab-flexinfer-adapter:v0.1.0-dev",
 			Capabilities: []string{"inference", "flexinfer", "llm", "image-generation"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json", Description: "Action spec: model, action, params"}},
-				Outputs: []PinSpec{{Name: "result", Type: "json"}, {Name: "error", Type: "json"}},
+			CapabilitySpec: &types.CapabilityDeclaration{
 				Actions: []string{"inference", "list", "get", "activate", "scale", "gpu_status"},
+				Network: true,
+				Secrets: true,
 			},
+			Resources: &types.ResourceRequirements{CPU: "250m", Memory: "256Mi", TimeoutSeconds: 180, MaxConcurrent: 4},
 			CreatedAt: now,
 			UpdatedAt: now,
 		},
@@ -124,18 +122,20 @@ func (r *MemoryRegistry) Create(ctx context.Context, req *CreateAgentRequest) (*
 
 	now := time.Now().UTC()
 	agent := &Agent{
-		ID:           req.ID,
-		Name:         req.Name,
-		Version:      req.Version,
-		Image:        req.Image,
-		Command:      req.Command,
-		Capabilities: req.Capabilities,
-		Schema:       req.Schema,
-		Description:  req.Description,
-		Author:       req.Author,
-		Metadata:     req.Metadata,
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:             req.ID,
+		Name:           req.Name,
+		Version:        req.Version,
+		Image:          req.Image,
+		Command:        req.Command,
+		Capabilities:   req.Capabilities,
+		CapabilitySpec: req.CapabilitySpec,
+		Resources:      req.Resources,
+		Schema:         req.Schema,
+		Description:    req.Description,
+		Author:         req.Author,
+		Metadata:       req.Metadata,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	r.agents[req.ID] = agent
@@ -182,6 +182,12 @@ func (r *MemoryRegistry) Update(ctx context.Context, id string, req *UpdateAgent
 	}
 	if req.Capabilities != nil {
 		agent.Capabilities = req.Capabilities
+	}
+	if req.CapabilitySpec != nil {
+		agent.CapabilitySpec = req.CapabilitySpec
+	}
+	if req.Resources != nil {
+		agent.Resources = req.Resources
 	}
 	if req.Schema != nil {
 		agent.Schema = req.Schema
