@@ -207,6 +207,11 @@ const manifestSchemaJSON = `{
     "resources": {
       "type": "object",
       "properties": {
+        "cpu": {"type": "string"},
+        "memory": {"type": "string"},
+        "gpu": {"type": ["string", "boolean"]},
+        "timeout_seconds": {"type": "integer", "minimum": 0},
+        "max_concurrent": {"type": "integer", "minimum": 0},
         "limits": {
           "type": "object",
           "properties": {
@@ -224,6 +229,22 @@ const manifestSchemaJSON = `{
         }
       },
       "description": "Resource requirements"
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "supports_progress": {"type": "boolean"},
+        "supports_heartbeat": {"type": "boolean"},
+        "gpu": {"type": "boolean"},
+        "network": {"type": "boolean"},
+        "storage": {"type": "boolean"},
+        "secrets": {"type": "boolean"}
+      },
+      "description": "Structured runtime capability declarations"
     },
     "inputs": {
       "type": "array",

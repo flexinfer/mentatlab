@@ -68,6 +68,12 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 			}
 		}
 
+		releaseAgentSlot, err := s.acquireAgentSlot(nodeCtx, spec)
+		if err != nil {
+			return
+		}
+		defer releaseAgentSlot()
+
 		// Resolve executor
 		nodeType := "agent"
 		if spec.Gate != nil {
@@ -342,6 +348,33 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 	}
 
 	return exitCode, nil
+}
+
+func (s *Scheduler) acquireAgentSlot(ctx context.Context, spec *types.NodeSpec) (func(), error) {
+	if spec == nil || spec.AgentID == "" || spec.Resources == nil || spec.Resources.MaxConcurrent <= 0 {
+		return func() {}, nil
+	}
+
+	sem := s.agentSemaphore(spec.AgentID, spec.Resources.MaxConcurrent)
+	select {
+	case sem <- struct{}{}:
+		return func() { <-sem }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (s *Scheduler) agentSemaphore(agentID string, limit int) chan struct{} {
+	s.agentSemsMu.Lock()
+	defer s.agentSemsMu.Unlock()
+
+	if sem, ok := s.agentSems[agentID]; ok {
+		return sem
+	}
+
+	sem := make(chan struct{}, limit)
+	s.agentSems[agentID] = sem
+	return sem
 }
 
 type gateExecutor struct{}

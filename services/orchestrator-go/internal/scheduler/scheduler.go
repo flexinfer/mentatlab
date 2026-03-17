@@ -51,6 +51,8 @@ type Scheduler struct {
 	runs               map[string]*runContext
 	runsMu             sync.Mutex
 	sem                chan struct{} // Parallelism limiter
+	agentSems          map[string]chan struct{}
+	agentSemsMu        sync.Mutex
 	defaultMaxRetries  int
 	defaultBackoffSecs int
 	defaultRunTimeout  time.Duration
@@ -148,6 +150,7 @@ func NewScheduler(store runstore.RunStore, drv driver.Driver, resolveCmd Command
 		driver:             drv,
 		resolveCmd:         resolveCmd,
 		runs:               make(map[string]*runContext),
+		agentSems:          make(map[string]chan struct{}),
 		defaultMaxRetries:  0,
 		defaultBackoffSecs: 2,
 		defaultRunTimeout:  0,
@@ -203,6 +206,9 @@ func (s *Scheduler) EnqueueRun(ctx context.Context, runID, name string, plan *ty
 		// Apply defaults if not set
 		if node.Retries == 0 {
 			node.Retries = s.defaultMaxRetries
+		}
+		if node.Timeout == 0 && node.Resources != nil && node.Resources.TimeoutSeconds > 0 {
+			node.Timeout = time.Duration(node.Resources.TimeoutSeconds) * time.Second
 		}
 		nodeSpecs[node.ID] = node
 	}

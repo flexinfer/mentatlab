@@ -53,9 +53,8 @@ func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate plan graph structure (cycles, dangling edges, duplicate IDs)
 	if req.Plan != nil {
-		if result := validator.ValidatePlanGraph(req.Plan); !result.Valid {
+		if result := h.preparePlanForExecution(ctx, req.Plan); !result.Valid {
 			h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
 			return
 		}
@@ -126,7 +125,7 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result := validator.ValidatePlanGraph(run.Plan); !result.Valid {
+	if result := h.preparePlanForExecution(ctx, run.Plan); !result.Valid {
 		h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
 		return
 	}

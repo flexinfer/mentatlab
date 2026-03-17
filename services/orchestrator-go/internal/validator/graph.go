@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -67,6 +68,54 @@ func ValidatePlanGraph(plan *types.Plan) *ValidationResult {
 	//    but DFS gives us the cycle path for a better error message).
 	if cycleErr := detectCycle(plan); cycleErr != nil {
 		errs = append(errs, *cycleErr)
+	}
+
+	if len(errs) > 0 {
+		return &ValidationResult{Valid: false, Errors: errs}
+	}
+	return &ValidationResult{Valid: true}
+}
+
+// ValidatePlanCapabilities verifies that agent-backed nodes are paired with
+// runtime contracts their declared capabilities can support.
+func ValidatePlanCapabilities(plan *types.Plan) *ValidationResult {
+	if plan == nil || len(plan.Nodes) == 0 {
+		return &ValidationResult{Valid: true}
+	}
+
+	var errs []ValidationError
+	for i, node := range plan.Nodes {
+		if node.AgentID == "" || node.Capabilities == nil {
+			continue
+		}
+
+		contract := extractRuntimeContract(node.Env)
+		if strings.HasPrefix(node.Type, "mcp:") || contract.Kind == "mcp_tool" || strings.HasPrefix(contract.Kind, "flexinfer_") {
+			if !node.Capabilities.Network {
+				errs = append(errs, ValidationError{
+					Path:    fmt.Sprintf("$.nodes[%d].capabilities.network", i),
+					Message: fmt.Sprintf("agent node %q requires network capability for runtime contract %q", node.ID, contract.KindOrFallback(node.Type)),
+				})
+			}
+		}
+		if len(contract.RequiredEnv) > 0 && !node.Capabilities.Secrets {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("$.nodes[%d].capabilities.secrets", i),
+				Message: fmt.Sprintf("agent node %q requires secrets capability for required env %s", node.ID, strings.Join(contract.RequiredEnv, ", ")),
+			})
+		}
+		if node.Resources != nil && strings.TrimSpace(node.Resources.GPU) != "" && !node.Capabilities.GPU {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("$.nodes[%d].resources.gpu", i),
+				Message: fmt.Sprintf("agent node %q declares GPU resources without gpu capability", node.ID),
+			})
+		}
+		if contract.Kind != "" && len(node.Capabilities.Actions) > 0 && !actionsSupportContract(node.Capabilities.Actions, contract.Kind) {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("$.nodes[%d].capabilities.actions", i),
+				Message: fmt.Sprintf("agent node %q actions do not support runtime contract %q", node.ID, contract.Kind),
+			})
+		}
 	}
 
 	if len(errs) > 0 {
@@ -177,6 +226,57 @@ func validateControlFlowNodes(plan *types.Plan, nodeSet map[string]int) []Valida
 	}
 
 	return errs
+}
+
+type runtimeContract struct {
+	Kind        string   `json:"kind"`
+	RequiredEnv []string `json:"required_env"`
+}
+
+func (r runtimeContract) KindOrFallback(nodeType string) string {
+	if r.Kind != "" {
+		return r.Kind
+	}
+	return nodeType
+}
+
+func extractRuntimeContract(env map[string]string) runtimeContract {
+	if env == nil || env["INPUT_SPEC"] == "" {
+		return runtimeContract{}
+	}
+
+	var inputSpec struct {
+		RuntimeContract runtimeContract `json:"runtime_contract"`
+	}
+	if err := json.Unmarshal([]byte(env["INPUT_SPEC"]), &inputSpec); err != nil {
+		return runtimeContract{}
+	}
+	return inputSpec.RuntimeContract
+}
+
+func actionsSupportContract(actions []string, kind string) bool {
+	required := []string{}
+	switch kind {
+	case "mcp_tool":
+		required = []string{"call_tool"}
+	case "flexinfer_inference":
+		required = []string{"call_tool", "inference"}
+	case "flexinfer_activation":
+		required = []string{"call_tool", "activate"}
+	case "flexinfer_readiness":
+		required = []string{"call_tool", "get", "list"}
+	default:
+		return true
+	}
+
+	for _, action := range actions {
+		for _, allowed := range required {
+			if action == allowed {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validateConditionalNode(node types.NodeSpec, nodeIndex int, nodeSet map[string]int) []ValidationError {

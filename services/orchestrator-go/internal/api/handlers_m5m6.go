@@ -18,7 +18,6 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
@@ -202,7 +201,7 @@ func (h *Handlers) TriggerWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result := validator.ValidatePlanGraph(plan); !result.Valid {
+	if result := h.preparePlanForExecution(ctx, plan); !result.Valid {
 		msgs := make([]string, len(result.Errors))
 		for i, e := range result.Errors {
 			msgs[i] = e.Message
@@ -260,7 +259,7 @@ func (h *Handlers) CloneRun(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, r, http.StatusBadRequest, "run has no plan to clone", errors.New("missing plan"))
 		return
 	}
-	if result := validator.ValidatePlanGraph(run.Plan); !result.Valid {
+	if result := h.preparePlanForExecution(ctx, run.Plan); !result.Valid {
 		h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
 		return
 	}
@@ -330,7 +329,7 @@ func (h *Handlers) RunFlow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result := validator.ValidatePlanGraph(plan); !result.Valid {
+	if result := h.preparePlanForExecution(ctx, plan); !result.Valid {
 		msgs := make([]string, len(result.Errors))
 		for i, e := range result.Errors {
 			msgs[i] = e.Message
