@@ -613,6 +613,12 @@ func TestRunFlowPreservesMCPPayloadInCreatedRunPlan(t *testing.T) {
 	if node.Env == nil || node.Env["INPUT_SPEC"] == "" {
 		t.Fatalf("expected INPUT_SPEC in node env, got %+v", node.Env)
 	}
+	if got, want := node.Command, []string{"python", "agents/loom-mcp-executor/main.py"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("expected hydrated command %v, got %v", want, got)
+	}
+	if got, want := node.Image, "registry.harbor.lan/library/mentatlab-loom-mcp-executor:v0.2.0-dev"; got != want {
+		t.Fatalf("expected hydrated image %q, got %q", want, got)
+	}
 
 	var spec map[string]any
 	if err := json.Unmarshal([]byte(node.Env["INPUT_SPEC"]), &spec); err != nil {
@@ -705,6 +711,12 @@ func TestRunFlowPreservesFlexInferPayloadInCreatedRunPlan(t *testing.T) {
 	node := run.Plan.Nodes[0]
 	if node.Env == nil || node.Env["INPUT_SPEC"] == "" {
 		t.Fatalf("expected INPUT_SPEC in node env, got %+v", node.Env)
+	}
+	if got, want := node.Command, []string{"python", "agents/loom-mcp-executor/main.py"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("expected hydrated command %v, got %v", want, got)
+	}
+	if got, want := node.Image, "registry.harbor.lan/library/mentatlab-loom-mcp-executor:v0.2.0-dev"; got != want {
+		t.Fatalf("expected hydrated image %q, got %q", want, got)
 	}
 
 	var spec map[string]any

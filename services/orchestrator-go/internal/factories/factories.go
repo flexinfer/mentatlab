@@ -1,6 +1,7 @@
 package factories
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 
@@ -91,6 +92,10 @@ func CreateAgentRegistry(cfg *config.Config, logger *slog.Logger) (registry.Agen
 		if err != nil {
 			logger.Warn("failed to create Redis agent registry, using memory", "error", err)
 			return registry.NewMemoryRegistryWithDefaults(), nil
+		}
+		if err := redisRegistry.SeedDefaultAgents(context.Background()); err != nil {
+			logger.Error("failed to seed Redis agent defaults", "error", err)
+			return nil, err
 		}
 		logger.Info("using Redis agent registry")
 		return redisRegistry, nil

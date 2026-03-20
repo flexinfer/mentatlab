@@ -60,6 +60,13 @@ type Config struct {
 	AgentContextAgentID   string
 	AgentContextNamespace string
 	LoomBin               string
+	MCPHubURL             string
+	MCPHubCatalogURL      string
+	MCPHubProfile         string
+	MCPHubServers         string
+	CFAccessClientID      string
+	CFAccessClientSecret  string
+	MCPHubToken           string
 
 	// Tracing
 	TracingEnabled bool
@@ -123,6 +130,13 @@ func Load() *Config {
 		AgentContextAgentID:   getEnv("ORCH_AGENT_CONTEXT_AGENT_ID", "mentatlab-orchestrator"),
 		AgentContextNamespace: getEnv("ORCH_AGENT_CONTEXT_NAMESPACE", ""),
 		LoomBin:               getEnv("LOOM_BIN", "loom"),
+		MCPHubURL:             getEnv("MCP_HUB_URL", "wss://mcp.flexinfer.ai/ws"),
+		MCPHubCatalogURL:      getEnv("MCP_HUB_CATALOG_URL", ""),
+		MCPHubProfile:         getEnv("MCP_HUB_PROFILE", "codex"),
+		MCPHubServers:         getEnv("MCP_HUB_SERVERS", ""),
+		CFAccessClientID:      getEnv("CF_ACCESS_CLIENT_ID", ""),
+		CFAccessClientSecret:  getEnv("CF_ACCESS_CLIENT_SECRET", ""),
+		MCPHubToken:           getEnv("MCP_HUB_TOKEN", ""),
 
 		// Tracing
 		TracingEnabled: getBool("TRACING_ENABLED", false),

@@ -56,6 +56,7 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
   // Refs for debouncing and tracking
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flowServiceRef = useRef<FlowService | null>(null);
   const lastSavedVersionRef = useRef<Map<string, string>>(new Map());
   const retryCountRef = useRef<Map<string, number>>(new Map());
@@ -174,7 +175,10 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
         setLastSavedAt(new Date());
 
         // Reset to idle after a brief display of "saved"
-        setTimeout(() => {
+        if (idleResetTimerRef.current) {
+          clearTimeout(idleResetTimerRef.current);
+        }
+        idleResetTimerRef.current = setTimeout(() => {
           setStatus((current) => (current === 'saved' ? 'idle' : current));
         }, 2000);
       }
@@ -240,6 +244,9 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
       unsubscribe();
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (idleResetTimerRef.current) {
+        clearTimeout(idleResetTimerRef.current);
       }
     };
   }, [enabled, triggerSave]);

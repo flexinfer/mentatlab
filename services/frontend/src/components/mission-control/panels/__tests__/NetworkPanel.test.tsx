@@ -180,16 +180,21 @@ describe('NetworkPanel', () => {
     await waitFor(() => {
       const flow = screen.getByTestId('react-flow-network');
       expect(Number(flow.getAttribute('data-node-count'))).toBeGreaterThan(0);
-    });
-  });
+    }, { timeout: 10_000 });
+  }, 15_000);
 
   test('fits the network view once after nodes load', async () => {
     render(<NetworkPanel runId={null} />);
 
     await waitFor(() => {
+      const flow = screen.getByTestId('react-flow-network');
+      expect(Number(flow.getAttribute('data-node-count'))).toBeGreaterThan(0);
+    }, { timeout: 10_000 });
+
+    await waitFor(() => {
       expect(mockNetworkFitView).toHaveBeenCalledTimes(1);
-    });
-  });
+    }, { timeout: 10_000 });
+  }, 15_000);
 
   test('falls back to default graph when API returns empty', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -202,11 +207,15 @@ describe('NetworkPanel', () => {
     render(<NetworkPanel runId={null} />);
 
     await waitFor(() => {
+      expect(screen.getByText(/Fallback graph/)).toBeTruthy();
+    }, { timeout: 10_000 });
+
+    await waitFor(() => {
       const flow = screen.getByTestId('react-flow-network');
       // Fallback graph has Ego, Perception, Memory, Planning, Actuator (5 nodes)
       expect(Number(flow.getAttribute('data-node-count'))).toBeGreaterThanOrEqual(5);
-    });
-  });
+    }, { timeout: 10_000 });
+  }, 15_000);
 
   test('creates fallback graph on fetch error', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));

@@ -3,19 +3,20 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
-	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
+
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/mcpclient"
 )
 
 const (
 	defaultMCPPageSize = 100
 	maxMCPPageSize     = 500
-	mcpCLITimeout      = 10 * time.Second
 )
 
 // MCPTool represents an MCP tool exposed to frontend clients.
@@ -29,33 +30,18 @@ type MCPTool struct {
 // MCPToolsFetcher retrieves the currently available MCP tools.
 type MCPToolsFetcher func(ctx context.Context) ([]MCPTool, error)
 
-type mcpToolsCLIResponse struct {
-	Tools []struct {
-		Name        string                 `json:"name"`
-		Description string                 `json:"description"`
-		InputSchema map[string]interface{} `json:"inputSchema"`
-		Server      string                 `json:"server"`
-	} `json:"tools"`
-}
+// MCPToolCaller executes a namespaced MCP tool with structured arguments.
+type MCPToolCaller func(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error)
 
-// FetchMCPToolsFromLoomCLI uses `loom tools list --json` as the MCP inventory source.
-func FetchMCPToolsFromLoomCLI(ctx context.Context) ([]MCPTool, error) {
-	ctx, cancel := context.WithTimeout(ctx, mcpCLITimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "loom", "tools", "list", "--json")
-	out, err := cmd.Output()
+// FetchMCPToolsFromHubCatalog uses the Loom hub catalog as the MCP inventory source.
+func FetchMCPToolsFromHubCatalog(ctx context.Context, client *mcpclient.Client) ([]MCPTool, error) {
+	rawTools, err := client.FetchTools(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("run loom tools list: %w", err)
+		return nil, err
 	}
 
-	var raw mcpToolsCLIResponse
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("decode loom tools response: %w", err)
-	}
-
-	tools := make([]MCPTool, 0, len(raw.Tools))
-	for _, tool := range raw.Tools {
+	tools := make([]MCPTool, 0, len(rawTools))
+	for _, tool := range rawTools {
 		name := strings.TrimSpace(tool.Name)
 		if name == "" {
 			continue
@@ -198,8 +184,7 @@ func serverFilterOrAll(server string) string {
 	return server
 }
 
-// CallMCPTool proxies an executing request to the Loom CLI:
-// loom tools call <name> --json --args '<body_json>'
+// CallMCPTool proxies an executing request to the remote MCP hub.
 func (h *Handlers) CallMCPTool(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	toolName := strings.TrimSpace(vars["name"])
@@ -209,8 +194,8 @@ func (h *Handlers) CallMCPTool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read request body as arguments.
-	var args map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&args); err != nil {
+	args := map[string]interface{}{}
+	if err := json.NewDecoder(r.Body).Decode(&args); err != nil && !errors.Is(err, io.EOF) {
 		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
 		return
 	}
@@ -221,35 +206,26 @@ func (h *Handlers) CallMCPTool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), mcpCLITimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "loom", "tools", "call", toolName, "--json", "--args", string(argsJSON))
-
-	// We want both stdout and stderr (which may contain JSON error details from loom CLI)
-	// but currently loom tools call typically outputs JSON to stdout. We'll grab output.
-	out, err := cmd.CombinedOutput()
-
-	// The loom CLI outputs JSON. We can just pipe its JSON directly to the response.
-	// But let's check if it's valid JSON to ensure we wrap it properly if it's a raw string or error.
-	w.Header().Set("Content-Type", "application/json")
-
-	if err != nil {
-		// If command failed but output is valid JSON (e.g., loom emitted a structured error),
-		// we should still return it with an appropriate HTTP status (e.g., 500 or 400).
-		var structuredErr map[string]interface{}
-		if jsonErr := json.Unmarshal(out, &structuredErr); jsonErr == nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write(out)
-			return
-		}
-
-		// Fallback for non-JSON errors
-		h.respondError(w, r, http.StatusInternalServerError, "mcp tool execution failed", fmt.Errorf("%s: %s", err, string(out)))
+	if h.mcpCaller == nil {
+		h.respondError(w, r, http.StatusServiceUnavailable, "mcp runtime unavailable", errors.New("mcp caller not configured"))
 		return
 	}
 
-	// Success case: return the JSON output
-	w.WriteHeader(http.StatusOK)
-	w.Write(out)
+	var typedArgs map[string]interface{}
+	if err := json.Unmarshal(argsJSON, &typedArgs); err != nil {
+		h.respondError(w, r, http.StatusInternalServerError, "failed to decode arguments", err)
+		return
+	}
+
+	result, err := h.mcpCaller(r.Context(), toolName, typedArgs)
+	if err != nil {
+		if errors.Is(r.Context().Err(), context.DeadlineExceeded) {
+			h.respondError(w, r, http.StatusGatewayTimeout, "mcp tool execution timed out", err)
+			return
+		}
+		h.respondError(w, r, http.StatusBadGateway, "mcp tool execution failed", err)
+		return
+	}
+
+	h.respondJSON(w, http.StatusOK, result)
 }

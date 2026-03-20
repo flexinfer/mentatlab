@@ -64,6 +64,15 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.LoomBin != "loom" {
 		t.Errorf("LoomBin: got %q, want %q", cfg.LoomBin, "loom")
 	}
+	if cfg.MCPHubURL != "wss://mcp.flexinfer.ai/ws" {
+		t.Errorf("MCPHubURL: got %q, want %q", cfg.MCPHubURL, "wss://mcp.flexinfer.ai/ws")
+	}
+	if cfg.MCPHubProfile != "codex" {
+		t.Errorf("MCPHubProfile: got %q, want %q", cfg.MCPHubProfile, "codex")
+	}
+	if cfg.MCPHubServers != "" {
+		t.Errorf("MCPHubServers: got %q, want empty string", cfg.MCPHubServers)
+	}
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
@@ -85,6 +94,13 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	t.Setenv("ORCH_AGENT_CONTEXT_AGENT_ID", "agent-x")
 	t.Setenv("ORCH_AGENT_CONTEXT_NAMESPACE", "mentatlab")
 	t.Setenv("LOOM_BIN", "/usr/local/bin/loom")
+	t.Setenv("MCP_HUB_URL", "wss://mcp.example/ws")
+	t.Setenv("MCP_HUB_CATALOG_URL", "https://mcp.example/openapi.json")
+	t.Setenv("MCP_HUB_PROFILE", "full")
+	t.Setenv("MCP_HUB_SERVERS", "time,gitlab")
+	t.Setenv("CF_ACCESS_CLIENT_ID", "cf-id")
+	t.Setenv("CF_ACCESS_CLIENT_SECRET", "cf-secret")
+	t.Setenv("MCP_HUB_TOKEN", "hub-token")
 
 	cfg := Load()
 
@@ -132,6 +148,27 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	}
 	if cfg.LoomBin != "/usr/local/bin/loom" {
 		t.Errorf("LoomBin: got %q, want %q", cfg.LoomBin, "/usr/local/bin/loom")
+	}
+	if cfg.MCPHubURL != "wss://mcp.example/ws" {
+		t.Errorf("MCPHubURL: got %q, want %q", cfg.MCPHubURL, "wss://mcp.example/ws")
+	}
+	if cfg.MCPHubCatalogURL != "https://mcp.example/openapi.json" {
+		t.Errorf("MCPHubCatalogURL: got %q, want %q", cfg.MCPHubCatalogURL, "https://mcp.example/openapi.json")
+	}
+	if cfg.MCPHubProfile != "full" {
+		t.Errorf("MCPHubProfile: got %q, want %q", cfg.MCPHubProfile, "full")
+	}
+	if cfg.MCPHubServers != "time,gitlab" {
+		t.Errorf("MCPHubServers: got %q, want %q", cfg.MCPHubServers, "time,gitlab")
+	}
+	if cfg.CFAccessClientID != "cf-id" {
+		t.Errorf("CFAccessClientID: got %q, want %q", cfg.CFAccessClientID, "cf-id")
+	}
+	if cfg.CFAccessClientSecret != "cf-secret" {
+		t.Errorf("CFAccessClientSecret: got %q, want %q", cfg.CFAccessClientSecret, "cf-secret")
+	}
+	if cfg.MCPHubToken != "hub-token" {
+		t.Errorf("MCPHubToken: got %q, want %q", cfg.MCPHubToken, "hub-token")
 	}
 }
 

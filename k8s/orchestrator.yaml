@@ -119,6 +119,26 @@ spec:
               value: "mentatlab/runs"
             - name: LOOM_BIN
               value: "/usr/local/bin/loom"
+            - name: MCP_HUB_URL
+              value: "wss://mcp.flexinfer.ai/ws"
+            - name: MCP_HUB_CATALOG_URL
+              value: "https://mcp.flexinfer.ai/openapi.json"
+            - name: MCP_HUB_PROFILE
+              value: "codex"
+            - name: MCP_HUB_SERVERS
+              value: "agent_context,docker,flux,github,gitlab,jobsearch,loki,prometheus,time"
+            - name: CF_ACCESS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-access
+                  key: CF_ACCESS_CLIENT_ID
+                  optional: true
+            - name: CF_ACCESS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-access
+                  key: CF_ACCESS_CLIENT_SECRET
+                  optional: true
             # Tracing
             - name: TRACING_ENABLED
               value: "true"

@@ -149,7 +149,6 @@ func (b *JobBuilder) BuildJob(runID, nodeID string, node *types.NodeSpec) (*batc
 			corev1.ResourceMemory: resource.MustParse(b.config.DefaultMemRequest),
 		},
 	}
-	applyNodeResources(&resources, node.Resources)
 
 	// Build container
 	container := corev1.Container{
@@ -183,7 +182,6 @@ func (b *JobBuilder) BuildJob(runID, nodeID string, node *types.NodeSpec) (*batc
 			FSGroup:      int64Ptr(1000),
 		},
 	}
-	applyNodeSelectors(&podSpec, node)
 
 	// Add image pull secrets
 	for _, secret := range b.config.ImagePullSecrets {
@@ -214,9 +212,6 @@ func (b *JobBuilder) BuildJob(runID, nodeID string, node *types.NodeSpec) (*batc
 	// Override deadline if node has timeout
 	if node.Timeout > 0 {
 		deadline := int64(node.Timeout.Seconds())
-		job.Spec.ActiveDeadlineSeconds = &deadline
-	} else if node.Resources != nil && node.Resources.TimeoutSeconds > 0 {
-		deadline := int64(node.Resources.TimeoutSeconds)
 		job.Spec.ActiveDeadlineSeconds = &deadline
 	}
 
@@ -315,55 +310,4 @@ func boolPtr(b bool) *bool {
 
 func int64Ptr(i int64) *int64 {
 	return &i
-}
-
-func applyNodeResources(resources *corev1.ResourceRequirements, hints *types.ResourceRequirements) {
-	if resources == nil || hints == nil {
-		return
-	}
-
-	if cpu := strings.TrimSpace(hints.CPU); cpu != "" {
-		qty := resource.MustParse(cpu)
-		resources.Requests[corev1.ResourceCPU] = qty
-		resources.Limits[corev1.ResourceCPU] = qty
-	}
-	if mem := strings.TrimSpace(hints.Memory); mem != "" {
-		qty := resource.MustParse(mem)
-		resources.Requests[corev1.ResourceMemory] = qty
-		resources.Limits[corev1.ResourceMemory] = qty
-	}
-	if cpu := strings.TrimSpace(hints.Requests.CPU); cpu != "" {
-		resources.Requests[corev1.ResourceCPU] = resource.MustParse(cpu)
-	}
-	if mem := strings.TrimSpace(hints.Requests.Memory); mem != "" {
-		resources.Requests[corev1.ResourceMemory] = resource.MustParse(mem)
-	}
-	if cpu := strings.TrimSpace(hints.Limits.CPU); cpu != "" {
-		resources.Limits[corev1.ResourceCPU] = resource.MustParse(cpu)
-	}
-	if mem := strings.TrimSpace(hints.Limits.Memory); mem != "" {
-		resources.Limits[corev1.ResourceMemory] = resource.MustParse(mem)
-	}
-}
-
-func applyNodeSelectors(podSpec *corev1.PodSpec, node *types.NodeSpec) {
-	if podSpec == nil || node == nil {
-		return
-	}
-
-	needsGPU := false
-	if node.Capabilities != nil && node.Capabilities.GPU {
-		needsGPU = true
-	}
-	if node.Resources != nil && strings.TrimSpace(node.Resources.GPU) != "" {
-		needsGPU = true
-	}
-	if !needsGPU {
-		return
-	}
-
-	if podSpec.NodeSelector == nil {
-		podSpec.NodeSelector = make(map[string]string)
-	}
-	podSpec.NodeSelector["flexinfer.ai/gpu-present"] = "true"
 }
