@@ -19,9 +19,6 @@ type AgentManifest struct {
 	// Resource requirements
 	Resources ResourceRequirements `json:"resources,omitempty" yaml:"resources,omitempty"`
 
-	// Structured runtime capability declarations
-	Capabilities CapabilityDeclaration `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
-
 	// I/O configuration
 	Inputs  []PinSpec `json:"inputs,omitempty" yaml:"inputs,omitempty"`
 	Outputs []PinSpec `json:"outputs,omitempty" yaml:"outputs,omitempty"`
@@ -44,14 +41,6 @@ type EnvVar struct {
 
 // ResourceRequirements specifies compute resource requirements.
 type ResourceRequirements struct {
-	// Preferred simple runtime hints used by the scheduler/job builder.
-	CPU            string `json:"cpu,omitempty" yaml:"cpu,omitempty"`
-	Memory         string `json:"memory,omitempty" yaml:"memory,omitempty"`
-	GPU            string `json:"gpu,omitempty" yaml:"gpu,omitempty"`
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty" yaml:"timeout_seconds,omitempty"`
-	MaxConcurrent  int    `json:"max_concurrent,omitempty" yaml:"max_concurrent,omitempty"`
-
-	// Legacy nested resource requirements remain supported for compatibility.
 	Requests ResourceList `json:"requests,omitempty" yaml:"requests,omitempty"`
 	Limits   ResourceList `json:"limits,omitempty" yaml:"limits,omitempty"`
 }
@@ -61,18 +50,6 @@ type ResourceList struct {
 	CPU    string `json:"cpu,omitempty" yaml:"cpu,omitempty"`       // e.g., "100m", "1"
 	Memory string `json:"memory,omitempty" yaml:"memory,omitempty"` // e.g., "128Mi", "1Gi"
 	GPU    string `json:"gpu,omitempty" yaml:"gpu,omitempty"`       // e.g., "1"
-}
-
-// CapabilityDeclaration describes the infrastructure/runtime affordances that
-// an agent can safely use.
-type CapabilityDeclaration struct {
-	Actions           []string `json:"actions,omitempty" yaml:"actions,omitempty"`
-	SupportsProgress  bool     `json:"supports_progress,omitempty" yaml:"supports_progress,omitempty"`
-	SupportsHeartbeat bool     `json:"supports_heartbeat,omitempty" yaml:"supports_heartbeat,omitempty"`
-	GPU               bool     `json:"gpu,omitempty" yaml:"gpu,omitempty"`
-	Network           bool     `json:"network,omitempty" yaml:"network,omitempty"`
-	Storage           bool     `json:"storage,omitempty" yaml:"storage,omitempty"`
-	Secrets           bool     `json:"secrets,omitempty" yaml:"secrets,omitempty"`
 }
 
 // PinSpec describes an input or output pin.

@@ -68,12 +68,6 @@ func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID s
 			}
 		}
 
-		releaseAgentSlot, err := s.acquireAgentSlot(nodeCtx, spec)
-		if err != nil {
-			return
-		}
-		defer releaseAgentSlot()
-
 		// Resolve executor
 		nodeType := "agent"
 		if spec.Gate != nil {
@@ -259,6 +253,29 @@ func (s *Scheduler) resolveRetryPolicy(spec *types.NodeSpec, attempt int) (maxRe
 type agentExecutor struct{}
 
 func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error) {
+	// Native execution keeps MCP tool nodes working even when no executor image is available.
+	if spec.MCP != nil && spec.MCP.ToolName == "flexinfer__inference_chat" {
+		exitCode, err := s.runFlexInferNode(ctx, rctx, nodeID, spec, spec.Env)
+		if err != nil {
+			return exitCode, err
+		}
+		if exitCode == 0 {
+			s.captureNodeOutputs(ctx, rctx.runID, nodeID)
+		}
+		return exitCode, nil
+	}
+
+	if spec.MCP != nil && s.mcpClient != nil {
+		exitCode, err := s.runMCPToolNode(ctx, rctx, nodeID, spec)
+		if err != nil {
+			return exitCode, err
+		}
+		if exitCode == 0 {
+			s.captureNodeOutputs(ctx, rctx.runID, nodeID)
+		}
+		return exitCode, nil
+	}
+
 	cmd := s.resolveCmd(spec)
 	if len(cmd) == 0 {
 		err := fmt.Errorf("command resolution failed for node %q: no command configured", nodeID)
@@ -326,18 +343,6 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 		timeout = spec.Timeout.Seconds()
 	}
 
-	// [NEW] Fast-Path Native Execution for FlexInfer inferences
-	if spec.MCP != nil && spec.MCP.ToolName == "flexinfer__inference_chat" {
-		exitCode, err := s.runFlexInferNode(ctx, rctx, nodeID, spec, env)
-		if err != nil {
-			return exitCode, err
-		}
-		if exitCode == 0 {
-			s.captureNodeOutputs(ctx, rctx.runID, nodeID)
-		}
-		return exitCode, nil
-	}
-
 	exitCode, err := s.driver.RunNode(ctx, rctx.runID, nodeID, cmd, env, timeout)
 	if err != nil {
 		return exitCode, err
@@ -348,33 +353,6 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 	}
 
 	return exitCode, nil
-}
-
-func (s *Scheduler) acquireAgentSlot(ctx context.Context, spec *types.NodeSpec) (func(), error) {
-	if spec == nil || spec.AgentID == "" || spec.Resources == nil || spec.Resources.MaxConcurrent <= 0 {
-		return func() {}, nil
-	}
-
-	sem := s.agentSemaphore(spec.AgentID, spec.Resources.MaxConcurrent)
-	select {
-	case sem <- struct{}{}:
-		return func() { <-sem }, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-func (s *Scheduler) agentSemaphore(agentID string, limit int) chan struct{} {
-	s.agentSemsMu.Lock()
-	defer s.agentSemsMu.Unlock()
-
-	if sem, ok := s.agentSems[agentID]; ok {
-		return sem
-	}
-
-	sem := make(chan struct{}, limit)
-	s.agentSems[agentID] = sem
-	return sem
 }
 
 type gateExecutor struct{}
@@ -400,6 +378,47 @@ func (e *forEachExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCo
 	if err != nil {
 		return 1, err
 	}
+	return 0, nil
+}
+
+func (s *Scheduler) runMCPToolNode(ctx context.Context, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error) {
+	if s.mcpClient == nil || spec.MCP == nil {
+		return 1, fmt.Errorf("native MCP execution is unavailable")
+	}
+
+	start := time.Now()
+	result, err := s.mcpClient.CallTool(ctx, spec.MCP.ToolName, toStringAnyMap(spec.MCP.ToolArgs))
+	durationSeconds := time.Since(start).Seconds()
+	if err != nil {
+		s.emitEvent(ctx, rctx.runID, "output", map[string]interface{}{
+			"key": "error",
+			"value": map[string]interface{}{
+				"error":     "mcp tool execution failed",
+				"tool_name": spec.MCP.ToolName,
+				"tool_args": spec.MCP.ToolArgs,
+				"details":   err.Error(),
+			},
+		}, nodeID, "error")
+		return 1, err
+	}
+
+	payload := map[string]interface{}{
+		"tool_name": spec.MCP.ToolName,
+		"tool_args": spec.MCP.ToolArgs,
+		"result":    result,
+		"mentat_meta": map[string]interface{}{
+			"seconds": durationSeconds,
+			"model":   "orchestrator-native/1.0",
+		},
+	}
+	if spec.MCP.Server != "" {
+		payload["mcp_server"] = spec.MCP.Server
+	}
+
+	s.emitEvent(ctx, rctx.runID, "output", map[string]interface{}{
+		"key":   "result",
+		"value": payload,
+	}, nodeID, "")
 	return 0, nil
 }
 
@@ -532,4 +551,15 @@ func (s *Scheduler) runFlexInferNode(ctx context.Context, rctx *runContext, node
 	}
 
 	return 0, nil
+}
+
+func toStringAnyMap(values map[string]any) map[string]interface{} {
+	if len(values) == 0 {
+		return map[string]interface{}{}
+	}
+	out := make(map[string]interface{}, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }

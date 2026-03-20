@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 	"go.opentelemetry.io/otel/attribute"
@@ -66,19 +65,14 @@ func (h *Handlers) ScheduleAgent(w http.ResponseWriter, r *http.Request) {
 	plan := &types.Plan{
 		Nodes: []types.NodeSpec{
 			{
-				ID:           "main",
-				Type:         "agent",
-				AgentID:      agentID,
-				Image:        image,
-				Command:      command,
-				Env:          env,
-				Capabilities: parseManifestCapabilities(req.AgentManifest),
-				Resources:    parseManifestResources(req.AgentManifest),
+				ID:      "main",
+				Type:    "agent",
+				AgentID: agentID,
+				Image:   image,
+				Command: command,
+				Env:     env,
 			},
 		},
-	}
-	if plan.Nodes[0].Resources != nil && plan.Nodes[0].Resources.TimeoutSeconds > 0 {
-		plan.Nodes[0].Timeout = time.Duration(plan.Nodes[0].Resources.TimeoutSeconds) * time.Second
 	}
 
 	runID, err := h.store.CreateRun(ctx, agentID, plan, getOwnerFromRequest(r))

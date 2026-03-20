@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/mcpclient"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
@@ -51,8 +52,6 @@ type Scheduler struct {
 	runs               map[string]*runContext
 	runsMu             sync.Mutex
 	sem                chan struct{} // Parallelism limiter
-	agentSems          map[string]chan struct{}
-	agentSemsMu        sync.Mutex
 	defaultMaxRetries  int
 	defaultBackoffSecs int
 	defaultRunTimeout  time.Duration
@@ -60,6 +59,7 @@ type Scheduler struct {
 	exprEval           *ExprEvaluator // Expression evaluator for control flow
 	executors          map[string]nodeExecutor
 	runSessionManager  RunSessionManager
+	mcpClient          *mcpclient.Client
 }
 
 // nodeExecutor defines the strategy for executing a specific type of node.
@@ -143,6 +143,13 @@ func WithRunSessionManager(manager RunSessionManager) Option {
 	}
 }
 
+// WithMCPClient configures a native MCP execution client for tool nodes.
+func WithMCPClient(client *mcpclient.Client) Option {
+	return func(s *Scheduler) {
+		s.mcpClient = client
+	}
+}
+
 // NewScheduler creates a new scheduler with the provided options.
 func NewScheduler(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, opts ...Option) *Scheduler {
 	s := &Scheduler{
@@ -150,7 +157,6 @@ func NewScheduler(store runstore.RunStore, drv driver.Driver, resolveCmd Command
 		driver:             drv,
 		resolveCmd:         resolveCmd,
 		runs:               make(map[string]*runContext),
-		agentSems:          make(map[string]chan struct{}),
 		defaultMaxRetries:  0,
 		defaultBackoffSecs: 2,
 		defaultRunTimeout:  0,
@@ -206,9 +212,6 @@ func (s *Scheduler) EnqueueRun(ctx context.Context, runID, name string, plan *ty
 		// Apply defaults if not set
 		if node.Retries == 0 {
 			node.Retries = s.defaultMaxRetries
-		}
-		if node.Timeout == 0 && node.Resources != nil && node.Resources.TimeoutSeconds > 0 {
-			node.Timeout = time.Duration(node.Resources.TimeoutSeconds) * time.Second
 		}
 		nodeSpecs[node.ID] = node
 	}

@@ -317,45 +317,6 @@ func TestBuildJob_ResourceLimits(t *testing.T) {
 	}
 }
 
-func TestBuildJob_UsesNodeRuntimeHints(t *testing.T) {
-	builder := NewJobBuilder(DefaultJobConfig())
-
-	node := &types.NodeSpec{
-		ID:    "gpu-node",
-		Image: "test:latest",
-		Capabilities: &types.CapabilityDeclaration{
-			GPU: true,
-		},
-		Resources: &types.ResourceRequirements{
-			CPU:            "750m",
-			Memory:         "768Mi",
-			GPU:            "1",
-			TimeoutSeconds: 45,
-		},
-	}
-
-	job, err := builder.BuildJob("run-12345678", "gpu-node", node)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	container := job.Spec.Template.Spec.Containers[0]
-	cpuReq := container.Resources.Requests[corev1.ResourceCPU]
-	if got := cpuReq.String(); got != "750m" {
-		t.Fatalf("expected CPU request 750m, got %s", got)
-	}
-	memLimit := container.Resources.Limits[corev1.ResourceMemory]
-	if got := memLimit.String(); got != "768Mi" {
-		t.Fatalf("expected memory limit 768Mi, got %s", got)
-	}
-	if got := job.Spec.Template.Spec.NodeSelector["flexinfer.ai/gpu-present"]; got != "true" {
-		t.Fatalf("expected GPU node selector, got %q", got)
-	}
-	if got := *job.Spec.ActiveDeadlineSeconds; got != 45 {
-		t.Fatalf("expected deadline 45, got %d", got)
-	}
-}
-
 // --- GetJobStatus tests ---
 
 func TestGetJobStatus_Succeeded(t *testing.T) {

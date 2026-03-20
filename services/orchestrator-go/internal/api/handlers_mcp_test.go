@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
@@ -14,7 +15,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 )
 
-func newMCPTestServer(t *testing.T, fetcher MCPToolsFetcher) *Server {
+func newMCPTestServer(t *testing.T, fetcher MCPToolsFetcher, caller MCPToolCaller) *Server {
 	t.Helper()
 
 	store := runstore.NewMemoryStore(&runstore.Config{
@@ -25,6 +26,7 @@ func newMCPTestServer(t *testing.T, fetcher MCPToolsFetcher) *Server {
 		Registry:   registry.NewMemoryRegistryWithDefaults(),
 		FlowStore:  flowstore.NewMemoryStore(),
 		MCPFetcher: fetcher,
+		MCPCaller:  caller,
 	}
 	handlers := NewHandlers(store, nil, nil, config.Load(), nil, opts)
 	return NewServer(handlers, nil, 0, 0)
@@ -47,7 +49,7 @@ func TestListMCPToolsPagination(t *testing.T) {
 	}
 	srv := newMCPTestServer(t, func(context.Context) ([]MCPTool, error) {
 		return tools, nil
-	})
+	}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/tools?page=2&page_size=1", nil)
 	rec := httptest.NewRecorder()
@@ -82,7 +84,7 @@ func TestListMCPToolsServerFilter(t *testing.T) {
 	}
 	srv := newMCPTestServer(t, func(context.Context) ([]MCPTool, error) {
 		return tools, nil
-	})
+	}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/tools?server=gitlab", nil)
 	rec := httptest.NewRecorder()
@@ -109,7 +111,7 @@ func TestListMCPToolsIndexRoute(t *testing.T) {
 	}
 	srv := newMCPTestServer(t, func(context.Context) ([]MCPTool, error) {
 		return tools, nil
-	})
+	}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/tools/index", nil)
 	rec := httptest.NewRecorder()
@@ -128,7 +130,7 @@ func TestListMCPToolsIndexRoute(t *testing.T) {
 func TestListMCPToolsFetcherError(t *testing.T) {
 	srv := newMCPTestServer(t, func(context.Context) ([]MCPTool, error) {
 		return nil, errors.New("boom")
-	})
+	}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/mcp/tools", nil)
 	rec := httptest.NewRecorder()
@@ -136,5 +138,44 @@ func TestListMCPToolsFetcherError(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCallMCPToolAllowsEmptyBody(t *testing.T) {
+	srv := newMCPTestServer(t, func(context.Context) ([]MCPTool, error) { return nil, nil }, func(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error) {
+		if toolName != "agent_context__agent_session_start" {
+			t.Fatalf("unexpected tool name: %q", toolName)
+		}
+		if len(args) != 0 {
+			t.Fatalf("expected empty args, got %#v", args)
+		}
+		return map[string]any{"ok": true}, nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/tools/agent_context__agent_session_start/call", http.NoBody)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body := decodeJSONBody(t, rec)
+	if ok, _ := body["ok"].(bool); !ok {
+		t.Fatalf("expected ok=true response, got %v", body)
+	}
+}
+
+func TestCallMCPToolReturnsBadGatewayOnRemoteFailure(t *testing.T) {
+	srv := newMCPTestServer(t, func(context.Context) ([]MCPTool, error) { return nil, nil }, func(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error) {
+		return nil, errors.New("hub unavailable")
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/tools/agent_context__agent_session_start/call", strings.NewReader(`{}`))
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

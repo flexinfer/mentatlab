@@ -20,6 +20,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/factories"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/mcpclient"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/tracing"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
@@ -87,6 +88,15 @@ func main() {
 
 	// Command resolver for agents
 	resolveCmd := factories.CreateCommandResolver(cfg)
+	mcpToolClient := mcpclient.New(mcpclient.Config{
+		HubURL:               cfg.MCPHubURL,
+		CatalogURL:           cfg.MCPHubCatalogURL,
+		Profile:              cfg.MCPHubProfile,
+		Servers:              mcpclient.ParseServerList(cfg.MCPHubServers),
+		CFAccessClientID:     cfg.CFAccessClientID,
+		CFAccessClientSecret: cfg.CFAccessClientSecret,
+		Token:                cfg.MCPHubToken,
+	})
 
 	schedulerOpts := []scheduler.Option{
 		scheduler.WithMaxParallelism(cfg.MaxParallelism),
@@ -94,6 +104,7 @@ func main() {
 		scheduler.WithDefaultBackoffSecs(cfg.DefaultBackoffSecs),
 		scheduler.WithDefaultRunTimeout(cfg.DefaultRunTimeout),
 		scheduler.WithLogger(logger.With(slog.String("component", "scheduler"))),
+		scheduler.WithMCPClient(mcpToolClient),
 	}
 	if cfg.AgentContextEnabled {
 		runSessionManager := scheduler.NewLoomRunSessionManager(scheduler.LoomRunSessionManagerConfig{

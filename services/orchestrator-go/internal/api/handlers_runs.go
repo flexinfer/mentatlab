@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
@@ -34,12 +36,77 @@ type CreateRunResponse struct {
 	SSEURL string `json:"sse_url,omitempty"`
 }
 
+var errAgentRegistryUnavailable = errors.New("agent registry not configured")
+
 func graphValidationMessage(result *validator.ValidationResult) string {
 	msgs := make([]string, len(result.Errors))
 	for i, e := range result.Errors {
 		msgs[i] = e.Message
 	}
 	return strings.Join(msgs, "; ")
+}
+
+func (h *Handlers) hydrateRunPlan(ctx context.Context, plan *types.Plan) error {
+	if plan == nil {
+		return nil
+	}
+
+	needsHydration := false
+	for i := range plan.Nodes {
+		node := &plan.Nodes[i]
+		if node.AgentID != "" && (len(node.Command) == 0 || node.Image == "") {
+			needsHydration = true
+			break
+		}
+	}
+	if !needsHydration {
+		return nil
+	}
+	if h.registry == nil {
+		return errAgentRegistryUnavailable
+	}
+
+	for i := range plan.Nodes {
+		if err := h.hydrateNodeFromRegistry(ctx, &plan.Nodes[i]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *Handlers) hydrateNodeFromRegistry(ctx context.Context, node *types.NodeSpec) error {
+	if node == nil || node.AgentID == "" {
+		return nil
+	}
+	if len(node.Command) > 0 && node.Image != "" {
+		return nil
+	}
+
+	agent, err := h.registry.Get(ctx, node.AgentID)
+	if err != nil {
+		return err
+	}
+
+	if len(node.Command) == 0 && len(agent.Command) > 0 {
+		node.Command = append([]string(nil), agent.Command...)
+	}
+	if node.Image == "" && agent.Image != "" {
+		node.Image = agent.Image
+	}
+
+	return nil
+}
+
+func (h *Handlers) respondRunPlanHydrationError(w http.ResponseWriter, r *http.Request, operation string, err error) {
+	switch {
+	case errors.Is(err, registry.ErrAgentNotFound):
+		h.respondError(w, r, http.StatusBadRequest, operation, err)
+	case errors.Is(err, errAgentRegistryUnavailable):
+		h.respondError(w, r, http.StatusServiceUnavailable, operation, err)
+	default:
+		h.respondError(w, r, http.StatusInternalServerError, operation, err)
+	}
 }
 
 // CreateRun handles POST /api/v1/runs
@@ -53,9 +120,14 @@ func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate plan graph structure (cycles, dangling edges, duplicate IDs)
 	if req.Plan != nil {
-		if result := h.preparePlanForExecution(ctx, req.Plan); !result.Valid {
+		if result := validator.ValidatePlanGraph(req.Plan); !result.Valid {
 			h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
+			return
+		}
+		if err := h.hydrateRunPlan(ctx, req.Plan); err != nil {
+			h.respondRunPlanHydrationError(w, r, "failed to hydrate run plan", err)
 			return
 		}
 	}
@@ -125,8 +197,12 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result := h.preparePlanForExecution(ctx, run.Plan); !result.Valid {
+	if result := validator.ValidatePlanGraph(run.Plan); !result.Valid {
 		h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
+		return
+	}
+	if err := h.hydrateRunPlan(ctx, run.Plan); err != nil {
+		h.respondRunPlanHydrationError(w, r, "failed to hydrate run plan", err)
 		return
 	}
 

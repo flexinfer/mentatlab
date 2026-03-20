@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"time"
-
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
 // Common errors returned by AgentRegistry implementations.
@@ -21,6 +19,15 @@ type PinSpec struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
+}
+
+// CapabilitySpec declares an agent's structured capabilities.
+type CapabilitySpec struct {
+	Inputs            []PinSpec `json:"inputs,omitempty"`
+	Outputs           []PinSpec `json:"outputs,omitempty"`
+	Actions           []string  `json:"actions,omitempty"`
+	SupportsProgress  bool      `json:"supports_progress"`
+	SupportsHeartbeat bool      `json:"supports_heartbeat"`
 }
 
 // Agent represents a registered agent in the system.
@@ -44,10 +51,7 @@ type Agent struct {
 	Capabilities []string `json:"capabilities,omitempty"`
 
 	// CapabilitySpec is the structured capability declaration
-	CapabilitySpec *types.CapabilityDeclaration `json:"capability_spec,omitempty"`
-
-	// Resources captures runtime resource and concurrency hints.
-	Resources *types.ResourceRequirements `json:"resources,omitempty"`
+	CapabilitySpec *CapabilitySpec `json:"capability_spec,omitempty"`
 
 	// Schema is the JSON Schema for input/output validation
 	Schema json.RawMessage `json:"schema,omitempty"`
@@ -70,33 +74,29 @@ type Agent struct {
 
 // CreateAgentRequest is the input for registering a new agent.
 type CreateAgentRequest struct {
-	ID             string                       `json:"id"`
-	Name           string                       `json:"name"`
-	Version        string                       `json:"version"`
-	Image          string                       `json:"image,omitempty"`
-	Command        []string                     `json:"command,omitempty"`
-	Capabilities   []string                     `json:"capabilities,omitempty"`
-	CapabilitySpec *types.CapabilityDeclaration `json:"capability_spec,omitempty"`
-	Resources      *types.ResourceRequirements  `json:"resources,omitempty"`
-	Schema         json.RawMessage              `json:"schema,omitempty"`
-	Description    string                       `json:"description,omitempty"`
-	Author         string                       `json:"author,omitempty"`
-	Metadata       map[string]string            `json:"metadata,omitempty"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Version      string            `json:"version"`
+	Image        string            `json:"image,omitempty"`
+	Command      []string          `json:"command,omitempty"`
+	Capabilities []string          `json:"capabilities,omitempty"`
+	Schema       json.RawMessage   `json:"schema,omitempty"`
+	Description  string            `json:"description,omitempty"`
+	Author       string            `json:"author,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
 // UpdateAgentRequest is the input for updating an existing agent.
 type UpdateAgentRequest struct {
-	Name           *string                      `json:"name,omitempty"`
-	Version        *string                      `json:"version,omitempty"`
-	Image          *string                      `json:"image,omitempty"`
-	Command        []string                     `json:"command,omitempty"`
-	Capabilities   []string                     `json:"capabilities,omitempty"`
-	CapabilitySpec *types.CapabilityDeclaration `json:"capability_spec,omitempty"`
-	Resources      *types.ResourceRequirements  `json:"resources,omitempty"`
-	Schema         json.RawMessage              `json:"schema,omitempty"`
-	Description    *string                      `json:"description,omitempty"`
-	Author         *string                      `json:"author,omitempty"`
-	Metadata       map[string]string            `json:"metadata,omitempty"`
+	Name         *string           `json:"name,omitempty"`
+	Version      *string           `json:"version,omitempty"`
+	Image        *string           `json:"image,omitempty"`
+	Command      []string          `json:"command,omitempty"`
+	Capabilities []string          `json:"capabilities,omitempty"`
+	Schema       json.RawMessage   `json:"schema,omitempty"`
+	Description  *string           `json:"description,omitempty"`
+	Author       *string           `json:"author,omitempty"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
 }
 
 // ListOptions configures list queries.
