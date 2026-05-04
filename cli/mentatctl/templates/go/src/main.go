@@ -46,19 +46,39 @@ func emitOutput(key string, value any) {
 	emit(Event{Type: "output", Data: map[string]any{"key": key, "value": value}})
 }
 
+func emitError(code string, message string, retryable bool, details map[string]any) {
+	data := map[string]any{
+		"code":      code,
+		"message":   message,
+		"retryable": retryable,
+	}
+	if len(details) > 0 {
+		data["details"] = details
+	}
+	emit(Event{Type: "error", Level: "error", Message: message, Data: data})
+}
+
 func main() {
 	checkpoint("start", 0.0, nil)
 
 	var input map[string]any
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
-		logError("failed to read input", map[string]any{"error": err.Error()})
+		emitError("INVALID_INPUT", "failed to read input", false, map[string]any{"error": err.Error()})
 		os.Exit(1)
 	}
 
 	text, _ := input["text"].(string)
+	if text == "" {
+		emitError("INVALID_INPUT", "missing required field 'text'", false, nil)
+		os.Exit(1)
+	}
+
 	logInfo("processing", map[string]any{"input_length": len(text)})
 
 	// TODO: Replace with your agent logic
+	// Example transient failure:
+	// emitError("MODEL_NOT_READY", "model is still loading", true, map[string]any{"model": "my-model"})
+	// os.Exit(1)
 	start := time.Now()
 	result := fmt.Sprintf("Processed: %s", text)
 	elapsed := time.Since(start)
