@@ -7,6 +7,8 @@ include:
     file:
       - /k3s/ci/caches/gitlab-ci-cache.yml
 
+  - project: 'services/tech-radar'
+    file: '/ci/radar.yml'
 stages:
   - lint
   - test
@@ -489,3 +491,6 @@ deploy:
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       when: on_success
+
+radar-scan:
+  extends: .radar-scan

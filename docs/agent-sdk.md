@@ -319,7 +319,7 @@ func main() {
         os.Exit(1)
     }
 
-    // Transient failure example
+    // Transient failure example:
     // emitError("MODEL_NOT_READY", "model is still loading", true, map[string]interface{}{"model": "my-model"})
     // os.Exit(1)
 
