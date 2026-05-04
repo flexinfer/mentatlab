@@ -24,86 +24,8 @@ func NewMemoryRegistry() *MemoryRegistry {
 func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 	r := NewMemoryRegistry()
 	now := time.Now().UTC()
-
-	// Add default agents (the previously hardcoded ones)
-	defaults := []*Agent{
-		{
-			ID:           "mentatlab.echo",
-			Name:         "Echo Agent",
-			Version:      "1.0.0",
-			Description:  "Simple echo agent for testing",
-			Command:      []string{"python", "agents/echo/main.py"},
-			Capabilities: []string{"echo", "test"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
-				Outputs: []PinSpec{{Name: "result", Type: "json"}},
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:           "mentatlab.psyche-sim",
-			Name:         "Psyche Simulation",
-			Version:      "1.0.0",
-			Description:  "Psychological simulation agent",
-			Command:      []string{"python", "agents/psyche-sim/main.py"},
-			Capabilities: []string{"simulation", "psychology"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
-				Outputs: []PinSpec{{Name: "result", Type: "json"}, {Name: "mentat_meta", Type: "json"}},
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:           "mentatlab.ctm-cogpack",
-			Name:         "CTM CogPack",
-			Version:      "1.0.0",
-			Description:  "Cognitive task modeling package",
-			Command:      []string{"python", "agents/ctm-cogpack/main.py"},
-			Capabilities: []string{"cognitive", "modeling"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json"}, {Name: "context", Type: "json"}},
-				Outputs: []PinSpec{{Name: "output", Type: "stream"}, {Name: "stats", Type: "json"}},
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:           "loom-mcp-executor",
-			Name:         "Loom MCP Executor",
-			Version:      "1.0.0",
-			Description:  "Executes MCP tools through loom-core and emits output payloads",
-			Command:      []string{"python", "agents/loom-mcp-executor/main.py"},
-			Capabilities: []string{"mcp", "integration", "tools"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json", Description: "MCP tool call specification"}},
-				Outputs: []PinSpec{{Name: "result", Type: "json"}},
-				Actions: []string{"call_tool"},
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-		{
-			ID:           "mentatlab.flexinfer-adapter",
-			Name:         "FlexInfer Adapter",
-			Version:      "0.1.0",
-			Description:  "Lifecycle-aware adapter for FlexInfer model inference, activation, and scaling",
-			Command:      []string{"python", "agents/flexinfer-adapter/main.py"},
-			Image:        "registry.harbor.lan/library/mentatlab-flexinfer-adapter:v0.1.0-dev",
-			Capabilities: []string{"inference", "flexinfer", "llm", "image-generation"},
-			CapabilitySpec: &CapabilitySpec{
-				Inputs:  []PinSpec{{Name: "spec", Type: "json", Description: "Action spec: model, action, params"}},
-				Outputs: []PinSpec{{Name: "result", Type: "json"}, {Name: "error", Type: "json"}},
-				Actions: []string{"inference", "list", "get", "activate", "scale", "gpu_status"},
-			},
-			CreatedAt: now,
-			UpdatedAt: now,
-		},
-	}
-
-	for _, agent := range defaults {
-		r.agents[agent.ID] = agent
+	for _, agent := range defaultAgents(now) {
+		r.agents[agent.ID] = cloneAgent(agent)
 	}
 
 	return r

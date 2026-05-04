@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/mcpclient"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
@@ -58,6 +59,7 @@ type Scheduler struct {
 	exprEval           *ExprEvaluator // Expression evaluator for control flow
 	executors          map[string]nodeExecutor
 	runSessionManager  RunSessionManager
+	mcpClient          *mcpclient.Client
 }
 
 // nodeExecutor defines the strategy for executing a specific type of node.
@@ -138,6 +140,13 @@ func WithLogger(logger *slog.Logger) Option {
 func WithRunSessionManager(manager RunSessionManager) Option {
 	return func(s *Scheduler) {
 		s.runSessionManager = manager
+	}
+}
+
+// WithMCPClient configures a native MCP execution client for tool nodes.
+func WithMCPClient(client *mcpclient.Client) Option {
+	return func(s *Scheduler) {
+		s.mcpClient = client
 	}
 }
 

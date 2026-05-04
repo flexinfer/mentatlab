@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/dataflow"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/mcpclient"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
@@ -32,6 +34,7 @@ type Handlers struct {
 	cronRunner  *scheduler.CronRunner
 	apiKeyStore *auth.APIKeyStore
 	mcpFetcher  MCPToolsFetcher
+	mcpCaller   MCPToolCaller
 	config      *config.Config
 	logger      *slog.Logger
 }
@@ -45,6 +48,7 @@ type HandlerOptions struct {
 	CronRunner  *scheduler.CronRunner
 	APIKeyStore *auth.APIKeyStore
 	MCPFetcher  MCPToolsFetcher
+	MCPCaller   MCPToolCaller
 }
 
 // NewHandlers creates a new Handlers instance.
@@ -67,9 +71,28 @@ func NewHandlers(store runstore.RunStore, sched *scheduler.Scheduler, v *validat
 		h.cronRunner = opts.CronRunner
 		h.apiKeyStore = opts.APIKeyStore
 		h.mcpFetcher = opts.MCPFetcher
+		h.mcpCaller = opts.MCPCaller
 	}
-	if h.mcpFetcher == nil {
-		h.mcpFetcher = FetchMCPToolsFromLoomCLI
+	if h.mcpFetcher == nil || h.mcpCaller == nil {
+		client := mcpclient.New(mcpclient.Config{
+			HubURL:               cfg.MCPHubURL,
+			CatalogURL:           cfg.MCPHubCatalogURL,
+			Profile:              cfg.MCPHubProfile,
+			Servers:              mcpclient.ParseServerList(cfg.MCPHubServers),
+			CFAccessClientID:     cfg.CFAccessClientID,
+			CFAccessClientSecret: cfg.CFAccessClientSecret,
+			Token:                cfg.MCPHubToken,
+		})
+		if h.mcpFetcher == nil {
+			h.mcpFetcher = func(ctx context.Context) ([]MCPTool, error) {
+				return FetchMCPToolsFromHubCatalog(ctx, client)
+			}
+		}
+		if h.mcpCaller == nil {
+			h.mcpCaller = func(ctx context.Context, toolName string, args map[string]interface{}) (interface{}, error) {
+				return client.CallTool(ctx, toolName, args)
+			}
+		}
 	}
 	return h
 }

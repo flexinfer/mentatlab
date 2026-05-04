@@ -4,7 +4,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { ToastProvider } from '../../../../contexts/ToastContext';
 
 // Hoisted mocks for useRunGraph and store
-const { mockRunGraphState, mockOpenContextMenu, mockToast, mockCloneRun } = vi.hoisted(() => ({
+const { mockRunGraphState, mockOpenContextMenu, mockToast, mockCloneRun, mockReactFlowFitView } = vi.hoisted(() => ({
   mockRunGraphState: {
     nodes: [] as any[],
     edges: [] as any[],
@@ -25,6 +25,7 @@ const { mockRunGraphState, mockOpenContextMenu, mockToast, mockCloneRun } = vi.h
     clearAll: vi.fn(),
   },
   mockCloneRun: vi.fn(),
+  mockReactFlowFitView: vi.fn(),
 }));
 
 // Mock useRunGraph
@@ -54,15 +55,21 @@ vi.mock('../../../../services/api/orchestratorService', () => ({
 
 // Mock ReactFlow and its components to avoid rendering complexity
 vi.mock('reactflow', () => ({
-  ReactFlow: ({ nodes, edges, onSelectionChange, onNodeContextMenu, onInit }: any) => (
-    <div data-testid="react-flow" data-node-count={nodes?.length ?? 0} data-edge-count={edges?.length ?? 0}>
-      {nodes?.map((n: any) => (
-        <div key={n.id} data-testid={`rf-node-${n.id}`} onClick={() => onSelectionChange?.({ nodes: [n] })}>
-          {n.id}
-        </div>
-      ))}
-    </div>
-  ),
+  ReactFlow: ({ nodes, edges, onSelectionChange, onNodeContextMenu, onInit }: any) => {
+    React.useLayoutEffect(() => {
+      onInit?.({ fitView: mockReactFlowFitView });
+    }, [onInit]);
+
+    return (
+      <div data-testid="react-flow" data-node-count={nodes?.length ?? 0} data-edge-count={edges?.length ?? 0}>
+        {nodes?.map((n: any) => (
+          <div key={n.id} data-testid={`rf-node-${n.id}`} onClick={() => onSelectionChange?.({ nodes: [n] })}>
+            {n.id}
+          </div>
+        ))}
+      </div>
+    );
+  },
   ReactFlowProvider: ({ children }: any) => <>{children}</>,
   Background: () => <div data-testid="rf-background" />,
   Controls: () => <div data-testid="rf-controls" />,
@@ -111,6 +118,7 @@ describe('GraphPanel', () => {
     mockRunGraphState.setSelectedNodeId = vi.fn();
     mockRunGraphState.onCancelRun = vi.fn();
     mockRunGraphState.fitViewNonce = 0;
+    mockReactFlowFitView.mockReset();
   });
 
   test('renders the panel shell and toolbar', () => {
@@ -127,6 +135,24 @@ describe('GraphPanel', () => {
     render(<GraphPanel runId="run-1" />);
     const flow = screen.getByTestId('react-flow');
     expect(flow.getAttribute('data-node-count')).toBe('2');
+  });
+
+  test('does not fit view when there are no nodes', () => {
+    render(<GraphPanel runId="run-1" />);
+    expect(mockReactFlowFitView).not.toHaveBeenCalled();
+  });
+
+  test('fits view once when nodes are present and the graph requests it', async () => {
+    mockRunGraphState.nodes = [
+      { id: 'A', type: 'nodeCard', position: { x: 0, y: 0 }, data: { label: 'A', status: 'idle' } },
+    ];
+    mockRunGraphState.fitViewNonce = 1;
+
+    render(<GraphPanel runId="run-1" />);
+
+    await waitFor(() => {
+      expect(mockReactFlowFitView).toHaveBeenCalledTimes(1);
+    });
   });
 
   test('shows running status badge when run is running', () => {

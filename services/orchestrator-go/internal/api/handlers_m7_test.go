@@ -10,6 +10,7 @@ import (
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
@@ -19,9 +20,11 @@ func TestCreateRunWithWebhook(t *testing.T) {
 	store := runstore.NewMemoryStore(runstore.DefaultConfig())
 	defer store.Close()
 	sched := scheduler.New(store, nil, nil, nil, nil)
-	h := NewHandlers(store, sched, nil, config.Load(), nil, nil)
+	h := NewHandlers(store, sched, nil, config.Load(), nil, &HandlerOptions{
+		Registry: registry.NewMemoryRegistryWithDefaults(),
+	})
 
-	body := `{"name":"webhook-test","webhook_url":"https://example.com/hook","webhook_secret":"s3cret","plan":{"nodes":[{"id":"n1","type":"agent","agent_id":"echo"}]}}`
+	body := `{"name":"webhook-test","webhook_url":"https://example.com/hook","webhook_secret":"s3cret","plan":{"nodes":[{"id":"n1","type":"agent","agent_id":"mentatlab.echo"}]}}`
 	req := httptest.NewRequest("POST", "/api/v1/runs", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-User-Email", "test@example.com")

@@ -56,6 +56,7 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
   // Refs for debouncing and tracking
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flowServiceRef = useRef<FlowService | null>(null);
   const lastSavedVersionRef = useRef<Map<string, string>>(new Map());
   const retryCountRef = useRef<Map<string, number>>(new Map());
@@ -146,11 +147,16 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
     try {
       const errors: Array<{ flowId: string; error: Error }> = [];
+      let softFailures = 0;
 
       for (const [flowId, flowData] of flows.entries()) {
         try {
-          await saveFlow(flowId, flowData);
-          onSave?.(flowId);
+          const saved = await saveFlow(flowId, flowData);
+          if (saved) {
+            onSave?.(flowId);
+          } else {
+            softFailures++;
+          }
         } catch (err) {
           const error = err as Error;
           errors.push({ flowId, error });
@@ -161,12 +167,18 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
       if (errors.length > 0) {
         setStatus('error');
         setError(errors[0].error);
+      } else if (softFailures > 0) {
+        // saveFlow already set conflict state/error for soft-failure paths.
+        // Avoid overriding that state with "saved".
       } else {
         setStatus('saved');
         setLastSavedAt(new Date());
 
         // Reset to idle after a brief display of "saved"
-        setTimeout(() => {
+        if (idleResetTimerRef.current) {
+          clearTimeout(idleResetTimerRef.current);
+        }
+        idleResetTimerRef.current = setTimeout(() => {
           setStatus((current) => (current === 'saved' ? 'idle' : current));
         }, 2000);
       }
@@ -232,6 +244,9 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
       unsubscribe();
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (idleResetTimerRef.current) {
+        clearTimeout(idleResetTimerRef.current);
       }
     };
   }, [enabled, triggerSave]);

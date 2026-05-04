@@ -28,6 +28,7 @@ variables:
   BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
   GO_VERSION: "1.24"
   NODE_VERSION: "20"
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
   # Work around GitLab advertising an in-cluster clone URL to runners outside the cluster
   GIT_STRATEGY: none
   GITLAB_EXTERNAL_HOST: gitlab.flexinfer.ai
@@ -87,12 +88,14 @@ variables:
 .npm_ci_verify: &npm_ci_verify
   - |
     set -euo pipefail
-    npm ci --prefer-offline || true
+    mkdir -p "${NPM_CONFIG_CACHE}"
+    rm -rf node_modules
+    npm ci --cache "${NPM_CONFIG_CACHE}" --prefer-offline || true
     if [ ! -x node_modules/.bin/tsc ]; then
       echo "npm install incomplete after first attempt; retrying clean npm ci..."
       rm -rf node_modules
       npm cache clean --force || true
-      npm ci
+      npm ci --cache "${NPM_CONFIG_CACHE}"
     fi
     test -x node_modules/.bin/tsc
 
@@ -109,7 +112,7 @@ variables:
   cache:
     key: node-${CI_COMMIT_REF_SLUG}
     paths:
-      - services/frontend/node_modules/
+      - .npm/
     policy: pull-push
     when: on_success
 
@@ -225,7 +228,11 @@ test-integration-smoke-agent:
 
 .build-template: &build-template
   stage: build
-  image: registry.harbor.lan/library/ci-builder:latest
+  image: $DOCKER_CLI_CI_IMAGE
+  services:
+    - name: $DOCKER_DIND_CI_IMAGE
+      alias: docker
+      command: ["--tls=false", "--insecure-registry=registry.harbor.lan"]
   timeout: 2h
   retry:
     max: 1
@@ -233,65 +240,48 @@ test-integration-smoke-agent:
       - runner_system_failure
       - stuck_or_timeout_failure
   variables:
-    BUILDKIT_STEP_LOG_MAX_SIZE: "50000000"
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
+    - apk add --no-cache git
     - *clone_repo
     - |
-      echo "Waiting for BuildKit..."
+      echo "Waiting for Docker daemon..."
       for i in $(seq 1 30); do
-        if buildctl --addr "${BUILDKIT_HOST}" debug info >/dev/null 2>&1; then
-          echo "BuildKit is ready"; break
+        if docker info >/dev/null 2>&1; then
+          echo "Docker daemon ready"
+          break
         fi
-        echo "[$i/30] not ready yet"; sleep 2
+        echo "[$i/30] Docker not ready yet..."
+        sleep 2
       done
-      buildctl --addr "${BUILDKIT_HOST}" debug info
+    - docker info
     - |
-      # Shared build_image function with zstd compression and retry-with-fallback
-      CACHE_REPO="registry.harbor.lan/library/build-cache"
-
+      if [ -n "${HARBOR_USER:-}" ] && [ -n "${HARBOR_PASSWORD:-}" ]; then
+        echo "Logging into Harbor with CI/CD credentials..."
+        echo "${HARBOR_PASSWORD}" | docker login registry.harbor.lan -u "${HARBOR_USER}" --password-stdin
+      else
+        echo "WARNING: HARBOR_USER/HARBOR_PASSWORD not set — docker push may fail"
+      fi
+    - |
       build_image() {
         local name="$1" context="$2"
         echo "=== Building ${name} from ${context} ==="
 
-        local output="type=image,push=true,compression=zstd,compression-level=3"
-        output="${output},name=${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
+        local latest_tag_args=""
         if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-          output="${output},name=${REGISTRY}/${name}:latest"
+          latest_tag_args="-t ${REGISTRY}/${name}:latest"
         fi
 
-        # First attempt: build with cache
-        if buildctl --addr "${BUILDKIT_HOST}" build \
-          --frontend dockerfile.v0 \
-          --local "context=${context}" \
-          --local "dockerfile=${context}" \
-          --opt platform=linux/amd64 \
-          --opt "build-arg:GOPROXY=${GOPROXY:-}" \
-          --opt "build-arg:npm_config_registry=${npm_config_registry:-}" \
-          --opt "build-arg:NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY:-}" \
-          --opt "build-arg:PIP_INDEX_URL=${PIP_INDEX_URL:-}" \
-          --opt "build-arg:PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}" \
-          --export-cache "type=registry,ref=${CACHE_REPO}:${name},mode=max,image-manifest=true" \
-          --import-cache "type=registry,ref=${CACHE_REPO}:${name}" \
-          --output "${output}"; then
-          echo "=== ${name} built successfully ==="
-          return 0
+        if ! DOCKER_BUILDKIT=1 docker build -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${latest_tag_args} "${context}"; then
+          echo "WARNING: ${name} build failed, retrying without cache..."
+          DOCKER_BUILDKIT=1 docker build --no-cache -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${latest_tag_args} "${context}"
         fi
 
-        # Second attempt: retry without import-cache (handles cold/corrupt cache)
-        echo "WARNING: ${name} build failed with cache, retrying without cache..."
-        buildctl --addr "${BUILDKIT_HOST}" build \
-          --frontend dockerfile.v0 \
-          --local "context=${context}" \
-          --local "dockerfile=${context}" \
-          --opt platform=linux/amd64 \
-          --opt "build-arg:GOPROXY=${GOPROXY:-}" \
-          --opt "build-arg:npm_config_registry=${npm_config_registry:-}" \
-          --opt "build-arg:NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY:-}" \
-          --opt "build-arg:PIP_INDEX_URL=${PIP_INDEX_URL:-}" \
-          --opt "build-arg:PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}" \
-          --export-cache "type=registry,ref=${CACHE_REPO}:${name},mode=max,image-manifest=true" \
-          --output "${output}"
-        echo "=== ${name} built successfully (no-cache retry) ==="
+        docker push "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
+        if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+          docker push "${REGISTRY}/${name}:latest"
+        fi
       }
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'

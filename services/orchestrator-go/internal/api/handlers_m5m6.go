@@ -210,6 +210,10 @@ func (h *Handlers) TriggerWebhook(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, r, http.StatusBadRequest, strings.Join(msgs, "; "), nil)
 		return
 	}
+	if err := h.hydrateRunPlan(ctx, plan); err != nil {
+		h.respondRunPlanHydrationError(w, r, "failed to hydrate run plan", err)
+		return
+	}
 
 	runID, err := h.store.CreateRun(ctx, flow.Name+" (webhook)", plan, getOwnerFromRequest(r))
 	if err != nil {
@@ -262,6 +266,10 @@ func (h *Handlers) CloneRun(w http.ResponseWriter, r *http.Request) {
 	}
 	if result := validator.ValidatePlanGraph(run.Plan); !result.Valid {
 		h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
+		return
+	}
+	if err := h.hydrateRunPlan(ctx, run.Plan); err != nil {
+		h.respondRunPlanHydrationError(w, r, "failed to hydrate run plan", err)
 		return
 	}
 
@@ -336,6 +344,10 @@ func (h *Handlers) RunFlow(w http.ResponseWriter, r *http.Request) {
 			msgs[i] = e.Message
 		}
 		h.respondError(w, r, http.StatusBadRequest, strings.Join(msgs, "; "), nil)
+		return
+	}
+	if err := h.hydrateRunPlan(ctx, plan); err != nil {
+		h.respondRunPlanHydrationError(w, r, "failed to hydrate run plan", err)
 		return
 	}
 

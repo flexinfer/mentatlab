@@ -282,6 +282,18 @@ func logInfo(message string, data map[string]interface{}) {
     emit(Event{Type: "log", Level: "info", Message: message, Data: data})
 }
 
+func emitError(code, message string, retryable bool, details map[string]interface{}) {
+    payload := map[string]interface{}{
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+    }
+    if len(details) > 0 {
+        payload["details"] = details
+    }
+    emit(Event{Type: "error", Level: "error", Message: message, Data: payload})
+}
+
 func checkpoint(stage string, progress float64, extra map[string]interface{}) {
     data := map[string]interface{}{
         "stage":    stage,
@@ -295,18 +307,6 @@ func checkpoint(stage string, progress float64, extra map[string]interface{}) {
 
 func emitOutput(key string, value interface{}) {
     emit(Event{Type: "output", Data: map[string]interface{}{"key": key, "value": value}})
-}
-
-func emitError(code, message string, retryable bool, details map[string]interface{}) {
-    data := map[string]interface{}{
-        "code":      code,
-        "message":   message,
-        "retryable": retryable,
-    }
-    if len(details) > 0 {
-        data["details"] = details
-    }
-    emit(Event{Type: "error", Level: "error", Message: message, Data: data})
 }
 
 func main() {
