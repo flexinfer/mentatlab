@@ -130,23 +130,23 @@
   }
 
   .glass-panel {
-    @apply bg-card/40 backdrop-blur-xl border border-white/5 shadow-xl;
+    @apply bg-card/80 backdrop-blur-md border border-border/70 shadow-sm;
   }
 
   .neon-text {
-    text-shadow: 0 0 2px hsl(var(--primary) / 0.2);
+    text-shadow: 0 0 1px hsl(var(--primary) / 0.15);
   }
 
   .neon-border {
-    box-shadow: 0 0 2px hsl(var(--primary) / 0.15);
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.12);
   }
 }
 
 /* React Flow Overrides */
 .react-flow__node {
-  @apply !bg-card/80 !backdrop-blur-md !border !border-primary/20 !rounded-md;
+  @apply !bg-card/90 !backdrop-blur-md !border !border-border/70 !rounded-md;
   color: hsl(var(--foreground)) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18) !important;
 }
 
 .react-flow__handle {
@@ -160,7 +160,7 @@
 }
 
 .react-flow__controls {
-  @apply rounded-lg p-1 !bg-card/40 !backdrop-blur-xl !border !border-white/5 !shadow-xl;
+  @apply rounded-lg p-1 !bg-card/85 !backdrop-blur-md !border !border-border/70 !shadow-sm;
 }
 
 .react-flow__controls-button {
@@ -168,7 +168,7 @@
 }
 
 .react-flow__minimap {
-  @apply rounded-lg !bg-card/40 !backdrop-blur-xl !border !border-white/5 !shadow-xl;
+  @apply rounded-lg !bg-card/85 !backdrop-blur-md !border !border-border/70 !shadow-sm;
 }
 
 /* Scrollbar Styling */

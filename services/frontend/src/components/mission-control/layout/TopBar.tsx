@@ -13,8 +13,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { useLayoutStore, useCanvasStore } from '@/stores';
-import { useWorkspace } from './WorkspaceProvider';
 import { useStreamingStore } from '@/stores';
+import { useWorkspace } from './WorkspaceProvider';
 import { exportFlowToLoom, importLoomToFlow } from '@/utils/loomWorkflowBridge';
 import { StreamConnectionState } from '@/types/streaming';
 import { SaveStatusIndicator } from '@/components/ui/SaveStatusIndicator';
@@ -65,6 +65,7 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
   const { nodes, edges, setNodes, setEdges } = useCanvasStore();
   const {
     isEnabled,
+    isLiveConnected,
     setSettingsOpen,
     setShortcutsDialogOpen,
     setCommandPaletteOpen,
@@ -73,11 +74,6 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
     stopLiveConnection,
     startOrchestratorRun,
   } = useWorkspace();
-  const connectionStatus = useStreamingStore((s) => s.connectionStatus);
-  const liveConnected =
-    connectionStatus === StreamConnectionState.CONNECTED ||
-    connectionStatus === StreamConnectionState.CONNECTING ||
-    connectionStatus === StreamConnectionState.RECONNECTING;
 
   const viewModes: { mode: MainViewMode; label: string }[] = [
     { mode: 'canvas', label: 'Canvas' },
@@ -91,15 +87,15 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
       const name = window.prompt('Enter Loom Workflow Name:', 'mentatlab-export');
       if (!name) return;
       const description = window.prompt('Enter Description:', 'Exported from MentatLab');
-      
+
       const payload = exportFlowToLoom({ name, description: description || '' }, nodes, edges);
-      
+
       const res = await fetch('/api/v1/mcp/tools/agent_workflow_define/call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      
+
       if (!res.ok) {
         throw new Error(`Failed to export: ${res.statusText}`);
       }
@@ -136,19 +132,19 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
 
   return (
     <header
-      className={`h-12 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 flex items-center justify-between px-4 ${className}`}
+      className={`h-12 border-b border-border/70 bg-card/85 backdrop-blur supports-[backdrop-filter]:bg-card/80 flex items-center justify-between px-4 ${className}`}
     >
       {/* Left: Logo and title */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-primary/20 flex items-center justify-center">
+          <div className="w-6 h-6 rounded-md border border-primary/20 bg-primary/10 flex items-center justify-center">
             <span className="text-xs font-bold text-primary">M</span>
           </div>
           <span className="font-semibold text-sm">MentatLab</span>
         </div>
 
         {/* View mode switcher */}
-        <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5">
+        <div className="flex items-center gap-1 rounded-lg border border-border/70 bg-muted/30 p-0.5">
           {viewModes.map(({ mode, label }) => (
             <ViewModeButton
               key={mode}
@@ -195,7 +191,7 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
             variant="ghost"
             size="sm"
             onClick={startDemoRun}
-            className="text-xs h-7 border-l pl-2 ml-1"
+            className="text-xs h-7 border-l border-border/70 pl-2 ml-1"
             title="Start demo run (Cmd+D)"
           >
             Demo
@@ -204,11 +200,17 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={liveConnected ? stopLiveConnection : startLiveConnection}
+              onClick={() => {
+                if (isLiveConnected) {
+                  stopLiveConnection();
+                  return;
+                }
+                void startLiveConnection();
+              }}
               className="text-xs h-7"
-              title={liveConnected ? 'Disconnect live' : 'Connect live'}
+              title={isLiveConnected ? 'Disconnect live' : 'Connect live'}
             >
-              {liveConnected ? 'Disconnect' : 'Live'}
+              {isLiveConnected ? 'Disconnect' : 'Live'}
             </Button>
           )}
           <Button
@@ -321,11 +323,11 @@ export function TopBar({ className = '', saveState }: TopBarProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<string, { dot: string; label: string; text: string }> = {
-  [StreamConnectionState.CONNECTED]: { dot: 'bg-emerald-400', label: 'Connected', text: 'text-emerald-400' },
-  [StreamConnectionState.CONNECTING]: { dot: 'bg-blue-400 animate-pulse', label: 'Connecting…', text: 'text-blue-400' },
-  [StreamConnectionState.RECONNECTING]: { dot: 'bg-amber-400 animate-pulse', label: 'Reconnecting…', text: 'text-amber-400' },
-  [StreamConnectionState.DISCONNECTED]: { dot: 'bg-zinc-400', label: 'Offline', text: 'text-zinc-400' },
-  [StreamConnectionState.ERROR]: { dot: 'bg-red-400', label: 'Error', text: 'text-red-400' },
+  [StreamConnectionState.CONNECTED]: { dot: 'bg-emerald-500', label: 'Connected', text: 'text-emerald-600 dark:text-emerald-400' },
+  [StreamConnectionState.CONNECTING]: { dot: 'bg-sky-500 animate-pulse', label: 'Connecting…', text: 'text-sky-600 dark:text-sky-400' },
+  [StreamConnectionState.RECONNECTING]: { dot: 'bg-amber-500 animate-pulse', label: 'Reconnecting…', text: 'text-amber-600 dark:text-amber-400' },
+  [StreamConnectionState.DISCONNECTED]: { dot: 'bg-zinc-500', label: 'Offline', text: 'text-zinc-600 dark:text-zinc-400' },
+  [StreamConnectionState.ERROR]: { dot: 'bg-red-500', label: 'Error', text: 'text-red-600 dark:text-red-400' },
 };
 
 const TRANSPORT_LABELS: Record<string, string> = {
@@ -341,13 +343,11 @@ function ConnectionStatusIndicator() {
   if (connectionStatus !== StreamConnectionState.CONNECTED) {
     return null;
   }
-  const style = STATUS_STYLES[connectionStatus] ?? STATUS_STYLES[StreamConnectionState.DISCONNECTED];
-  const transportLabel = connectionStatus === StreamConnectionState.CONNECTED
-    ? TRANSPORT_LABELS[transportType] ?? ''
-    : '';
+  const style = STATUS_STYLES[StreamConnectionState.CONNECTED];
+  const transportLabel = TRANSPORT_LABELS[transportType] ?? '';
 
   return (
-    <div className="flex items-center gap-1.5" data-testid="connection-indicator">
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/30 px-2.5 py-1" data-testid="connection-indicator">
       <span className={`w-2 h-2 rounded-full ${style.dot}`} />
       <span className={`text-[11px] font-medium ${style.text}`}>
         {style.label}{transportLabel ? ` (${transportLabel})` : ''}

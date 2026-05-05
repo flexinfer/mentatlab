@@ -119,12 +119,12 @@ export function TimelinePanel({ runId }: Props) {
 
   return (
     <div className="h-full w-full flex flex-col">
-      <div className="px-2 py-1 border-b bg-card/60 backdrop-blur flex items-center justify-between">
-        <div className="text-[11px] text-gray-600 dark:text-gray-300">
+      <div className="px-2 py-1 border-b border-border/70 bg-card/80 backdrop-blur flex items-center justify-between">
+        <div className="text-[11px] text-muted-foreground">
           <span className="font-medium">Run:</span> {runId}{' '}
-          <span className="mx-1 text-gray-300">|</span>
+          <span className="mx-1 text-muted-foreground/30">|</span>
           <span className="font-medium">Status:</span> {runStatus}{' '}
-          <span className="mx-1 text-gray-300">|</span>
+          <span className="mx-1 text-muted-foreground/30">|</span>
           <span className="font-medium">Events:</span> {entries.length}
         </div>
       </div>
@@ -156,15 +156,15 @@ export function TimelinePanel({ runId }: Props) {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex h-1.5 w-1.5 rounded-full ${statusColor(entry.label)}`} />
-                      <span className="text-gray-400">{new Date(entry.at).toLocaleTimeString()}</span>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">{entry.label}</span>
-                    </div>
-                    {entry.nodeId && (
-                      <span className="text-gray-400 font-mono text-[10px]">{entry.nodeId}</span>
-                    )}
+                    <span className="text-muted-foreground">{new Date(entry.at).toLocaleTimeString()}</span>
+                    <span className="font-medium text-foreground">{entry.label}</span>
                   </div>
-                  {entry.data && (
-                    <pre className="mt-1 text-[10px] bg-muted/50 dark:bg-muted/20 border rounded p-2 overflow-auto max-h-24">
+                  {entry.nodeId && (
+                    <span className="text-muted-foreground font-mono text-[10px]">{entry.nodeId}</span>
+                  )}
+                </div>
+                {entry.data && (
+                    <pre className="mt-1 text-[10px] bg-muted/30 border border-border/70 rounded p-2 overflow-auto max-h-24">
                       {JSON.stringify(entry.data, null, 2)}
                     </pre>
                   )}

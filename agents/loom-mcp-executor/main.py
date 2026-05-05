@@ -162,6 +162,40 @@ def call_flexinfer_inference(tool_args: Dict[str, Any]) -> Any:
         return {"raw": raw}
 
 
+def call_loom_tool(loom_bin: str, tool_name: str, tool_args: Any, spec: Dict[str, Any]) -> tuple[Any, str]:
+    cmd = [loom_bin, "tools", "call", tool_name, "--json"]
+    if "tool_args" in spec:
+        cmd.extend(["--args", json.dumps(tool_args, separators=(",", ":"), ensure_ascii=False)])
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    stdout = (proc.stdout or "").strip()
+    stderr = (proc.stderr or "").strip()
+
+    parsed_result: Any = None
+    if stdout:
+        try:
+            parsed_result = json.loads(stdout)
+        except Exception:
+            parsed_result = {"raw": stdout}
+
+    if proc.returncode != 0:
+        raise RuntimeError(
+            json.dumps(
+                {
+                    "error": "loom tools call failed",
+                    "exit_code": proc.returncode,
+                    "command": cmd,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                },
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+        )
+
+    return parsed_result, stderr
+
+
 def main() -> int:
     started = time.time()
     incoming = read_input_contract()
@@ -229,37 +263,57 @@ def main() -> int:
         return 0
 
     loom_bin = resolve_loom_bin()
-    cmd = [loom_bin, "tools", "call", tool_name, "--json"]
-    if "tool_args" in spec:
-        cmd.extend(["--args", json.dumps(tool_args, separators=(",", ":"), ensure_ascii=False)])
-
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    stdout = (proc.stdout or "").strip()
-    stderr = (proc.stderr or "").strip()
-
-    parsed_result: Any = None
-    if stdout:
-        try:
-            parsed_result = json.loads(stdout)
-        except Exception:
-            parsed_result = {"raw": stdout}
-
-    if proc.returncode != 0:
+    try:
+        parsed_result, stderr = call_loom_tool(loom_bin, tool_name, tool_args, spec)
+    except FileNotFoundError as err:
         emit_event(
             {
                 "type": "output",
                 "key": "error",
                 "value": {
-                    "error": "loom tools call failed",
-                    "exit_code": proc.returncode,
-                    "command": cmd,
-                    "stdout": stdout,
-                    "stderr": stderr,
+                    "error": "loom runtime unavailable",
+                    "tool_name": tool_name,
+                    "details": str(err),
+                    "loom_bin": loom_bin,
                 },
                 "level": "error",
             }
         )
-        return proc.returncode
+        return 127
+    except OSError as err:
+        emit_event(
+            {
+                "type": "output",
+                "key": "error",
+                "value": {
+                    "error": "loom runtime unavailable",
+                    "tool_name": tool_name,
+                    "details": str(err),
+                    "loom_bin": loom_bin,
+                },
+                "level": "error",
+            }
+        )
+        return 127
+    except RuntimeError as err:
+        payload: Dict[str, Any]
+        try:
+            payload = json.loads(str(err))
+        except Exception:
+            payload = {
+                "error": "loom tools call failed",
+                "tool_name": tool_name,
+                "details": str(err),
+            }
+        emit_event(
+            {
+                "type": "output",
+                "key": "error",
+                "value": payload,
+                "level": "error",
+            }
+        )
+        return int(payload.get("exit_code", 1))
 
     payload = build_payload(payload_spec, parsed_result, time.time() - started)
     if stderr:

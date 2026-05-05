@@ -291,6 +291,11 @@ describe('WorkspaceProvider', () => {
     const createRunPayload = mockOrchestratorService.createRun.mock.calls[0][0];
     const runNode = createRunPayload.plan.nodes[0];
     expect(runNode.agent_id).toBe('loom-mcp-executor');
+    expect(runNode.mcp).toEqual({
+      tool_name: 'k8s_apps_k3s__k8s_get',
+      server: 'k8s_apps_k3s',
+      tool_args: { namespace: 'default', kind: 'pods' },
+    });
     expect(runNode.env).toBeDefined();
     expect(runNode.env?.STATIC_FLAG).toBe('true');
 

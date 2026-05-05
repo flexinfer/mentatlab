@@ -48,10 +48,39 @@ wait_for_service() {
     return 1
 }
 
+wait_for_port() {
+    local service_name=$1
+    local host=$2
+    local port=$3
+    local max_attempts=30
+    local attempt=0
+
+    echo -e "${YELLOW}Waiting for $service_name on $host:$port...${NC}"
+    while [ $attempt -lt $max_attempts ]; do
+        if (echo > "/dev/tcp/${host}/${port}") >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ $service_name is ready!${NC}"
+            return 0
+        fi
+        printf "."
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    echo ""
+    echo -e "${RED}✗ $service_name failed to start after $max_attempts seconds${NC}"
+    return 1
+}
+
 # Kill function to cleanup processes
 cleanup() {
     echo -e "\n${YELLOW}Shutting down services...${NC}"
     jobs -p | xargs -r kill 2>/dev/null || true
+    if command -v docker >/dev/null 2>&1; then
+        if docker compose version >/dev/null 2>&1; then
+            docker compose stop redis >/dev/null 2>&1 || true
+        elif command -v docker-compose >/dev/null 2>&1; then
+            docker-compose stop redis >/dev/null 2>&1 || true
+        fi
+    fi
     lsof -ti:8080 | xargs -r kill 2>/dev/null || true
     lsof -ti:7070 | xargs -r kill 2>/dev/null || true
     lsof -ti:5173 | xargs -r kill 2>/dev/null || true
@@ -78,6 +107,20 @@ echo -e "${GREEN}✓ Node $(node --version)${NC}"
 # Check required ports
 echo -e "\n${BLUE}=== Checking Port Availability ===${NC}"
 PORTS_OK=true
+if lsof -Pi :6379 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    if command -v redis-cli >/dev/null 2>&1; then
+        if redis-cli -h 127.0.0.1 -p 6379 PING >/dev/null 2>&1; then
+            echo -e "${GREEN}✓ Redis already listening on port 6379${NC}"
+        else
+            echo -e "${RED}✗ Port 6379 is in use but it does not look like Redis${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${YELLOW}Redis port 6379 is already in use; assuming a Redis instance is running${NC}"
+    fi
+else
+    echo -e "${YELLOW}Redis port 6379 is free; a local Redis instance will be started${NC}"
+fi
 if ! check_port 7070; then
     echo "  Orchestrator service requires port 7070"
     PORTS_OK=false
@@ -97,6 +140,38 @@ if [ "$PORTS_OK" = false ]; then
     exit 1
 fi
 
+# Prepare logs before starting background processes.
+mkdir -p logs
+
+# Start Redis if it is not already running.
+echo -e "\n${BLUE}=== Starting Redis ===${NC}"
+if lsof -Pi :6379 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    echo -e "${GREEN}✓ Redis already listening on port 6379${NC}"
+else
+    if command -v docker >/dev/null 2>&1; then
+        echo -e "${YELLOW}Starting Redis via Docker Compose...${NC}"
+        if docker compose version >/dev/null 2>&1; then
+            docker compose up -d redis
+        elif command -v docker-compose >/dev/null 2>&1; then
+            docker-compose up -d redis
+        else
+            echo -e "${RED}✗ Docker Compose is not available${NC}"
+            exit 1
+        fi
+    elif command -v redis-server >/dev/null 2>&1; then
+        echo -e "${YELLOW}Starting Redis via local redis-server...${NC}"
+        (redis-server --bind 127.0.0.1 --port 6379 --save "" --appendonly no) > logs/redis.log 2>&1 &
+    else
+        echo -e "${RED}✗ Neither Docker Compose nor redis-server is available to start Redis${NC}"
+        exit 1
+    fi
+
+    if ! wait_for_port "Redis" "127.0.0.1" "6379"; then
+        echo -e "${RED}✗ Redis failed to start${NC}"
+        exit 1
+    fi
+fi
+
 # Install frontend dependencies
 echo -e "\n${BLUE}=== Installing Dependencies ===${NC}"
 
@@ -110,15 +185,12 @@ echo -e "${YELLOW}Downloading Go module dependencies...${NC}"
 wait
 echo -e "${GREEN}✓ Go dependencies downloaded${NC}"
 
-# Create logs directory
-mkdir -p logs
-
 # Start services
 echo -e "\n${BLUE}=== Starting Services ===${NC}"
 
 # Start Orchestrator (Go, port 7070)
 echo -e "\n${YELLOW}Starting Go Orchestrator on port 7070...${NC}"
-(cd services/orchestrator-go && go run ./cmd/orchestrator/) > logs/orchestrator.log 2>&1 &
+(cd services/orchestrator-go && ORCH_RUNSTORE="${ORCH_RUNSTORE:-redis}" REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379/0}" go run ./cmd/orchestrator/) > logs/orchestrator.log 2>&1 &
 ORCHESTRATOR_PID=$!
 
 # Start Gateway (Go, port 8080)

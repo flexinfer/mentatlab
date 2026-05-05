@@ -42,8 +42,10 @@ export function ConnectionStatusBanner({
 
   return (
     <div
+      role={statusConfig.critical ? 'alert' : 'status'}
+      aria-live={statusConfig.critical ? 'assertive' : 'polite'}
       className={cn(
-        'relative z-20 flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-md border shadow-lg backdrop-blur animate-in slide-in-from-top-2 duration-300',
+        'relative z-20 flex flex-wrap items-center gap-3 rounded-md border border-border/70 bg-card/95 px-4 py-2.5 shadow-md backdrop-blur animate-in slide-in-from-top-2 duration-200',
         statusConfig.bgClass,
         className,
       )}
@@ -80,7 +82,7 @@ export function ConnectionStatusBanner({
       {!statusConfig.critical && (
         <button
           onClick={() => setDismissed(true)}
-          className="ml-1 p-1 rounded hover:bg-white/10 text-muted-foreground hover:text-white transition-colors"
+          className="ml-1 rounded p-1 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
           title="Dismiss"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -116,9 +118,9 @@ function getStatusConfig(status: StreamConnectionState): StatusConfig {
         message: 'Connection to server lost',
         buttonText: 'Reconnect',
         icon: <DisconnectedIcon />,
-        bgClass: 'bg-gray-900/90 border-gray-700',
-        textClass: 'text-gray-200',
-        buttonClass: 'bg-white/10 hover:bg-white/20 text-white',
+        bgClass: 'bg-zinc-950/90',
+        textClass: 'text-zinc-100',
+        buttonClass: 'bg-muted/80 hover:bg-muted text-foreground',
       };
 
     case StreamConnectionState.CONNECTING:
@@ -130,8 +132,8 @@ function getStatusConfig(status: StreamConnectionState): StatusConfig {
         message: 'Establishing connection...',
         buttonText: '',
         icon: <SpinnerIcon />,
-        bgClass: 'bg-blue-900/90 border-blue-700',
-        textClass: 'text-blue-200',
+        bgClass: 'bg-sky-950/90',
+        textClass: 'text-sky-100',
         buttonClass: '',
       };
 
@@ -144,8 +146,8 @@ function getStatusConfig(status: StreamConnectionState): StatusConfig {
         message: 'Attempting to restore connection...',
         buttonText: '',
         icon: <SpinnerIcon />,
-        bgClass: 'bg-amber-900/90 border-amber-700',
-        textClass: 'text-amber-200',
+        bgClass: 'bg-amber-950/90',
+        textClass: 'text-amber-100',
         buttonClass: '',
       };
 
@@ -158,9 +160,9 @@ function getStatusConfig(status: StreamConnectionState): StatusConfig {
         message: 'Failed to connect to server',
         buttonText: 'Retry',
         icon: <ErrorIcon />,
-        bgClass: 'bg-red-900/90 border-red-700',
-        textClass: 'text-red-200',
-        buttonClass: 'bg-red-500/30 hover:bg-red-500/50 text-red-100',
+        bgClass: 'bg-red-950/90',
+        textClass: 'text-red-100',
+        buttonClass: 'bg-red-500/20 hover:bg-red-500/30 text-red-50 border border-red-500/30',
       };
 
     case StreamConnectionState.CONNECTED:
@@ -182,7 +184,7 @@ function getStatusConfig(status: StreamConnectionState): StatusConfig {
 
 function DisconnectedIcon() {
   return (
-    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-zinc-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -215,7 +217,7 @@ function SpinnerIcon() {
 
 function ErrorIcon() {
   return (
-    <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="w-4 h-4 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"

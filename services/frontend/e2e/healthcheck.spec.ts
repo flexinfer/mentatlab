@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { GATEWAY_BASE, ORCHESTRATOR_BASE } from './testUtils';
 
 test.describe('Health Check Tests', () => {
   test('should check gateway health endpoint', async ({ request }) => {
-    const response = await request.get('http://localhost:8000/healthz');
+    const response = await request.get(`${GATEWAY_BASE}/healthz`);
     expect(response.ok()).toBeTruthy();
     expect(response.status()).toBe(200);
 
@@ -12,7 +13,7 @@ test.describe('Health Check Tests', () => {
   });
 
   test('should check orchestrator health endpoint', async ({ request }) => {
-    const response = await request.get('http://localhost:8001/healthz');
+    const response = await request.get(`${ORCHESTRATOR_BASE}/healthz`);
     expect(response.ok()).toBeTruthy();
     expect(response.status()).toBe(200);
 
@@ -21,7 +22,7 @@ test.describe('Health Check Tests', () => {
   });
 
   test('should check gateway root endpoint', async ({ request }) => {
-    const response = await request.get('http://localhost:8000/');
+    const response = await request.get(`${GATEWAY_BASE}/`);
     expect(response.ok()).toBeTruthy();
     expect(response.status()).toBe(200);
 

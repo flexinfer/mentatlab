@@ -16,6 +16,7 @@ const mockLayoutStore = vi.hoisted(() => ({
 
 const mockWorkspace = vi.hoisted(() => ({
   isEnabled: vi.fn((_flag: string) => true),
+  isLiveConnected: false,
   setSettingsOpen: vi.fn(),
   setShortcutsDialogOpen: vi.fn(),
   setCommandPaletteOpen: vi.fn(),
@@ -84,6 +85,7 @@ describe('TopBar', () => {
     vi.clearAllMocks();
     mockLayoutStore.mainView = 'canvas';
     mockLayoutStore.darkMode = false;
+    mockWorkspace.isLiveConnected = false;
     mockConnection.status = 'disconnected';
     mockConnection.transport = 'none';
     mockWorkspace.isEnabled.mockImplementation(() => true);
@@ -160,6 +162,7 @@ describe('TopBar', () => {
   });
 
   it('shows Disconnect button when connected', () => {
+    mockWorkspace.isLiveConnected = true;
     mockConnection.status = 'connected';
     mockConnection.transport = 'websocket';
     render(<TopBar />);
@@ -167,6 +170,7 @@ describe('TopBar', () => {
   });
 
   it('calls stopLiveConnection when Disconnect is clicked', () => {
+    mockWorkspace.isLiveConnected = true;
     mockConnection.status = 'connected';
     mockConnection.transport = 'websocket';
     render(<TopBar />);
@@ -219,6 +223,7 @@ describe('TopBar', () => {
   });
 
   it('renders compact connection status indicator when connected', () => {
+    mockWorkspace.isLiveConnected = true;
     mockConnection.status = 'connected';
     mockConnection.transport = 'websocket';
     render(<TopBar />);
