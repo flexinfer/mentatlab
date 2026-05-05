@@ -34,6 +34,7 @@ docker-compose up
 ```
 
 Services start at:
+- Redis: localhost:6379
 - Frontend: http://localhost:5173
 - Gateway: http://localhost:8080
 - Orchestrator: http://localhost:7070
@@ -42,7 +43,7 @@ Services start at:
 
 ```bash
 # Terminal 1: Redis
-docker run -d -p 6379:6379 redis
+docker run -d --name mentatlab-redis -p 6379:6379 redis:7-alpine
 
 # Terminal 2: Orchestrator
 cd services/orchestrator-go && go run ./cmd/orchestrator/

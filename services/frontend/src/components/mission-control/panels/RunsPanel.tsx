@@ -206,13 +206,13 @@ export default function RunsPanel(): JSX.Element {
   return (
     <div className="h-full flex flex-col gap-4 p-4">
       {/* Top Controls */}
-      <Card className="flex-none p-3 flex flex-wrap gap-4 items-center bg-card/80">
+      <Card className="flex-none p-3 flex flex-wrap gap-4 items-center bg-card/90 border-border/70 shadow-sm">
         <div className="flex items-center gap-2">
             <label className="text-xs font-medium text-muted-foreground">Mode</label>
             <Select
                 value={mode}
                 onChange={(e) => setMode(e.target.value as RunMode)}
-                className="w-24 h-8 text-xs bg-muted/50 border-white/10"
+                className="w-24 h-8 text-xs bg-muted/30 border-border/70"
             >
                 <option value="plan">Plan</option>
                 <option value="redis">Redis</option>
@@ -229,7 +229,7 @@ export default function RunsPanel(): JSX.Element {
             </Button>
         </div>
 
-        <div className="h-6 w-px bg-white/10" />
+        <div className="h-6 w-px bg-border/70" />
 
         <div className="flex items-center gap-2 flex-1">
              <Input

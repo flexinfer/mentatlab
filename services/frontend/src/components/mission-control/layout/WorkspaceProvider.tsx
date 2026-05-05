@@ -12,13 +12,14 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { FeatureFlags } from '@/config/features';
-import { useLayoutStore } from '@/stores';
+import { useLayoutStore, useStreamingStore } from '@/stores';
 import { useCanvasStore } from '@/stores/canvas';
 import { flightRecorder } from '@/services/mission-control/services';
 import { orchestratorService } from '@/services/api/orchestratorService';
 import { useFlowLoader } from '@/hooks/useFlowLoader';
 import { useStreamingTransport } from '@/hooks/useStreamingTransport';
 import type { PlanNode, PlanEdge, RunPlan } from '@/types/orchestrator';
+import { StreamConnectionState } from '@/types/streaming';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -35,9 +36,10 @@ export interface WorkspaceContextValue {
   // Run management
   activeRunId: string | null;
   setActiveRunId: (id: string | null) => void;
+  isLiveConnected: boolean;
   startDemoRun: () => void;
   startOrchestratorRun: () => Promise<void>;
-  startLiveConnection: () => Promise<void>;
+  startLiveConnection: (runId?: string | null) => Promise<void>;
   stopLiveConnection: () => void;
 
   // CogPak UI
@@ -103,6 +105,11 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   // ─────────────────────────────────────────────────────────────────────────
 
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const connectionStatus = useStreamingStore((state) => state.connectionStatus);
+  const isLiveConnected =
+    connectionStatus === StreamConnectionState.CONNECTED ||
+    connectionStatus === StreamConnectionState.CONNECTING ||
+    connectionStatus === StreamConnectionState.RECONNECTING;
   const { connect: connectLiveTransport, disconnect: disconnectLiveTransport } = useStreamingTransport();
 
   const startDemoRun = useCallback(() => {
@@ -202,8 +209,12 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         if (mcpServer) {
           inputSpec.mcp_server = mcpServer;
         }
-        if (n.data?.tool_args !== undefined) {
-          inputSpec.tool_args = n.data.tool_args;
+        const toolArgs =
+          n.data?.tool_args && typeof n.data.tool_args === 'object' && !Array.isArray(n.data.tool_args)
+            ? (n.data.tool_args as Record<string, unknown>)
+            : undefined;
+        if (toolArgs !== undefined) {
+          inputSpec.tool_args = toolArgs;
         }
         if (n.data?.runtime_contract !== undefined) {
           inputSpec.runtime_contract = n.data.runtime_contract;
@@ -219,6 +230,13 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
           image: n.data?.image,
           env: Object.keys(env).length > 0 ? env : undefined,
         };
+        if (toolName) {
+          node.mcp = {
+            tool_name: toolName,
+            server: mcpServer || undefined,
+            tool_args: toolArgs,
+          };
+        }
         if (n.data?.retry_policy) {
           node.retry_policy = n.data.retry_policy;
         }
@@ -246,10 +264,10 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     }
   }, []);
 
-  const startLiveConnection = useCallback(async () => {
+  const startLiveConnection = useCallback(async (runId?: string | null) => {
     try {
-      const runId = activeRunId || 'default-stream-id';
-      await connectLiveTransport(runId);
+      const targetRunId = runId || activeRunId || 'default-stream-id';
+      await connectLiveTransport(targetRunId);
     } catch (e) {
       console.error('[Workspace] Live connect failed', e);
     }
@@ -383,6 +401,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     () => ({
       activeRunId,
       setActiveRunId,
+      isLiveConnected,
       startDemoRun,
       startOrchestratorRun,
       startLiveConnection,
@@ -406,6 +425,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     }),
     [
       activeRunId,
+      isLiveConnected,
       startDemoRun,
       startOrchestratorRun,
       startLiveConnection,

@@ -24,6 +24,7 @@ vi.mock('@/stores', () => ({
 
 vi.mock('@/components/mission-control/layout/WorkspaceProvider', () => ({
   useWorkspace: () => ({
+    isLiveConnected: mockConnectionStatus.current === 'connecting' || mockConnectionStatus.current === 'reconnecting' || mockConnectionStatus.current === 'connected',
     startLiveConnection: mockStartLiveConnection,
     stopLiveConnection: mockStopLiveConnection,
   }),
@@ -229,22 +230,22 @@ describe('NetworkPanel', () => {
     });
   });
 
-  test('Connect Live button is visible when disconnected and CONNECT_WS enabled', () => {
+  test('Live button is visible when disconnected and CONNECT_WS enabled', () => {
     mockConnectionStatus.current = 'disconnected';
     render(<NetworkPanel runId={null} />);
-    expect(screen.getByText(/Connect Live/)).toBeTruthy();
+    expect(screen.getByText(/Live/)).toBeTruthy();
   });
 
-  test('Connect Live button calls workspace startLiveConnection', () => {
+  test('Live button calls workspace startLiveConnection', () => {
     mockConnectionStatus.current = 'disconnected';
     render(<NetworkPanel runId={null} />);
 
-    fireEvent.click(screen.getByText(/Connect Live/));
+    fireEvent.click(screen.getByText(/^Live$/));
 
     expect(mockStartLiveConnection).toHaveBeenCalledTimes(1);
   });
 
-  test('Connect Live button is disabled when connecting', () => {
+  test('shows Disconnect when connection is active', () => {
     mockConnectionStatus.current = 'connecting';
     render(<NetworkPanel runId={null} />);
     expect(screen.getByText(/Disconnect/)).toBeTruthy();

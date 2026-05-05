@@ -13,9 +13,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { Button } from '@/components/ui/button';
 import { PanelErrorBoundary } from '@/components/ui/PanelErrorBoundary';
-import { useLayoutStore, useStreamingStore } from '@/stores';
+import { useLayoutStore } from '@/stores';
 import { useWorkspace } from './WorkspaceProvider';
-import { StreamConnectionState } from '@/types/streaming';
 
 // Panels (lazy imports to avoid circular deps)
 import ConsolePanel from '../panels/ConsolePanel';
@@ -62,19 +61,15 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150 flex items-center gap-1.5 ${
+      className={`px-3 py-1.5 text-xs font-medium rounded-md border border-transparent transition-all duration-150 flex items-center gap-1.5 ${
         active
           ? 'bg-primary text-primary-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
       }`}
     >
       {label}
       {badge !== undefined && badge > 0 && (
-        <span className={`px-1.5 py-0.5 text-[10px] rounded-full min-w-[18px] text-center ${
-          active
-            ? 'bg-primary-foreground/20 text-primary-foreground'
-            : 'bg-muted-foreground/20 text-muted-foreground'
-        }`}>
+        <span className={`px-1.5 py-0.5 text-[10px] rounded-full min-w-[18px] text-center ${active ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted-foreground/15 text-muted-foreground'}`}>
           {badge > 99 ? '99+' : badge}
         </span>
       )}
@@ -86,9 +81,9 @@ function CollapseHandle({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   return (
     <div
       onDoubleClick={onToggle}
-      className="h-1.5 w-full cursor-row-resize hover:bg-primary/20 transition-colors flex items-center justify-center group"
+      className="h-1.5 w-full cursor-row-resize hover:bg-primary/15 transition-colors flex items-center justify-center group"
     >
-      <div className="w-8 h-0.5 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors" />
+      <div className="w-8 h-0.5 rounded-full bg-muted-foreground/30 group-hover:bg-primary/40 transition-colors" />
     </div>
   );
 }
@@ -114,18 +109,12 @@ export function BottomDock({ className = '' }: BottomDockProps) {
   const {
     activeRunId,
     isEnabled,
+    isLiveConnected,
     startDemoRun,
     startLiveConnection,
     stopLiveConnection,
     startOrchestratorRun,
   } = useWorkspace();
-
-  // Connection status for live button state
-  const connectionStatus = useStreamingStore((s) => s.connectionStatus);
-  const liveConnected =
-    connectionStatus === StreamConnectionState.CONNECTING ||
-    connectionStatus === StreamConnectionState.RECONNECTING ||
-    connectionStatus === StreamConnectionState.CONNECTED;
 
   // Badge counts
   const [issuesCount, setIssuesCount] = useState(0);
@@ -201,7 +190,7 @@ export function BottomDock({ className = '' }: BottomDockProps) {
     return (
       <>
         <PanelResizeHandle className="h-0.5 hover:bg-primary/20 transition-colors cursor-row-resize" />
-        <Panel defaultSize={3} minSize={3} maxSize={5} className={`bg-card border-t ${className}`}>
+        <Panel defaultSize={3} minSize={3} maxSize={5} className={`bg-card/90 border-t border-border/70 ${className}`}>
           <div className="h-full flex items-center justify-center">
             <button
               onClick={toggleBottomDock}
@@ -222,14 +211,14 @@ export function BottomDock({ className = '' }: BottomDockProps) {
         defaultSize={25}
         minSize={15}
         maxSize={50}
-        className={`flex flex-col bg-card border-t ${className}`}
+        className={`flex flex-col bg-card/90 border-t border-border/70 ${className}`}
         onResize={(size) => setBottomDockHeight(Math.round(size * 6))}
       >
         {/* Collapse handle */}
         <CollapseHandle collapsed={false} onToggle={toggleBottomDock} />
 
         {/* Tab bar */}
-        <div className="h-10 border-b flex items-center justify-between px-3">
+        <div className="h-10 border-b border-border/70 bg-muted/20 flex items-center justify-between px-3">
           {/* Tabs */}
           <div className="flex items-center gap-1">
             {visibleTabs.map((tab) => (
@@ -249,10 +238,16 @@ export function BottomDock({ className = '' }: BottomDockProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={liveConnected ? stopLiveConnection : startLiveConnection}
+                onClick={() => {
+                  if (isLiveConnected) {
+                    stopLiveConnection();
+                    return;
+                  }
+                  void startLiveConnection();
+                }}
                 className="h-7 text-xs"
               >
-                {liveConnected ? 'Disconnect' : 'Connect'}
+                {isLiveConnected ? 'Disconnect' : 'Live'}
               </Button>
             )}
             {isEnabled('NEW_STREAMING') && (

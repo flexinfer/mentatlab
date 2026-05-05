@@ -20,6 +20,7 @@ const mockLayoutStore = vi.hoisted(() => ({
 const mockWorkspace = vi.hoisted(() => ({
   activeRunId: null as string | null,
   isEnabled: vi.fn((_flag: string) => true),
+  isLiveConnected: false,
   startDemoRun: vi.fn(),
   startLiveConnection: vi.fn(),
   stopLiveConnection: vi.fn(),
@@ -124,6 +125,7 @@ describe('BottomDock', () => {
     mockLayoutStore.bottomDockCollapsed = false;
     mockLayoutStore.activeBottomTab = 'Console';
     mockWorkspace.activeRunId = null;
+    mockWorkspace.isLiveConnected = false;
     mockWorkspace.isEnabled.mockImplementation(() => true);
     mockStreamingStore.connectionStatus = StreamConnectionState.DISCONNECTED;
   });
@@ -214,25 +216,25 @@ describe('BottomDock', () => {
     expect(mockWorkspace.startOrchestratorRun).toHaveBeenCalledTimes(1);
   });
 
-  it('renders Connect button when CONNECT_WS is enabled and disconnected', () => {
+  it('renders Live button when CONNECT_WS is enabled and disconnected', () => {
     render(<BottomDock />);
-    expect(screen.getByText('Connect')).toBeInTheDocument();
+    expect(screen.getByText('Live')).toBeInTheDocument();
   });
 
-  it('disables Connect button when connection is connecting', () => {
-    mockStreamingStore.connectionStatus = StreamConnectionState.CONNECTING;
+  it('shows Disconnect button when live connection is active', () => {
+    mockWorkspace.isLiveConnected = true;
     render(<BottomDock />);
     expect(screen.getByText('Disconnect')).toBeInTheDocument();
   });
 
   it('shows Disconnect label when connected', () => {
-    mockStreamingStore.connectionStatus = StreamConnectionState.CONNECTED;
+    mockWorkspace.isLiveConnected = true;
     render(<BottomDock />);
     expect(screen.getAllByText('Disconnect').length).toBeGreaterThanOrEqual(1);
   });
 
   it('calls stopLiveConnection when connected and action button clicked', () => {
-    mockStreamingStore.connectionStatus = StreamConnectionState.CONNECTED;
+    mockWorkspace.isLiveConnected = true;
     render(<BottomDock />);
     fireEvent.click(screen.getAllByText('Disconnect')[0]);
     expect(mockWorkspace.stopLiveConnection).toHaveBeenCalledTimes(1);

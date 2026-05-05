@@ -188,6 +188,66 @@ def test_main_errors_without_tool_name(monkeypatch, capsys):
     assert "missing tool_name" in event["value"]["error"]
 
 
+def test_main_errors_when_loom_runtime_missing(monkeypatch, capsys):
+    mod = _load_module()
+
+    monkeypatch.setattr(
+        mod,
+        "read_input_contract",
+        lambda: {
+            "spec": {
+                "tool_name": "k8s_apps_k3s__k8s_get",
+                "tool_args": {"kind": "pods"},
+            }
+        },
+    )
+    monkeypatch.setattr(mod, "resolve_loom_bin", lambda: "/missing/loom")
+
+    def raise_missing(*args, **kwargs):
+        raise FileNotFoundError("loom not installed")
+
+    monkeypatch.setattr(mod, "call_loom_tool", raise_missing)
+
+    code = mod.main()
+    assert code == 127
+
+    event = parse_single_event(capsys.readouterr().out)
+    assert event["type"] == "output"
+    assert event["key"] == "error"
+    assert event["value"]["error"] == "loom runtime unavailable"
+    assert event["value"]["tool_name"] == "k8s_apps_k3s__k8s_get"
+
+
+def test_main_preserves_nonzero_exit_code_for_loom_failures(monkeypatch, capsys):
+    mod = _load_module()
+
+    monkeypatch.setattr(
+        mod,
+        "read_input_contract",
+        lambda: {
+            "spec": {
+                "tool_name": "k8s_apps_k3s__k8s_get",
+                "tool_args": {"kind": "pods"},
+            }
+        },
+    )
+
+    def raise_runtime(*args, **kwargs):
+        raise RuntimeError(
+            '{"error":"loom tools call failed","exit_code":9,"command":["loom"],"stdout":"","stderr":"boom"}'
+        )
+
+    monkeypatch.setattr(mod, "call_loom_tool", raise_runtime)
+
+    code = mod.main()
+    assert code == 9
+
+    event = parse_single_event(capsys.readouterr().out)
+    assert event["type"] == "output"
+    assert event["key"] == "error"
+    assert event["value"]["exit_code"] == 9
+
+
 @pytest.mark.parametrize(
     "tool_name,expected",
     [

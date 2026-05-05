@@ -73,6 +73,12 @@ export interface RetryPolicy {
   backoff_max?: number;   // Max backoff in seconds
 }
 
+export interface MCPConfig {
+  tool_name: string;
+  server?: string;
+  tool_args?: Record<string, unknown>;
+}
+
 // --- Plan Definitions ---
 
 /**
@@ -114,6 +120,9 @@ export interface PlanNode {
 
   // Per-node retry policy (overrides global defaults)
   retry_policy?: RetryPolicy;
+
+  // Structured MCP metadata for consistent direct-run and persisted-flow execution paths
+  mcp?: MCPConfig;
 }
 
 export interface PlanEdge {

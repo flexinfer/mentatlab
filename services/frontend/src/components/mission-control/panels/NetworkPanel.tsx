@@ -17,7 +17,6 @@ import { ReactFlowProvider } from 'reactflow';
 
 import { useStreamingStore } from '@/stores';
 import { useWorkspace } from '@/components/mission-control/layout/WorkspaceProvider';
-import { StreamConnectionState } from '../../../types/streaming';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { FeatureFlags } from '../../../config/features';
 import { getOrchestratorBaseUrl } from '@/config/orchestrator';
@@ -64,10 +63,10 @@ function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean
   return (
     <div
       className={[
-        'px-2 py-1 rounded-md border text-[11px] shadow-lg relative transition-all duration-200 backdrop-blur-md',
-        hasError ? healthColor : 'bg-card/80 border-primary/30 text-foreground',
-        isHot ? 'ring-2 ring-primary shadow-[0_0_15px_hsl(var(--primary)/0.5)] scale-[1.05]' : 'ring-0',
-        selected ? 'ring-1 ring-primary shadow-[0_0_10px_hsl(var(--primary)/0.3)]' : '',
+        'px-2 py-1 rounded-md border border-border/70 text-[11px] shadow-sm relative transition-all duration-200 backdrop-blur-md',
+        hasError ? healthColor : 'bg-card/90 text-foreground',
+        isHot ? 'ring-1 ring-primary/30 scale-[1.03]' : 'ring-0',
+        selected ? 'ring-1 ring-primary/40 shadow-sm' : '',
       ].join(' ')}
       style={{ minWidth: 120 }}
     >
@@ -172,12 +171,9 @@ function useThroughputMeter(windowMs = 5000) {
 }
 
 export default function NetworkPanel({ runId }: Props) {
-  const { startLiveConnection, stopLiveConnection } = useWorkspace();
-
-  // Streaming connection status
+  const { isLiveConnected, startLiveConnection, stopLiveConnection } = useWorkspace();
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
   const cs = String(connectionStatus);
-  const liveConnected = cs === 'connecting' || cs === 'reconnecting' || cs === 'connected';
 
   // Nodes/Edges state (generic is the data type, not Node<>)
   const [nodes, setNodes, onNodesChange] = useNodesState<AgentNodeData>([] as RFNode[]);
@@ -200,19 +196,19 @@ export default function NetworkPanel({ runId }: Props) {
   const statusBadge = React.useMemo(() => {
     switch (cs) {
       case 'disconnected':
-        return { color: 'bg-gray-500', text: 'Disconnected' };
+        return { color: 'bg-zinc-500', text: 'Disconnected' };
       case 'connecting':
         return { color: 'bg-amber-500', text: 'Connecting' };
       case 'connected':
-        return { color: 'bg-primary shadow-[0_0_8px_hsl(var(--primary))]', text: 'Connected' };
+        return { color: 'bg-primary', text: 'Connected' };
       case 'reconnecting':
         return { color: 'bg-secondary', text: 'Reconnecting' };
       case 'error':
         return { color: 'bg-destructive', text: 'Error' };
       default:
-        return { color: 'bg-gray-500', text: String(connectionStatus) };
+        return { color: 'bg-zinc-500', text: 'Disconnected' };
     }
-  }, [cs, connectionStatus]);
+  }, [cs]);
 
   // Fetch agents once on mount (resilient)
   const [fetchError, setFetchError] = React.useState<string | null>(null);
@@ -664,18 +660,18 @@ export default function NetworkPanel({ runId }: Props) {
         }
       `}</style>
 
-      <div className="px-2 h-8 border-b border-white/10 bg-card/40 backdrop-blur flex items-center justify-between text-[11px]">
+      <div className="px-2 h-8 border-b border-border/70 bg-card/80 backdrop-blur flex items-center justify-between text-[11px]">
         <div className="flex items-center gap-2">
           <span className="uppercase tracking-wide text-muted-foreground">Network</span>
-          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground/25">|</span>
           <span className="text-muted-foreground">
             Active Nodes: <strong className="text-foreground">{activeNodes}</strong>
           </span>
-          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground/25">|</span>
           <span className="text-muted-foreground">
             Msgs/s: <strong className="text-foreground">{perSec}</strong>
           </span>
-          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground/25">|</span>
           <span className="inline-flex items-center gap-1">
             <span className={['w-1.5 h-1.5 rounded-full', statusBadge.color].join(' ')} /> {statusBadge.text}
           </span>
@@ -686,11 +682,17 @@ export default function NetworkPanel({ runId }: Props) {
         <div className="flex items-center gap-2">
           {FeatureFlags.CONNECT_WS && (
             <button
-              className="h-6 px-2 rounded border border-white/10 bg-white/5 hover:bg-white/10 text-[11px] disabled:opacity-60 transition-colors"
-              onClick={liveConnected ? stopLiveConnection : startLiveConnection}
-              title={liveConnected ? 'Disconnect live stream' : 'Connect live stream'}
+              className="h-6 px-2 rounded border border-border/70 bg-muted/20 hover:bg-muted/40 text-[11px] disabled:opacity-60 transition-colors"
+              onClick={() => {
+                if (isLiveConnected) {
+                  stopLiveConnection();
+                  return;
+                }
+                void startLiveConnection();
+              }}
+              title={isLiveConnected ? 'Disconnect live stream' : 'Connect live stream'}
             >
-              {liveConnected ? '🛑 Disconnect' : '🔌 Connect Live'}
+              {isLiveConnected ? 'Disconnect' : 'Live'}
             </button>
           )}
         </div>
@@ -733,8 +735,8 @@ export default function NetworkPanel({ runId }: Props) {
             defaultEdgeOptions={{ animated: true, markerEnd: { type: MarkerType.ArrowClosed } }}
           >
             <BackgroundAny gap={24} size={1} color="hsl(var(--primary)/0.1)" />
-            <MiniMapAny pannable zoomable className="!bg-card/40 !border-white/10 rounded-lg backdrop-blur-md" />
-            <ControlsAny position="bottom-right" className="!bg-card/40 !border-white/10 rounded-lg backdrop-blur-md [&>button]:!border-white/10 [&>button]:!text-foreground hover:[&>button]:!bg-white/10" />
+            <MiniMapAny pannable zoomable className="!bg-card/80 !border-border/70 rounded-lg backdrop-blur-md" />
+            <ControlsAny position="bottom-right" className="!bg-card/80 !border-border/70 rounded-lg backdrop-blur-md [&>button]:!border-border/70 [&>button]:!text-foreground hover:[&>button]:!bg-muted/40" />
           </ReactFlow>
         </ReactFlowProvider>
 
