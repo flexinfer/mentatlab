@@ -151,29 +151,55 @@ def emit_error(
 
 
 def emit_progress(
-    current: int,
-    total: int,
+    current: Optional[int] = None,
+    total: Optional[int] = None,
     *,
+    percent: Optional[Union[int, float]] = None,
     message: Optional[str] = None,
+    eta_seconds: Optional[Union[int, float]] = None,
     correlation_id: Optional[str] = None,
 ) -> None:
     """Emit a progress event.
 
     Args:
-        current: Current step number.
-        total: Total steps.
+        current: Optional current step number. Kept for compatibility.
+        total: Optional total steps. Kept for compatibility.
+        percent: Completion percent from 0 to 100. If omitted, computed from current/total.
         message: Optional human-readable status (e.g. "Processing batch 3/10").
+        eta_seconds: Optional estimated seconds remaining.
         correlation_id: Override default correlation ID.
     """
+    computed_percent: Union[int, float]
+    if percent is not None:
+        computed_percent = percent
+    elif current is not None and total is not None and total > 0:
+        computed_percent = current / total * 100
+    else:
+        computed_percent = 0
+
     payload: Dict[str, Any] = {
-        "current": current,
-        "total": total,
-        "percent": round(current / total * 100, 1) if total > 0 else 0,
+        "percent": max(0, min(100, round(float(computed_percent), 1))),
     }
+    if current is not None:
+        payload["current"] = current
+    if total is not None:
+        payload["total"] = total
+    if message is not None:
+        payload["message"] = message
+    if eta_seconds is not None:
+        payload["eta_seconds"] = max(0, float(eta_seconds))
+
+    display_message = message
+    if display_message is None:
+        if current is not None and total is not None:
+            display_message = f"Progress: {current}/{total}"
+        else:
+            display_message = f"Progress: {payload['percent']}%"
+
     emit_event(
         type="progress",
         level="info",
-        message=message or f"Progress: {current}/{total}",
+        message=display_message,
         data=payload,
         correlation_id=correlation_id,
     )

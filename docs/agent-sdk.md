@@ -79,7 +79,7 @@ Agents communicate with the orchestrator via **newline-delimited JSON (NDJSON)**
 
 ```json
 {
-  "type": "log|checkpoint|metric|output|result",
+  "type": "log|checkpoint|metric|output|result|error|progress|heartbeat",
   "level": "debug|info|warn|error",
   "message": "Human-readable message",
   "data": { "key": "value" },
@@ -161,6 +161,32 @@ Emit structured errors to classify failures as transient (retryable) or permanen
 
 **Retry contract**: When an agent emits `{"type":"error","data":{"retryable":true}}` and then exits with a non-zero code, the orchestrator rewrites the exit code to `3` (the transient-retry convention), which triggers the node's retry policy. Non-retryable errors leave the exit code unchanged and the node fails permanently.
 
+#### 7. Progress Events
+
+Emit runtime progress for long-running work. Mission Control can render these as node progress bars.
+
+```json
+{"type":"progress","level":"info","message":"Processing batch 4/10","data":{"percent":40,"message":"Processing batch 4/10","eta_seconds":18},"ts":"2024-01-15T10:30:10Z"}
+```
+
+**Progress fields** (inside `data`):
+
+| Field         | Type   | Description                                      |
+| ------------- | ------ | ------------------------------------------------ |
+| `percent`     | number | Required completion percentage from `0` to `100` |
+| `message`     | string | Optional human-readable progress status          |
+| `eta_seconds` | number | Optional estimated seconds remaining             |
+| `current`     | number | Optional current step for compatibility          |
+| `total`       | number | Optional total steps for compatibility           |
+
+#### 8. Heartbeat Events
+
+Emit heartbeat events during long-running work so the orchestrator can detect stalled agents after the configured node heartbeat timeout.
+
+```json
+{"type":"heartbeat","ts":"2024-01-15T10:30:10Z"}
+```
+
 ## Python SDK
 
 ### Installation
@@ -179,6 +205,8 @@ from agents.common.emit import (
     log_error,
     checkpoint,
     emit_error,
+    emit_heartbeat,
+    emit_progress,
     emit_event,
     set_correlation_id,
 )
@@ -196,7 +224,8 @@ def main():
         result = process_input()
 
         # Report progress
-        checkpoint("processing", 0.5, {"items": 50})
+        emit_progress(percent=50, message="Processing inputs", eta_seconds=10)
+        emit_heartbeat()
 
         # Emit final result
         emit_event(type="result", data={"output": result})
@@ -239,6 +268,14 @@ emit_event(
 log_info(message: str, data: Optional[Dict] = None) -> None
 log_error(message: str, data: Optional[Dict] = None) -> None
 checkpoint(stage: str, progress: float, extra: Optional[Dict] = None) -> None
+emit_progress(
+    current: Optional[int] = None,
+    total: Optional[int] = None,
+    percent: Optional[float] = None,
+    message: Optional[str] = None,
+    eta_seconds: Optional[float] = None,
+) -> None
+emit_heartbeat() -> None
 emit_error(
     code: str,
     message: str,

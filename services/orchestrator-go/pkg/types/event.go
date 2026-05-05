@@ -86,9 +86,11 @@ type RunStatusEvent struct {
 
 // ProgressEvent represents the data payload for progress events.
 type ProgressEvent struct {
-	Current int    `json:"current"`
-	Total   int    `json:"total"`
-	Message string `json:"message,omitempty"`
+	Percent    float64  `json:"percent"`
+	Message    string   `json:"message,omitempty"`
+	ETASeconds *float64 `json:"eta_seconds,omitempty"`
+	Current    int      `json:"current,omitempty"`
+	Total      int      `json:"total,omitempty"`
 }
 
 // StreamDataEvent represents generic streaming data from an agent.

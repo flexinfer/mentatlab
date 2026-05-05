@@ -54,6 +54,27 @@ func emitError(code, message string, retryable bool, details map[string]any) {
 	emit(Event{Type: "error", Level: "error", Message: message, Data: data})
 }
 
+func emitProgress(percent float64, message string, etaSeconds *float64) {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	data := map[string]any{"percent": percent}
+	if message != "" {
+		data["message"] = message
+	}
+	if etaSeconds != nil && *etaSeconds >= 0 {
+		data["eta_seconds"] = *etaSeconds
+	}
+	emit(Event{Type: "progress", Level: "info", Message: message, Data: data})
+}
+
+func emitHeartbeat() {
+	emit(Event{Type: "heartbeat"})
+}
+
 func emitOutput(key string, value any) {
 	emit(Event{Type: "output", Data: map[string]any{"key": key, "value": value}})
 }
@@ -78,6 +99,8 @@ func main() {
 	}
 
 	logInfo("processing", map[string]any{"input_length": len(text)})
+	emitProgress(50, "processing input", nil)
+	emitHeartbeat()
 
 	// TODO: Replace with your agent logic
 	// Example transient failure:
