@@ -6,6 +6,7 @@ services/frontend/dist/
 services/gateway/.venv/
 # Node
 services/frontend/node_modules/
+sdk/typescript/dist/
 
 # Go compiled binaries
 services/orchestrator-go/orchestrator

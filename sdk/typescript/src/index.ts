@@ -1,7 +1,15 @@
-export { MentatAgent } from "./agent";
-export type { AgentInput, AgentOutput, MentatMeta } from "./agent";
+export { MentatAgent, createAgent } from "./agent";
+export type {
+  AgentInput,
+  AgentOutput,
+  AgentRuntime,
+  CreateAgentOptions,
+  MentatMeta,
+  RunnableAgent,
+} from "./agent";
 export {
   emitEvent,
+  emitOutput,
   logInfo,
   logError,
   checkpoint,
@@ -10,3 +18,4 @@ export {
   emitHeartbeat,
   setCorrelationId,
 } from "./emit";
+export type { EmitOptions, JsonObject, JsonValue, ProgressOptions } from "./emit";

@@ -1,22 +1,17 @@
-import { MentatAgent } from "@mentatlab/agent-sdk";
+import { createAgent, emitProgress } from "@mentatlab/agent-sdk";
 
-class {{AGENT_CLASS}} extends MentatAgent {
-  constructor() {
-    super("{{AGENT_ID}}", "{{VERSION}}");
-  }
-
-  protected async execute(
-    spec: Record<string, unknown>,
-    context: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    // TODO: Implement your agent logic here
+const agent = createAgent({
+  agentId: "{{AGENT_ID}}",
+  version: "{{VERSION}}",
+  async onInput(spec, context, runtime) {
     const input = (spec.prompt as string) ?? "";
+    emitProgress({ percent: 50, message: "Processing input" });
 
     return {
       output: `Processed: ${input}`,
+      executionId: runtime.executionId ?? context.execution_id ?? null,
     };
-  }
-}
+  },
+});
 
-const agent = new {{AGENT_CLASS}}();
 agent.run().then((code) => process.exit(code));

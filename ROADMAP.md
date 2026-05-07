@@ -247,11 +247,13 @@ Populate the frontend node palette with available MCP tools from the loom proxy.
 
 #### M12.4 TypeScript agent SDK ([Issue #66](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/66))
 
-- Create `agents/sdk-ts/` with TypeScript agent SDK (Node.js)
-- NDJSON stdin/stdout contract with typed event emitters
-- `createAgent({ onInput, onCancel })` factory function
-- Publish as npm package for external agent authors
-- Source: `agents/common/emit.py` (reference implementation)
+- ✅ TypeScript SDK package in `sdk/typescript/` publishes as `@mentatlab/agent-sdk`.
+- ✅ NDJSON stdin/stdout contract with typed event emitters.
+- ✅ `createAgent({ onInput, onCancel })` factory function.
+- ✅ TypeScript mentatctl template uses the SDK factory.
+- ✅ Package build/test scripts and CI job validate compiled CommonJS output plus npm package contents.
+- Pending: npm registry publication outside the repo.
+- Sources: `sdk/typescript/src/`, `sdk/typescript/README.md`, `cli/mentatctl/templates/typescript/src/main.ts`
 
 #### M12.5 Agent state persistence ([Issue #67](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/67))
 

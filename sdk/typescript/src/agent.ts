@@ -9,12 +9,14 @@ import {
   logInfo,
   logError,
   checkpoint,
+  emitError,
   setCorrelationId,
+  type JsonObject,
 } from "./emit";
 
 export interface AgentInput {
-  spec: Record<string, unknown>;
-  context: Record<string, unknown>;
+  spec: JsonObject;
+  context: JsonObject;
   execution_id?: string;
 }
 
@@ -26,8 +28,34 @@ export interface MentatMeta {
 }
 
 export interface AgentOutput {
-  result: Record<string, unknown>;
+  result: JsonObject;
   mentat_meta: MentatMeta;
+}
+
+export interface AgentRuntime {
+  agentId: string;
+  version: string;
+  signal: AbortSignal;
+  executionId?: string;
+}
+
+export interface CreateAgentOptions {
+  agentId: string;
+  version?: string;
+  onInput: (
+    spec: JsonObject,
+    context: JsonObject,
+    runtime: AgentRuntime,
+  ) => Promise<JsonObject> | JsonObject;
+  onCancel?: (runtime: AgentRuntime) => Promise<void> | void;
+}
+
+export interface RunnableAgent {
+  run(): Promise<number>;
+}
+
+export function createAgent(options: CreateAgentOptions): RunnableAgent {
+  return new FunctionalMentatAgent(options);
 }
 
 export abstract class MentatAgent {
@@ -54,7 +82,8 @@ export abstract class MentatAgent {
       const spec = incoming.spec ?? {};
       const context = incoming.context ?? {};
 
-      const execId = incoming.execution_id ?? (context.execution_id as string);
+      const contextExecID = typeof context.execution_id === "string" ? context.execution_id : undefined;
+      const execId = incoming.execution_id ?? contextExecID;
       if (execId) setCorrelationId(execId);
 
       const result = await this.execute(spec, context);
@@ -79,14 +108,23 @@ export abstract class MentatAgent {
       const raw = await readStdin();
       if (raw.trim()) {
         try {
-          return JSON.parse(raw.trim()) as AgentInput;
+          const parsed = JSON.parse(raw.trim());
+          if (isObject(parsed)) {
+            return normalizeInput(parsed);
+          }
         } catch {
           // Fall through to env
         }
       }
     }
 
-    // 2) Fallback to env vars
+    // 2) Fallback to whole-input env var used by some launchers
+    const agentInput = parseJSON(process.env.AGENT_INPUT ?? "");
+    if (agentInput) {
+      return normalizeInput(agentInput);
+    }
+
+    // 3) Fallback to split env vars
     const specStr = process.env.INPUT_SPEC ?? "";
     const ctxStr = process.env.INPUT_CONTEXT ?? "";
 
@@ -105,12 +143,12 @@ export abstract class MentatAgent {
 
   /** Core logic — subclasses must implement this. */
   protected abstract execute(
-    spec: Record<string, unknown>,
-    context: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> | Record<string, unknown>;
+    spec: JsonObject,
+    context: JsonObject,
+  ): Promise<JsonObject> | JsonObject;
 
   /** Writes the final result to stdout in the standard format. */
-  protected writeOutput(result: Record<string, unknown>): void {
+  protected writeOutput(result: JsonObject): void {
     const endTime = Date.now();
     const output = this.makeOutputEnvelope(result, this.startTime, endTime);
 
@@ -130,6 +168,7 @@ export abstract class MentatAgent {
   protected handleNoInput(): number {
     const errMsg = "No input received on stdin or environment variables.";
     logError(`${this.agentId}: ${errMsg}`);
+    emitError("NO_INPUT", errMsg, { retryable: false });
     const output = this.makeOutputEnvelope({ error: errMsg }, this.startTime, Date.now());
     process.stdout.write(JSON.stringify(output) + "\n");
     return 1;
@@ -138,8 +177,16 @@ export abstract class MentatAgent {
   /** Standard error handling and reporting. */
   protected handleError(err: Error): number {
     logError(`${this.agentId}: internal error`, { exception: err.message });
+    emitError("INTERNAL_ERROR", err.message, { retryable: false });
+    const result: JsonObject = {
+      error: "Internal agent error",
+      exception: err.message,
+    };
+    if (err.stack) {
+      result.stack = err.stack;
+    }
     const output = this.makeOutputEnvelope(
-      { error: "Internal agent error", exception: err.message, stack: err.stack },
+      result,
       this.startTime,
       Date.now(),
     );
@@ -149,7 +196,7 @@ export abstract class MentatAgent {
 
   /** Wraps result with standard mentat_meta block. */
   private makeOutputEnvelope(
-    result: Record<string, unknown>,
+    result: JsonObject,
     startMs: number,
     endMs: number,
   ): AgentOutput {
@@ -161,6 +208,71 @@ export abstract class MentatAgent {
         seconds: Math.round((endMs - startMs) / 100) / 10,
         model: `${this.agentId}/${this.version}`,
       },
+    };
+  }
+}
+
+class FunctionalMentatAgent extends MentatAgent {
+  private readonly controller = new AbortController();
+  private readonly onInput: CreateAgentOptions["onInput"];
+  private readonly onCancel?: CreateAgentOptions["onCancel"];
+  private executionId?: string;
+
+  constructor(options: CreateAgentOptions) {
+    super(options.agentId, options.version ?? "0.1.0");
+    this.onInput = options.onInput;
+    this.onCancel = options.onCancel;
+  }
+
+  override async run(): Promise<number> {
+    const cleanup = this.installCancelHandlers();
+    try {
+      return await super.run();
+    } finally {
+      cleanup();
+    }
+  }
+
+  protected override async execute(spec: JsonObject, context: JsonObject): Promise<JsonObject> {
+    this.executionId = typeof context.execution_id === "string" ? context.execution_id : undefined;
+    const runtime = this.runtime();
+    if (runtime.signal.aborted) {
+      return { cancelled: true };
+    }
+    return this.onInput(spec, context, runtime);
+  }
+
+  private runtime(): AgentRuntime {
+    return {
+      agentId: this.agentId,
+      version: this.version,
+      signal: this.controller.signal,
+      executionId: this.executionId,
+    };
+  }
+
+  private installCancelHandlers(): () => void {
+    const cancel = async () => {
+      if (!this.controller.signal.aborted) {
+        this.controller.abort();
+      }
+      emitError("CANCELLED", "agent received cancellation signal", { retryable: false });
+      if (this.onCancel) {
+        await this.onCancel(this.runtime());
+      }
+    };
+    const onSignal = () => {
+      void cancel().finally(() => {
+        process.exitCode = 130;
+      });
+    };
+
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
+
+    return () => {
+      process.off("SIGINT", onSignal);
+      process.off("SIGTERM", onSignal);
     };
   }
 }
@@ -177,11 +289,24 @@ function readStdin(): Promise<string> {
   });
 }
 
-function parseJSON(s: string): Record<string, unknown> | null {
+function parseJSON(s: string): JsonObject | null {
   if (!s || !s.trim()) return null;
   try {
-    return JSON.parse(s);
+    const parsed = JSON.parse(s);
+    return isObject(parsed) ? parsed : null;
   } catch {
     return null;
   }
+}
+
+function normalizeInput(raw: JsonObject): AgentInput {
+  return {
+    spec: isObject(raw.spec) ? raw.spec : raw,
+    context: isObject(raw.context) ? raw.context : {},
+    execution_id: typeof raw.execution_id === "string" ? raw.execution_id : undefined,
+  };
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
