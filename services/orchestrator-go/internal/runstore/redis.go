@@ -157,12 +157,21 @@ func (s *RedisStore) breakerGuard() (func(bool), error) {
 }
 
 // Key helpers
-func (s *RedisStore) keyMeta(runID string) string    { return fmt.Sprintf("%s:%s:meta", s.prefix, runID) }
-func (s *RedisStore) keyNodes(runID string) string   { return fmt.Sprintf("%s:%s:nodes", s.prefix, runID) }
-func (s *RedisStore) keyEvents(runID string) string  { return fmt.Sprintf("%s:%s:events", s.prefix, runID) }
-func (s *RedisStore) keySeq(runID string) string     { return fmt.Sprintf("%s:%s:seq", s.prefix, runID) }
-func (s *RedisStore) keyPlan(runID string) string    { return fmt.Sprintf("%s:%s:plan", s.prefix, runID) }
-func (s *RedisStore) keyOutputs(runID string) string { return fmt.Sprintf("%s:%s:outputs", s.prefix, runID) }
+func (s *RedisStore) keyMeta(runID string) string { return fmt.Sprintf("%s:%s:meta", s.prefix, runID) }
+func (s *RedisStore) keyNodes(runID string) string {
+	return fmt.Sprintf("%s:%s:nodes", s.prefix, runID)
+}
+func (s *RedisStore) keyEvents(runID string) string {
+	return fmt.Sprintf("%s:%s:events", s.prefix, runID)
+}
+func (s *RedisStore) keySeq(runID string) string  { return fmt.Sprintf("%s:%s:seq", s.prefix, runID) }
+func (s *RedisStore) keyPlan(runID string) string { return fmt.Sprintf("%s:%s:plan", s.prefix, runID) }
+func (s *RedisStore) keyOutputs(runID string) string {
+	return fmt.Sprintf("%s:%s:outputs", s.prefix, runID)
+}
+func (s *RedisStore) keyCheckpoints(runID string) string {
+	return fmt.Sprintf("%s:%s:checkpoints", s.prefix, runID)
+}
 
 // setTTL refreshes TTL on all keys for a run.
 func (s *RedisStore) setTTL(ctx context.Context, runID string) error {
@@ -176,6 +185,7 @@ func (s *RedisStore) setTTL(ctx context.Context, runID string) error {
 	pipe.Expire(ctx, s.keySeq(runID), s.ttl)
 	pipe.Expire(ctx, s.keyPlan(runID), s.ttl)
 	pipe.Expire(ctx, s.keyOutputs(runID), s.ttl)
+	pipe.Expire(ctx, s.keyCheckpoints(runID), s.ttl)
 	_, err := pipe.Exec(ctx)
 	return err
 }
@@ -706,6 +716,31 @@ func (s *RedisStore) GetNodeOutputs(ctx context.Context, runID, nodeID string) (
 	return outputs, nil
 }
 
+// GetLatestNodeCheckpointState retrieves the latest resumable checkpoint state
+// for a node, if the node has emitted one.
+func (s *RedisStore) GetLatestNodeCheckpointState(ctx context.Context, runID, nodeID string) (_ *NodeCheckpointState, retErr error) {
+	cbDone, cbErr := s.breakerGuard()
+	if cbErr != nil {
+		return nil, cbErr
+	}
+	defer func() { cbDone(retErr == nil) }()
+
+	checkpointJSON, err := s.client.HGet(ctx, s.keyCheckpoints(runID), nodeID).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get node checkpoint: %w", err)
+	}
+
+	var checkpoint NodeCheckpointState
+	if err := json.Unmarshal([]byte(checkpointJSON), &checkpoint); err != nil {
+		return nil, fmt.Errorf("unmarshal checkpoint: %w", err)
+	}
+	checkpoint.State = cloneRawMessage(checkpoint.State)
+	return &checkpoint, nil
+}
+
 // AppendEvent adds an event to the run's stream.
 func (s *RedisStore) AppendEvent(ctx context.Context, runID string, input *types.EventInput) (_ *types.Event, retErr error) {
 	cbDone, cbErr := s.breakerGuard()
@@ -725,6 +760,23 @@ func (s *RedisStore) AppendEvent(ctx context.Context, runID string, input *types
 
 	// Serialize data
 	dataBytes, _ := json.Marshal(input.Data)
+
+	var checkpoint *NodeCheckpointState
+	if input.Type == types.EventTypeCheckpoint && input.NodeID != "" {
+		state, ok, err := checkpointStateFromEventData(dataBytes)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			checkpoint = &NodeCheckpointState{
+				RunID:     runID,
+				NodeID:    input.NodeID,
+				EventID:   eventID,
+				Timestamp: now,
+				State:     state,
+			}
+		}
+	}
 
 	event := &types.Event{
 		ID:        eventID,
@@ -751,6 +803,16 @@ func (s *RedisStore) AppendEvent(ctx context.Context, runID string, input *types
 		Values: streamFields,
 	}).Err(); err != nil {
 		return nil, fmt.Errorf("xadd: %w", err)
+	}
+
+	if checkpoint != nil {
+		checkpointJSON, err := json.Marshal(checkpoint)
+		if err != nil {
+			return nil, fmt.Errorf("marshal checkpoint: %w", err)
+		}
+		if err := s.client.HSet(ctx, s.keyCheckpoints(runID), input.NodeID, string(checkpointJSON)).Err(); err != nil {
+			return nil, fmt.Errorf("set node checkpoint: %w", err)
+		}
 	}
 
 	// Refresh TTL

@@ -300,6 +300,27 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 	}
 	env["ATTEMPT"] = fmt.Sprintf("%d", attempts+1)
 
+	var resumeState interface{}
+	hasResumeState := false
+	if attempts > 0 {
+		if checkpoint, err := s.store.GetLatestNodeCheckpointState(ctx, rctx.runID, nodeID); err != nil {
+			s.logger.Warn("failed to load resume checkpoint state",
+				slog.String("run_id", rctx.runID),
+				slog.String("node_id", nodeID),
+				slog.Any("error", err))
+		} else if checkpoint != nil && len(checkpoint.State) > 0 {
+			env["RESUME_STATE"] = string(checkpoint.State)
+			if err := json.Unmarshal(checkpoint.State, &resumeState); err != nil {
+				s.logger.Warn("failed to decode resume checkpoint state",
+					slog.String("run_id", rctx.runID),
+					slog.String("node_id", nodeID),
+					slog.Any("error", err))
+			} else {
+				hasResumeState = true
+			}
+		}
+	}
+
 	rctx.sessionMu.Lock()
 	sessionID := rctx.sessionID
 	rctx.sessionMu.Unlock()
@@ -333,8 +354,19 @@ func (e *agentExecutor) Execute(ctx context.Context, s *Scheduler, rctx *runCont
 	// Populate global run and predecessor context into INPUT_CONTEXT
 	if env["INPUT_CONTEXT"] == "" {
 		evalEnv := s.buildExprEnvironment(ctx, rctx, spec)
+		if hasResumeState {
+			evalEnv["resume_state"] = resumeState
+		}
 		if b, err := json.Marshal(evalEnv); err == nil {
 			env["INPUT_CONTEXT"] = string(b)
+		}
+	} else if hasResumeState {
+		var evalEnv map[string]interface{}
+		if err := json.Unmarshal([]byte(env["INPUT_CONTEXT"]), &evalEnv); err == nil {
+			evalEnv["resume_state"] = resumeState
+			if b, err := json.Marshal(evalEnv); err == nil {
+				env["INPUT_CONTEXT"] = string(b)
+			}
 		}
 	}
 

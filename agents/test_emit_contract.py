@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from agents.common.emit import emit_error, emit_heartbeat, emit_progress
+from agents.common.emit import checkpoint, emit_error, emit_heartbeat, emit_progress
 
 
 def test_emit_error_emits_retryable_structured_event(capsys) -> None:
@@ -72,3 +72,11 @@ def test_emit_heartbeat_emits_liveness_event(capsys) -> None:
     event = json.loads(capsys.readouterr().out.strip())
     assert event["type"] == "heartbeat"
     assert "data" not in event
+
+
+def test_checkpoint_can_include_resume_state(capsys) -> None:
+    checkpoint("page", 0.5, state={"cursor": "abc"})
+
+    event = json.loads(capsys.readouterr().out.strip())
+    assert event["type"] == "checkpoint"
+    assert event["data"]["state"] == {"cursor": "abc"}

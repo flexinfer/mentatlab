@@ -106,11 +106,14 @@ def checkpoint(
     progress: Union[int, float],
     extra: Optional[Dict[str, Any]] = None,
     *,
+    state: Optional[Any] = None,
     correlation_id: Optional[str] = None,
 ) -> None:
     payload = {"stage": stage, "progress": float(progress)}
     if extra:
         payload.update(extra)
+    if state is not None:
+        payload["state"] = state
     emit_event(type="checkpoint", data=payload, correlation_id=correlation_id)
 
 

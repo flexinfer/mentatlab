@@ -2,8 +2,10 @@
 package runstore
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -14,9 +16,25 @@ import (
 
 // Common errors returned by RunStore implementations.
 var (
-	ErrRunNotFound = errors.New("run not found")
-	ErrCancelled   = errors.New("run cancelled")
+	ErrRunNotFound              = errors.New("run not found")
+	ErrCancelled                = errors.New("run cancelled")
+	ErrCheckpointStateTooLarge  = errors.New("checkpoint state exceeds maximum size")
+	ErrCheckpointStateMalformed = errors.New("checkpoint state is not valid JSON")
 )
+
+// MaxCheckpointStateBytes is the largest checkpoint state payload that will be
+// persisted for retry resume. The limit keeps in-memory and Redis run state
+// bounded while still leaving room for practical agent progress snapshots.
+const MaxCheckpointStateBytes = 1 << 20
+
+// NodeCheckpointState is the latest resumable checkpoint state for a run node.
+type NodeCheckpointState struct {
+	RunID     string          `json:"run_id"`
+	NodeID    string          `json:"node_id"`
+	EventID   string          `json:"event_id"`
+	Timestamp time.Time       `json:"timestamp"`
+	State     json.RawMessage `json:"state"`
+}
 
 // ListRunsOptions configures filtering for ListRuns.
 type ListRunsOptions struct {
@@ -59,6 +77,9 @@ type RunStore interface {
 	// Node outputs for expression evaluation in control flow
 	SetNodeOutputs(ctx context.Context, runID, nodeID string, outputs map[string]interface{}) error
 	GetNodeOutputs(ctx context.Context, runID, nodeID string) (map[string]interface{}, error)
+
+	// Latest node checkpoint state for retry resume
+	GetLatestNodeCheckpointState(ctx context.Context, runID, nodeID string) (*NodeCheckpointState, error)
 
 	// Event streaming
 	// AppendEvent adds an event to the run's event stream and returns the created event.
@@ -121,4 +142,42 @@ func DefaultConfig() *Config {
 		EventMaxLen: 5000,
 		TTLSeconds:  7 * 24 * 60 * 60, // 7 days
 	}
+}
+
+func checkpointStateFromEventData(data []byte) (json.RawMessage, bool, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, false, nil
+	}
+
+	state, ok := obj["state"]
+	if !ok {
+		if rawData, hasData := obj["data"]; hasData {
+			var dataObj map[string]json.RawMessage
+			if err := json.Unmarshal(rawData, &dataObj); err == nil {
+				state, ok = dataObj["state"]
+			}
+		}
+	}
+	if !ok {
+		return nil, false, nil
+	}
+
+	state = bytes.TrimSpace(state)
+	if len(state) > MaxCheckpointStateBytes {
+		return nil, true, ErrCheckpointStateTooLarge
+	}
+	if !json.Valid(state) {
+		return nil, true, ErrCheckpointStateMalformed
+	}
+	return cloneRawMessage(state), true, nil
+}
+
+func cloneRawMessage(raw json.RawMessage) json.RawMessage {
+	if raw == nil {
+		return nil
+	}
+	out := make([]byte, len(raw))
+	copy(out, raw)
+	return out
 }
