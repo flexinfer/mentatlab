@@ -19,6 +19,12 @@ Execution checklist for Mission Control functional UX standardization.
 - `M16.7` -> `#48` `Roadmap: M16.7 Add connection UX regression tests`
 - `M16.8` -> `#49` `Roadmap: M16.8 Capture visual QA snapshot baseline`
 
+## Status Refresh (2026-05-07)
+
+- M16.1 and M16.2 connection/status slices are implemented on `main`.
+- M16.3, M16.4, M16.5, and M16.7 remain checked as complete from prior work.
+- M16.6 visual token/panel chrome and M16.8 screenshot QA remain the main open M16 items.
+
 ---
 
 ## Issue 1: Establish Single Connection Authority
@@ -32,12 +38,12 @@ Execution checklist for Mission Control functional UX standardization.
   - `services/frontend/src/components/mission-control/layout/TopBar.tsx`
   - `services/frontend/src/components/mission-control/layout/BottomDock.tsx`
 - Tasks:
-  - [ ] Expose a single connect/disconnect API via `WorkspaceProvider` context.
-  - [ ] Replace dynamic-import `streamingService.connect()` calls in `WorkspaceProvider` and `NetworkPanel`.
-  - [ ] Ensure top bar and dock buttons call same context action.
+  - [x] Expose a single connect/disconnect API via `WorkspaceProvider` context.
+  - [x] Replace dynamic-import `streamingService.connect()` calls in `WorkspaceProvider` and `NetworkPanel`.
+  - [x] Ensure top bar and dock buttons call same context action.
 - Acceptance:
-  - [ ] Only one connect path remains in code.
-  - [ ] Manual connect from top bar and network panel yields identical status transitions.
+  - [x] Only one connect path remains in Mission Control code.
+  - [x] Manual connect from top bar and network panel yields identical status transitions.
   - [ ] `npm run lint` passes in `services/frontend`.
 
 ## Issue 2: Remove Duplicate Connection Status Surfaces
@@ -49,12 +55,12 @@ Execution checklist for Mission Control functional UX standardization.
   - `services/frontend/src/components/mission-control/layout/TopBar.tsx`
   - `services/frontend/src/components/ui/ConnectionStatusBanner.tsx`
 - Tasks:
-  - [ ] Remove duplicate banner mount(s).
-  - [ ] Keep one canonical placement.
-  - [ ] Ensure retry action always triggers unified connection authority.
+  - [x] Remove duplicate banner mount(s).
+  - [x] Keep one canonical placement.
+  - [x] Ensure retry action always triggers unified connection authority.
 - Acceptance:
-  - [ ] No overlapping banners in error state.
-  - [ ] Exactly one retry control visible at a time.
+  - [x] No overlapping banners in error state.
+  - [x] Exactly one retry control visible at a time.
   - [ ] Existing layout tests still pass.
 
 ## Issue 3: Refactor StreamingCanvas to Shared Transport State

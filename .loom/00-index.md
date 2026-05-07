@@ -27,21 +27,31 @@
 - [x] Execute M7: Multi-User & API Maturity
 - [x] Execute M8: Frontend Quality (47 test files, 673 tests, 49% coverage)
 - [x] Execute M9: Observability & Tracing UI (span enrichment → trace query → waterfall UI)
-- [ ] M16: Mission Control Functional UX Standardization (single transport, consistent status UX, visual cleanup)
+- [ ] M16: Mission Control Functional UX Standardization (single transport/status work mostly landed; visual QA remains)
 - [ ] M10: Live Validation & Stabilization (K8s job driver e2e, MinIO artifacts, gate/webhook live tests)
-- [ ] M11: Loom / MCP Integration (MCP-tool-as-agent, MentatLab-as-MCP-server, agent context bridge)
-- [ ] M12: Agent SDK & Runtime Maturity (structured errors, progress events, TypeScript SDK, checkpoints)
+- [ ] M11: Loom / MCP Integration (code-integrated; live MCP/agent-context validation pending)
+- [ ] M12: Agent SDK & Runtime Maturity (structured errors + progress/heartbeat done; TypeScript SDK/checkpoints pending)
 - [ ] M13: Security & Authorization Hardening (scopes, audit logging, agent sandboxing)
 - [ ] M14: Frontend UX & Performance (artifact browser, console virtualization, large DAG perf)
 - [ ] M15: E2E Testing & CI Hardening (smoke tests, Playwright suite, load regression gate)
 
+## Key Findings (2026-05-07 Worktree Integration Refresh)
+
+1. **Local worktrees are integrated to `main`** - `backlog/63` and `codex/issue-64-progress-events` are ancestors of `main`; the clean linked `issue-64` worktree was removed and pruned.
+2. **M11 is no longer UI-only scaffolding** - orchestrator MCP inventory/call endpoints, MCP node config preservation, `loom-mcp-executor`, native MCP execution, workflow import/export, and agent-context session plumbing are present on `main`.
+3. **M12.1-M12.2 are implemented** - structured error events, retryable exit-code rewrite, progress events, heartbeat events, heartbeat timeout enforcement, Python emit helpers, Go template helpers, OpenAPI/docs updates, and graph progress rendering are present.
+4. **Remaining roadmap gates are validation and packaging** - M10 live K3s checks, live loom hub/agent-context persistence checks, TypeScript SDK, checkpoint/resume state, and CI/load gates remain open.
+5. **Planning docs refreshed after integration** - `ROADMAP.md`, `.loom/30-implementation-plan.md`, and `.loom/31-m16-issue-checklist.md` now reflect the integrated branch state.
+
 ## Key Findings (2026-03-03 Integration Reality Check)
 
-1. **M11 vision is partially scaffolded in UI only** - MCP node palette metadata exists, but backend MCP endpoints and runtime execution path are not complete.
-2. **Frontend/back-end run API contracts have drifted** - checkpoint/retry calls in UI do not map to current orchestrator routes.
-3. **Agent execution contract is inconsistent** - orchestrator writes `AGENT_INPUT` while Python agents read stdin or `INPUT_SPEC`/`INPUT_CONTEXT`.
-4. **Loom inventory is healthy, but codebase-memory execution path is not** - catalog discovery works; `codebase_memory` calls fail due backend network route.
-5. **Recovery backlog established in implementation plan** - prioritized `INT-001` .. `INT-011` tasks define the path to composable MCP + agent-context + FlexInfer workflows.
+Superseded by the 2026-05-07 refresh for M11/M12 implementation status. Historical findings retained for context:
+
+1. **M11 vision was partially scaffolded in UI only** - MCP node palette metadata existed before backend MCP endpoints and runtime execution path landed.
+2. **Frontend/back-end run API contracts had drifted** - checkpoint/retry calls in UI did not map to current orchestrator routes.
+3. **Agent execution contract was inconsistent** - orchestrator wrote `AGENT_INPUT` while Python agents read stdin or `INPUT_SPEC`/`INPUT_CONTEXT`.
+4. **Loom inventory was healthy, but codebase-memory execution path was not** - catalog discovery worked; `codebase_memory` calls failed due backend network route.
+5. **Recovery backlog established in implementation plan** - prioritized `INT-001` .. `INT-011` tasks defined the path to composable MCP + agent-context + FlexInfer workflows.
 
 ## Key Findings (2026-02-19)
 

@@ -13,7 +13,58 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 ---
 
+## 2026-05-07 Post-Integration Reality Check
+
+### Worktree Integration State
+
+- `backlog/63` and `codex/issue-64-progress-events` are merged into `main`.
+- The repository is now checked out on `main`; the clean linked worktree at `.worktrees/issue-64-progress-events` was removed and pruned.
+- Pre-existing untracked local artifacts remain unmodified and are outside this planning refresh.
+
+### Verified Current Functionality
+
+- Orchestrator exposes MCP tool inventory and call endpoints:
+  - `GET /api/v1/mcp/tools`
+  - `GET /api/v1/mcp/tools/index`
+  - `POST /api/v1/mcp/tools/{name}/call`
+- Flow graph parsing preserves MCP node payloads through `NodeSpec.MCP` and `INPUT_SPEC`.
+- `agents/loom-mcp-executor` exists with tests and emits structured `output` events.
+- Scheduler can execute MCP tool nodes natively when an MCP client is configured, with a FlexInfer native inference path for `flexinfer__inference_chat`.
+- Run lifecycle can start/add/end loom agent-context sessions and inject `LOOM_SESSION_ID` into agent execution.
+- Loom workflow import/export endpoints exist, with Mission Control import/export actions.
+- Structured error, progress, and heartbeat events are part of the agent contract and docs.
+- Subprocess and K8s drivers parse retryable structured errors, enforce heartbeat timeouts after heartbeats begin, and emit structured run events.
+- Mission Control graph progress bars consume `progress` events.
+- M16 connection/status work has mostly landed: single WorkspaceProvider live connection action, one canonical connection banner mount, retry routed through `startLiveConnection`, and URL drift tests for `localhost:8000`.
+
+### Remaining Integration Gates
+
+- Live validation against the production loom hub and target MCP servers.
+- Live agent-context persistence validation after backend connectivity is confirmed.
+- K3s job-driver and MinIO artifact validation from M10.
+- TypeScript SDK packaging and agent checkpoint/resume persistence from M12.
+- CI smoke/load gates from M15.
+
+### Source Anchors
+
+- MCP routes: `services/orchestrator-go/internal/api/routes.go:137`
+- MCP inventory/call handlers: `services/orchestrator-go/internal/api/handlers_mcp.go:115`
+- Flow bridge handlers: `services/orchestrator-go/internal/api/handlers_flow_bridge.go:60`
+- MCP node config: `services/orchestrator-go/pkg/types/run.go:90`
+- Native MCP execution: `services/orchestrator-go/internal/scheduler/node_exec.go:255`
+- Agent-context sessions: `services/orchestrator-go/internal/scheduler/run_session.go:10`
+- Loom session manager: `services/orchestrator-go/internal/scheduler/run_session_loom.go:23`
+- Python context helpers: `agents/common/context.py:6`
+- Python emit helpers: `agents/common/emit.py:117`
+- Heartbeat driver state: `services/orchestrator-go/internal/driver/heartbeat.go:10`
+- Graph progress rendering: `services/frontend/src/components/mission-control/panels/graph/useRunGraph.ts:350`
+- MCP palette: `services/frontend/src/components/mission-control/canvas/NodePalette.tsx:410`
+
+---
+
 ## 2026-03-03 Reality Check (Actual Functionality vs Vision)
+
+> Superseded for M11/M12 status by the 2026-05-07 post-integration reality check above. Retained as historical context for why the integration backlog was created.
 
 ### Verified Current Functionality
 
@@ -55,23 +106,23 @@ Transform MentatLab from a fragmented prototype with aspirational docs into a fu
 
 | ID | Priority | Task | Dependencies | Done When |
 |---|---|---|---|---|
-| `INT-001` | P0 | Add orchestrator MCP inventory endpoints (`GET /api/v1/mcp/tools/index`, `GET /api/v1/mcp/tools`) backed by loom proxy/client | none | Node palette loads tool inventory from HTTP endpoint (no `loom://` browser fetch dependency) |
-| `INT-002` | P0 | Extend flow graph parsing to preserve MCP node fields (`tool_name`, `tool_args`, `mcp_server`) into run plan/node env/spec | `INT-001` | Saved flow -> run plan round-trip retains MCP tool execution payload |
-| `INT-003` | P0 | Implement `agents/loom-mcp-executor` (NDJSON contract) and register default manifest/registry entry | `INT-002` | Dragged MCP node executes selected MCP tool and emits `type: \"output\"` payload |
-| `INT-004` | P0 | Normalize agent input contract: pass `INPUT_SPEC` / `INPUT_CONTEXT` (keep `AGENT_INPUT` only as compatibility alias) | none | Echo/psyche/ctm + loom-mcp-executor all run with same input semantics |
-| `INT-005` | P0 | Remove silent execution fallbacks: fail fast on missing image/command in K8s mode; resolve from registry first | `INT-003` | Runs fail with clear API error before scheduling if executable/image cannot be resolved |
-| `INT-006` | P0 | Resolve frontend/backend run API drift: either implement checkpoints+retry endpoints or remove stale UI usage | none | `RunsPanel` and `GraphPanel` only call supported API surface |
-| `INT-007` | P1 | ~~Wire run lifecycle to `agent_context` (`agent_session_start` on run start, `agent_context_add` on node events, `agent_session_end` on completion)~~ **DONE** | `INT-004` | Every run has a stable loom session and persisted summary context |
-| `INT-008` | P1 | Introduce FlexInfer execution adapter path for inference nodes (MCP tool node templates + runtime env contracts) | `INT-003` | A flow can invoke FlexInfer model readiness + inference path as composable nodes |
+| `INT-001` | P0 | ~~Add orchestrator MCP inventory endpoints (`GET /api/v1/mcp/tools/index`, `GET /api/v1/mcp/tools`) backed by loom proxy/client~~ **DONE** | none | Node palette loads tool inventory from HTTP endpoint (no `loom://` browser fetch dependency) |
+| `INT-002` | P0 | ~~Extend flow graph parsing to preserve MCP node fields (`tool_name`, `tool_args`, `mcp_server`) into run plan/node env/spec~~ **DONE** | `INT-001` | Saved flow -> run plan round-trip retains MCP tool execution payload |
+| `INT-003` | P0 | ~~Implement `agents/loom-mcp-executor` (NDJSON contract) and register default manifest/registry entry~~ **DONE** | `INT-002` | Dragged MCP node executes selected MCP tool and emits `type: "output"` payload; live MCP hub validation remains |
+| `INT-004` | P0 | ~~Normalize agent input contract: pass `INPUT_SPEC` / `INPUT_CONTEXT` (keep `AGENT_INPUT` only as compatibility alias)~~ **DONE** | none | Echo/psyche/ctm + loom-mcp-executor all run with same input semantics |
+| `INT-005` | P0 | ~~Remove silent execution fallbacks: fail fast on missing image/command in K8s mode; resolve from registry first~~ **DONE** | `INT-003` | Runs fail with clear API error before scheduling if executable/image cannot be resolved |
+| `INT-006` | P0 | ~~Resolve frontend/backend run API drift: either implement checkpoints+retry endpoints or remove stale UI usage~~ **DONE** | none | `RunsPanel` and `GraphPanel` only call supported API surface |
+| `INT-007` | P1 | ~~Wire run lifecycle to `agent_context` (`agent_session_start` on run start, `agent_context_add` on node events, `agent_session_end` on completion)~~ **DONE** | `INT-004` | Every run has a loom session path and summary context path; live persistence validation remains |
+| `INT-008` | P1 | ~~Introduce FlexInfer execution adapter path for inference nodes (MCP tool node templates + runtime env contracts)~~ **DONE** | `INT-003` | A flow can invoke FlexInfer readiness/activation/inference templates; live inference validation remains |
 | `INT-009` | P1 | Build `mcp-mentatlab` server in `loom-core` exposing flow/run operations as tools | `INT-001` | External agents can create/run/query/cancel MentatLab runs through MCP |
-| `INT-010` | P2 | Add workflow bridge import/export (MentatLab flow <-> loom workflow definition) | `INT-009` | User can import a loom workflow and export a MentatLab flow with dependency parity |
+| `INT-010` | P2 | ~~Add workflow bridge import/export (MentatLab flow <-> loom workflow definition)~~ **DONE** | `INT-009` | User can import/export loom workflow definitions with dependency parity; UX hardening remains |
 | `INT-011` | P2 | Add end-to-end gates in CI (MCP-node run, agent_context session linkage, FlexInfer smoke path) | `INT-003`, `INT-007`, `INT-008` | CI fails on integration regressions before merge |
 
 ### Execution Sequence (Recommended)
 
-1. **Slice A (P0 platform correctness):** `INT-001` .. `INT-006`
-2. **Slice B (context + inference integration):** `INT-007` + `INT-008`
-3. **Slice C (ecosystem composability):** `INT-009` + `INT-010`
+1. **Slice A (P0 platform correctness):** `INT-001` .. `INT-006` — complete on `main`
+2. **Slice B (context + inference integration):** `INT-007` + `INT-008` — code complete; live validation pending
+3. **Slice C (ecosystem composability):** `INT-009` remains in loom-core; `INT-010` backend/frontend bridge code is present
 4. **Slice D (hardening):** `INT-011` and live K3s validation against M10 criteria
 
 ### Exit Criteria for "Truly Working" State
