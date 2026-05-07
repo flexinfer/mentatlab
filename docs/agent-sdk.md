@@ -369,46 +369,47 @@ func main() {
 
 ---
 
-## JavaScript/Node.js SDK
+## TypeScript/Node.js SDK
 
-```javascript
-#!/usr/bin/env node
+The TypeScript SDK lives in `sdk/typescript` and publishes as `@mentatlab/agent-sdk`.
+It provides typed NDJSON event helpers plus a `createAgent({ onInput, onCancel })`
+factory for Node.js agents.
 
-function emit(event) {
-  const fullEvent = {
-    ...event,
-    ts: event.ts || new Date().toISOString(),
-  };
-  console.log(JSON.stringify(fullEvent));
-}
+```typescript
+import {
+  createAgent,
+  emitHeartbeat,
+  emitOutput,
+  emitProgress,
+} from "@mentatlab/agent-sdk";
 
-function logInfo(message, data = {}) {
-  emit({ type: "log", level: "info", message, data });
-}
+const agent = createAgent({
+  agentId: "example.typescript",
+  version: "0.1.0",
+  async onInput(spec, context, runtime) {
+    emitProgress({ percent: 25, message: "Starting work" });
 
-function logError(message, data = {}) {
-  emit({ type: "log", level: "error", message, data });
-}
+    if (runtime.signal.aborted) {
+      return { cancelled: true };
+    }
 
-function checkpoint(stage, progress, extra = {}) {
-  emit({ type: "checkpoint", data: { stage, progress, ...extra } });
-}
+    emitHeartbeat();
+    emitOutput("result", { prompt: spec.prompt ?? null });
 
-// Main
-checkpoint("start", 0.0, { args: process.argv.slice(2) });
-logInfo("Agent starting");
+    return {
+      output: `Processed: ${spec.prompt ?? ""}`,
+      executionId: runtime.executionId ?? context.execution_id ?? null,
+    };
+  },
+});
 
-try {
-  // Do work...
-  const result = processInput();
+agent.run().then((code) => process.exit(code));
+```
 
-  emit({ type: "result", data: { output: result } });
-  checkpoint("end", 1.0);
-} catch (error) {
-  logError("Agent failed", { error: error.message });
-  checkpoint("error", 0.0, { error: error.message });
-  process.exit(1);
-}
+```bash
+cd sdk/typescript
+npm install
+npm test
 ```
 
 ---
