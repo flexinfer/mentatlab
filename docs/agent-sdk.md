@@ -106,8 +106,13 @@ Report progress through execution stages.
 ```json
 {"type":"checkpoint","data":{"stage":"start","progress":0.0},"ts":"2024-01-15T10:30:00Z"}
 {"type":"checkpoint","data":{"stage":"processing","progress":0.5,"items_processed":50},"ts":"2024-01-15T10:30:05Z"}
+{"type":"checkpoint","data":{"stage":"processing","progress":0.5,"state":{"cursor":"page-42"}},"ts":"2024-01-15T10:30:05Z"}
 {"type":"checkpoint","data":{"stage":"end","progress":1.0},"ts":"2024-01-15T10:30:10Z"}
 ```
+
+Checkpoint `state` is optional resumable JSON. The orchestrator persists the
+latest `state` per run node, rejects states larger than 1 MiB, and injects the
+last state as `context.resume_state` plus `RESUME_STATE` when retrying the node.
 
 #### 3. Metric Events
 
@@ -267,7 +272,7 @@ emit_event(
 # Convenience functions
 log_info(message: str, data: Optional[Dict] = None) -> None
 log_error(message: str, data: Optional[Dict] = None) -> None
-checkpoint(stage: str, progress: float, extra: Optional[Dict] = None) -> None
+checkpoint(stage: str, progress: float, extra: Optional[Dict] = None, state: Optional[Any] = None) -> None
 emit_progress(
     current: Optional[int] = None,
     total: Optional[int] = None,

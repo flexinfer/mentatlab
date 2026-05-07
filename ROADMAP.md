@@ -257,13 +257,13 @@ Populate the frontend node palette with available MCP tools from the loom proxy.
 
 #### M12.5 Agent state persistence ([Issue #67](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/67))
 
-- Add `type: "checkpoint"` event with `state` payload (arbitrary JSON, max 1MB)
-- Orchestrator stores checkpoint in Redis/MinIO keyed by `run_id:node_id`
-- On retry, orchestrator passes last checkpoint as `resume_state` in agent input
+- ✅ Add `type: "checkpoint"` event with `state` payload (arbitrary JSON, max 1MB)
+- ✅ Orchestrator stores latest checkpoint state per `run_id:node_id` in memory/Redis runstores
+- ✅ On retry, orchestrator passes last checkpoint as `resume_state` in agent context and `RESUME_STATE`
 - Enables long-running agents to resume from last known state
 - Source: `services/orchestrator-go/internal/runstore/store.go`
 
-**Acceptance:** Structured errors and progress/heartbeat events are implemented. Remaining M12 acceptance requires the TypeScript SDK and resumable checkpoint/state persistence.
+**Acceptance:** Structured errors, progress/heartbeat events, and resumable checkpoint/state persistence are implemented. Remaining M12 acceptance requires TypeScript SDK packaging validation.
 
 ---
 

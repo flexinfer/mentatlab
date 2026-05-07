@@ -27,9 +27,16 @@ func emit(e Event) {
 }
 
 func checkpoint(stage string, progress float64, extra map[string]any) {
+	checkpointState(stage, progress, nil, extra)
+}
+
+func checkpointState(stage string, progress float64, state any, extra map[string]any) {
 	data := map[string]any{"stage": stage, "progress": progress}
 	for k, v := range extra {
 		data[k] = v
+	}
+	if state != nil {
+		data["state"] = state
 	}
 	emit(Event{Type: "checkpoint", Data: data})
 }

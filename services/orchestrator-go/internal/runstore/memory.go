@@ -15,27 +15,28 @@ import (
 
 // memoryRun holds all state for a single run in memory.
 type memoryRun struct {
-	mu          sync.RWMutex
-	id          string
-	name        string
+	mu            sync.RWMutex
+	id            string
+	name          string
 	owner         string
 	traceID       string
 	webhookURL    string
 	webhookSecret string
 	plan          *types.Plan
-	status      types.RunStatus
-	startedAt   *time.Time
-	finishedAt  *time.Time
-	error       string
-	nodes       map[string]*types.NodeState
-	outputs     map[string]map[string]interface{} // nodeID -> outputs
-	events      []*types.Event
-	nextSeq     int64
-	maxEvents   int64
-	cancelled   bool
-	subscribers map[chan *types.Event]struct{}
-	createdAt   time.Time
-	updatedAt   time.Time
+	status        types.RunStatus
+	startedAt     *time.Time
+	finishedAt    *time.Time
+	error         string
+	nodes         map[string]*types.NodeState
+	outputs       map[string]map[string]interface{} // nodeID -> outputs
+	checkpoints   map[string]*NodeCheckpointState   // nodeID -> latest resumable checkpoint
+	events        []*types.Event
+	nextSeq       int64
+	maxEvents     int64
+	cancelled     bool
+	subscribers   map[chan *types.Event]struct{}
+	createdAt     time.Time
+	updatedAt     time.Time
 }
 
 // MemoryStore is an in-memory implementation of RunStore.
@@ -89,6 +90,7 @@ func (s *MemoryStore) CreateRun(ctx context.Context, name string, plan *types.Pl
 		status:      types.RunStatusQueued,
 		nodes:       nodes,
 		outputs:     make(map[string]map[string]interface{}),
+		checkpoints: make(map[string]*NodeCheckpointState),
 		events:      make([]*types.Event, 0),
 		nextSeq:     1,
 		maxEvents:   s.config.EventMaxLen,
@@ -148,10 +150,10 @@ func (s *MemoryStore) GetRun(ctx context.Context, runID string) (*types.Run, err
 		Status:        run.status,
 		Plan:          run.plan,
 		StartedAt:     run.startedAt,
-		FinishedAt: run.finishedAt,
-		Error:      run.error,
-		CreatedAt:  run.createdAt,
-		UpdatedAt:  run.updatedAt,
+		FinishedAt:    run.finishedAt,
+		Error:         run.error,
+		CreatedAt:     run.createdAt,
+		UpdatedAt:     run.updatedAt,
 	}, nil
 }
 
@@ -437,6 +439,32 @@ func (s *MemoryStore) GetNodeOutputs(ctx context.Context, runID, nodeID string) 
 	return outputs, nil
 }
 
+func (s *MemoryStore) GetLatestNodeCheckpointState(ctx context.Context, runID, nodeID string) (*NodeCheckpointState, error) {
+	s.mu.RLock()
+	run, ok := s.runs[runID]
+	s.mu.RUnlock()
+
+	if !ok {
+		return nil, ErrRunNotFound
+	}
+
+	run.mu.RLock()
+	defer run.mu.RUnlock()
+
+	checkpoint, ok := run.checkpoints[nodeID]
+	if !ok {
+		return nil, nil
+	}
+
+	return &NodeCheckpointState{
+		RunID:     checkpoint.RunID,
+		NodeID:    checkpoint.NodeID,
+		EventID:   checkpoint.EventID,
+		Timestamp: checkpoint.Timestamp,
+		State:     cloneRawMessage(checkpoint.State),
+	}, nil
+}
+
 func (s *MemoryStore) AppendEvent(ctx context.Context, runID string, input *types.EventInput) (*types.Event, error) {
 	s.mu.RLock()
 	run, ok := s.runs[runID]
@@ -458,13 +486,36 @@ func (s *MemoryStore) AppendEvent(ctx context.Context, runID string, input *type
 		return nil, fmt.Errorf("failed to marshal event data: %w", err)
 	}
 
+	var checkpoint *NodeCheckpointState
+	if input.Type == types.EventTypeCheckpoint && input.NodeID != "" {
+		state, ok, err := checkpointStateFromEventData(dataJSON)
+		if err != nil {
+			run.mu.Unlock()
+			return nil, err
+		}
+		if ok {
+			checkpoint = &NodeCheckpointState{
+				RunID:     runID,
+				NodeID:    input.NodeID,
+				EventID:   eventID,
+				Timestamp: time.Now().UTC(),
+				State:     state,
+			}
+		}
+	}
+
+	now := time.Now().UTC()
 	event := &types.Event{
 		ID:        eventID,
 		RunID:     runID,
 		Type:      input.Type,
 		NodeID:    input.NodeID,
-		Timestamp: time.Now().UTC(),
+		Timestamp: now,
 		Data:      dataJSON,
+	}
+	if checkpoint != nil {
+		checkpoint.Timestamp = now
+		run.checkpoints[input.NodeID] = checkpoint
 	}
 
 	// Append to ring buffer
