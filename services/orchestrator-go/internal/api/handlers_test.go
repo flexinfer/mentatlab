@@ -144,6 +144,37 @@ func TestCreateRun(t *testing.T) {
 	}
 }
 
+func TestCreateRunRejectsHeartbeatTimeoutForUnsupportedAgent(t *testing.T) {
+	srv := newTestServer(t)
+
+	payload := CreateRunRequest{
+		Name: "heartbeat-unsupported",
+		Plan: &types.Plan{
+			Nodes: []types.NodeSpec{
+				{
+					ID:               "node1",
+					Type:             "agent",
+					AgentID:          "mentatlab.echo",
+					HeartbeatTimeout: 15 * time.Second,
+				},
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/runs", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "supports_heartbeat=false") {
+		t.Fatalf("expected heartbeat capability validation error, got: %s", w.Body.String())
+	}
+}
+
 func TestListRuns(t *testing.T) {
 	srv := newTestServer(t)
 
@@ -636,6 +667,53 @@ func TestRunFlowPreservesMCPPayloadInCreatedRunPlan(t *testing.T) {
 	}
 	if contract["kind"] != "mcp_tool" {
 		t.Fatalf("expected runtime_contract.kind preserved, got %v", contract["kind"])
+	}
+}
+
+func TestRunFlowRejectsHeartbeatTimeoutForUnsupportedAgent(t *testing.T) {
+	srv := newTestServer(t)
+
+	createPayload := flowstore.CreateFlowRequest{
+		Name: "Heartbeat Flow",
+		Graph: json.RawMessage(`{
+			"nodes":[
+				{
+					"id":"agent-1",
+					"type":"agent",
+					"data":{
+						"agent_id":"mentatlab.echo",
+						"heartbeat_timeout":"15s"
+					}
+				}
+			],
+			"edges":[]
+		}`),
+	}
+	createBody, _ := json.Marshal(createPayload)
+	createReq := httptest.NewRequest("POST", "/api/v1/flows", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createW, createReq)
+
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on create flow, got %d: %s", createW.Code, createW.Body.String())
+	}
+
+	var created flowstore.Flow
+	if err := json.NewDecoder(createW.Body).Decode(&created); err != nil {
+		t.Fatalf("failed to decode create flow response: %v", err)
+	}
+
+	runReq := httptest.NewRequest("POST", "/api/v1/flows/"+created.ID+"/run", bytes.NewReader([]byte(`{}`)))
+	runReq.Header.Set("Content-Type", "application/json")
+	runW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(runW, runReq)
+
+	if runW.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on run flow, got %d: %s", runW.Code, runW.Body.String())
+	}
+	if !strings.Contains(runW.Body.String(), "supports_heartbeat=false") {
+		t.Fatalf("expected heartbeat capability validation error, got: %s", runW.Body.String())
 	}
 }
 

@@ -157,3 +157,34 @@ func TestStartRunHydratesLegacyPlanBeforeExecution(t *testing.T) {
 		t.Fatal("timed out waiting for hydrated node execution")
 	}
 }
+
+func TestStartRunRejectsHeartbeatTimeoutForUnsupportedAgent(t *testing.T) {
+	srv, _ := newHydrationTestServer(t)
+	store := srv.handlers.store
+	ctx := t.Context()
+
+	runID, err := store.CreateRun(ctx, "legacy-heartbeat-validation", &types.Plan{
+		Nodes: []types.NodeSpec{
+			{
+				ID:               "node1",
+				Type:             "agent",
+				AgentID:          "mentatlab.echo",
+				HeartbeatTimeout: 15 * time.Second,
+			},
+		},
+	}, "")
+	if err != nil {
+		t.Fatalf("CreateRun failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+runID+"/start", nil)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("supports_heartbeat=false")) {
+		t.Fatalf("expected heartbeat capability validation error, got: %s", w.Body.String())
+	}
+}

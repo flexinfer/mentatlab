@@ -242,8 +242,9 @@ Populate the frontend node palette with available MCP tools from the loom proxy.
 #### M12.3 Agent capability declarations ([Issue #65](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/65))
 
 - Partial: schema and registry now carry structured capability declarations including `supports_progress` and `supports_heartbeat`.
-- Pending: full resource scheduling semantics, K8s node affinity/resource allocation, and validator rejection of unsupported pairings.
-- Sources: `schemas/agent.schema.json`, `services/orchestrator-go/internal/registry/registry.go`
+- ✅ Run creation/start validation now rejects `heartbeat_timeout` on nodes whose agents declare `supports_heartbeat=false`.
+- Pending: full resource scheduling semantics, K8s node affinity/resource allocation, and broader validator enforcement for other unsupported capability pairings.
+- Sources: `schemas/agent.schema.json`, `services/orchestrator-go/internal/registry/registry.go`, `services/orchestrator-go/internal/api/plan_validation.go`
 
 #### M12.4 TypeScript agent SDK ([Issue #66](https://gitlab.flexinfer.ai/services/mentatlab/-/issues/66))
 

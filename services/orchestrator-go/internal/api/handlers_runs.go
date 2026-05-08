@@ -120,16 +120,12 @@ func (h *Handlers) CreateRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate plan graph structure (cycles, dangling edges, duplicate IDs)
-	if req.Plan != nil {
-		if result := validator.ValidatePlanGraph(req.Plan); !result.Valid {
-			h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
-			return
-		}
-		if err := h.hydrateRunPlan(ctx, req.Plan); err != nil {
-			h.respondRunPlanHydrationError(w, r, "failed to hydrate run plan", err)
-			return
-		}
+	if msg, err := h.validateExecutablePlan(ctx, req.Plan); err != nil {
+		h.respondRunPlanHydrationError(w, r, "failed to hydrate run plan", err)
+		return
+	} else if msg != "" {
+		h.respondError(w, r, http.StatusBadRequest, msg, nil)
+		return
 	}
 
 	owner := getOwnerFromRequest(r)
@@ -197,12 +193,11 @@ func (h *Handlers) StartRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result := validator.ValidatePlanGraph(run.Plan); !result.Valid {
-		h.respondError(w, r, http.StatusBadRequest, graphValidationMessage(result), nil)
-		return
-	}
-	if err := h.hydrateRunPlan(ctx, run.Plan); err != nil {
+	if msg, err := h.validateExecutablePlan(ctx, run.Plan); err != nil {
 		h.respondRunPlanHydrationError(w, r, "failed to hydrate run plan", err)
+		return
+	} else if msg != "" {
+		h.respondError(w, r, http.StatusBadRequest, msg, nil)
 		return
 	}
 
