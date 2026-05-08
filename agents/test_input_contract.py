@@ -50,3 +50,24 @@ def test_echo_agent_uses_input_spec_and_context_contract() -> None:
     payload = json.loads(proc.stdout.strip())
     assert payload["result"]["spec"] == {"message": "hello"}
     assert payload["result"]["context"] == {"trace_id": "trace-1"}
+
+
+def test_packaged_echo_agent_uses_env_contract() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["INPUT_SPEC"] = '{"message":"hello"}'
+    env["INPUT_CONTEXT"] = '{"trace_id":"trace-2"}'
+
+    proc = subprocess.run(
+        ["python", "services/agents/echo/src/main.py"],
+        cwd=str(repo_root),
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout.strip())
+    assert payload["result"]["spec"] == {"message": "hello"}
+    assert payload["result"]["context"] == {"trace_id": "trace-2"}
