@@ -328,6 +328,37 @@ func TestCreateFlow(t *testing.T) {
 	}
 }
 
+func TestCreateFlowRejectsCyclicGraph(t *testing.T) {
+	srv := newTestServer(t)
+
+	payload := flowstore.CreateFlowRequest{
+		Name: "Cyclic Flow",
+		Graph: json.RawMessage(`{
+			"nodes":[
+				{"id":"a","type":"agent","data":{"agent_id":"echo"}},
+				{"id":"b","type":"agent","data":{"agent_id":"echo"}}
+			],
+			"edges":[
+				{"id":"ab","source":"a","target":"b"},
+				{"id":"ba","source":"b","target":"a"}
+			]
+		}`),
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/flows", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "cycle detected") {
+		t.Fatalf("expected cycle validation error, got: %s", w.Body.String())
+	}
+}
+
 func TestListFlows(t *testing.T) {
 	srv := newTestServer(t)
 	req := httptest.NewRequest("GET", "/api/v1/flows", nil)
@@ -438,6 +469,60 @@ func TestFlowCRUDRoundTripGraphParity(t *testing.T) {
 	}
 	if !jsonEqual(updatedGraph, fetched.Graph) {
 		t.Fatalf("fetched graph mismatch. expected=%s got=%s", string(updatedGraph), string(fetched.Graph))
+	}
+}
+
+func TestUpdateFlowRejectsCyclicGraph(t *testing.T) {
+	srv := newTestServer(t)
+
+	createPayload := flowstore.CreateFlowRequest{
+		Name: "Update Flow",
+		Graph: json.RawMessage(`{
+			"nodes":[
+				{"id":"a","type":"agent","data":{"agent_id":"echo"}},
+				{"id":"b","type":"agent","data":{"agent_id":"echo"}}
+			],
+			"edges":[{"id":"ab","source":"a","target":"b"}]
+		}`),
+	}
+	createBody, _ := json.Marshal(createPayload)
+	createReq := httptest.NewRequest("POST", "/api/v1/flows", bytes.NewReader(createBody))
+	createReq.Header.Set("Content-Type", "application/json")
+	createW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(createW, createReq)
+
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("expected 201 on create, got %d: %s", createW.Code, createW.Body.String())
+	}
+
+	var created flowstore.Flow
+	if err := json.NewDecoder(createW.Body).Decode(&created); err != nil {
+		t.Fatalf("failed to decode create response: %v", err)
+	}
+
+	updatePayload := flowstore.UpdateFlowRequest{
+		Graph: json.RawMessage(`{
+			"nodes":[
+				{"id":"a","type":"agent","data":{"agent_id":"echo"}},
+				{"id":"b","type":"agent","data":{"agent_id":"echo"}}
+			],
+			"edges":[
+				{"id":"ab","source":"a","target":"b"},
+				{"id":"ba","source":"b","target":"a"}
+			]
+		}`),
+	}
+	updateBody, _ := json.Marshal(updatePayload)
+	updateReq := httptest.NewRequest("PUT", "/api/v1/flows/"+created.ID, bytes.NewReader(updateBody))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateW := httptest.NewRecorder()
+	srv.Router().ServeHTTP(updateW, updateReq)
+
+	if updateW.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on update, got %d: %s", updateW.Code, updateW.Body.String())
+	}
+	if !strings.Contains(updateW.Body.String(), "cycle detected") {
+		t.Fatalf("expected cycle validation error, got: %s", updateW.Body.String())
 	}
 }
 
@@ -792,6 +877,41 @@ func TestImportLoomWorkflowCreatesFlowWithDependencyParity(t *testing.T) {
 	edge := graph.Edges[0]
 	if edge.Source != "fetch" || edge.Target != "infer" {
 		t.Fatalf("expected dependency fetch->infer, got %s->%s", edge.Source, edge.Target)
+	}
+}
+
+func TestImportLoomWorkflowRejectsDependencyCycle(t *testing.T) {
+	srv := newTestServer(t)
+
+	payload := map[string]any{
+		"name": "Cyclic Loom Workflow",
+		"steps": []map[string]any{
+			{
+				"id":         "fetch",
+				"name":       "Fetch",
+				"tool_name":  "k8s_apps_k3s__k8s_get",
+				"depends_on": []string{"infer"},
+			},
+			{
+				"id":         "infer",
+				"name":       "Infer",
+				"tool_name":  "flexinfer__inference_chat",
+				"depends_on": []string{"fetch"},
+			},
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest("POST", "/api/v1/flows/import/loom", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "cycle detected") {
+		t.Fatalf("expected cycle validation error, got: %s", w.Body.String())
 	}
 }
 

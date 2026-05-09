@@ -22,13 +22,17 @@ func (h *Handlers) CreateFlow(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.flowStore == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
 	var req flowstore.CreateFlowRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
+		return
+	}
+	if err := validateFlowGraph(req.Graph); err != nil {
+		h.respondError(w, r, http.StatusBadRequest, "invalid flow graph", err)
 		return
 	}
 
@@ -40,10 +44,10 @@ func (h *Handlers) CreateFlow(w http.ResponseWriter, r *http.Request) {
 	flow, err := h.flowStore.Create(ctx, &req)
 	if err != nil {
 		if errors.Is(err, flowstore.ErrFlowExists) {
-			h.respondError(w, r,http.StatusConflict, "flow already exists", err)
+			h.respondError(w, r, http.StatusConflict, "flow already exists", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to create flow", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to create flow", err)
 		return
 	}
 
@@ -62,17 +66,17 @@ func (h *Handlers) GetFlow(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.flowStore == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
 	flow, err := h.flowStore.Get(ctx, flowID)
 	if err != nil {
 		if errors.Is(err, flowstore.ErrFlowNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "flow not found", err)
+			h.respondError(w, r, http.StatusNotFound, "flow not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to get flow", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to get flow", err)
 		return
 	}
 
@@ -90,23 +94,29 @@ func (h *Handlers) UpdateFlow(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.flowStore == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
 	var req flowstore.UpdateFlowRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, r,http.StatusBadRequest, "invalid request body", err)
+		h.respondError(w, r, http.StatusBadRequest, "invalid request body", err)
 		return
+	}
+	if len(req.Graph) > 0 {
+		if err := validateFlowGraph(req.Graph); err != nil {
+			h.respondError(w, r, http.StatusBadRequest, "invalid flow graph", err)
+			return
+		}
 	}
 
 	flow, err := h.flowStore.Update(ctx, flowID, &req)
 	if err != nil {
 		if errors.Is(err, flowstore.ErrFlowNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "flow not found", err)
+			h.respondError(w, r, http.StatusNotFound, "flow not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to update flow", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to update flow", err)
 		return
 	}
 
@@ -125,16 +135,16 @@ func (h *Handlers) DeleteFlow(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.flowStore == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
 	if err := h.flowStore.Delete(ctx, flowID); err != nil {
 		if errors.Is(err, flowstore.ErrFlowNotFound) {
-			h.respondError(w, r,http.StatusNotFound, "flow not found", err)
+			h.respondError(w, r, http.StatusNotFound, "flow not found", err)
 			return
 		}
-		h.respondError(w, r,http.StatusInternalServerError, "failed to delete flow", err)
+		h.respondError(w, r, http.StatusInternalServerError, "failed to delete flow", err)
 		return
 	}
 
@@ -148,7 +158,7 @@ func (h *Handlers) ListFlows(w http.ResponseWriter, r *http.Request) {
 	defer span.End()
 
 	if h.flowStore == nil {
-		h.respondError(w, r,http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
+		h.respondError(w, r, http.StatusServiceUnavailable, "flow store not available", errors.New("flow store not configured"))
 		return
 	}
 
