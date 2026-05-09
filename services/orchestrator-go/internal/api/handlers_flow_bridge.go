@@ -84,6 +84,10 @@ func (h *Handlers) ImportLoomWorkflow(w http.ResponseWriter, r *http.Request) {
 		h.respondError(w, r, http.StatusInternalServerError, "failed to serialize graph", err)
 		return
 	}
+	if err := validateFlowGraph(graphRaw); err != nil {
+		h.respondError(w, r, http.StatusBadRequest, "invalid loom workflow definition", err)
+		return
+	}
 
 	name := strings.TrimSpace(wf.Name)
 	if name == "" {
