@@ -24,13 +24,13 @@ resources:
 # Pin to a dev tag; CI replaces with build-specific tags.
 images:
   - name: registry.harbor.lan/library/mentatlab-orchestrator-go
-    newTag: latest
+    newTag: latest # {"$imagepolicy": "flux-system:mentatlab-orchestrator-go:tag"}
   - name: registry.harbor.lan/library/mentatlab-gateway-go
-    newTag: latest
+    newTag: latest # {"$imagepolicy": "flux-system:mentatlab-gateway-go:tag"}
   - name: registry.harbor.lan/library/mentatlab-frontend
-    newTag: latest
+    newTag: latest # {"$imagepolicy": "flux-system:mentatlab-frontend:tag"}
   - name: registry.harbor.lan/library/mentatlab-echoagent
-    newTag: latest
+    newTag: latest # {"$imagepolicy": "flux-system:mentatlab-echoagent:tag"}
 
 # Common labels for all resources (use 'labels' not 'commonLabels' to avoid modifying immutable selectors)
 labels:
