@@ -12,7 +12,14 @@ interface RetryPolicyState {
 
 export default function InspectorPanel({ runId }: { runId: string | null }) {
   const [stats, setStats] = React.useState<{ checkpoints: number; status?: string }>({ checkpoints: 0 });
-  const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null);
+  const [eventSelectedNodeId, setEventSelectedNodeId] = React.useState<string | null>(null);
+  const canvasSelectedNodeId = typeof useCanvasStore === 'function'
+    ? useCanvasStore((state) => state.selectedNodeId)
+    : null;
+  const canvasNodes = typeof useCanvasStore === 'function'
+    ? useCanvasStore((state) => state.nodes)
+    : null;
+  const selectedNodeId = canvasSelectedNodeId ?? eventSelectedNodeId;
 
   React.useEffect(() => {
     if (!runId) {
@@ -36,12 +43,12 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
     const onSel = (e: Event) => {
       try {
         const id = (e as CustomEvent).detail?.nodeId as string | undefined;
-        setSelectedNodeId(id ?? null);
+        setEventSelectedNodeId(id ?? null);
       } catch {
-        setSelectedNodeId(null);
+        setEventSelectedNodeId(null);
       }
     };
-    const onClear = () => setSelectedNodeId(null);
+    const onClear = () => setEventSelectedNodeId(null);
     window.addEventListener('graphNodeSelected', onSel as EventListener);
     window.addEventListener('graphNodeCleared', onClear as EventListener);
     return () => {
@@ -53,9 +60,9 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
   // Get selected node data from canvas store
   const selectedNode = React.useMemo(() => {
     if (!selectedNodeId) return null;
-    const { nodes } = useCanvasStore.getState();
+    const nodes = canvasNodes ?? useCanvasStore.getState().nodes;
     return nodes.find((n) => n.id === selectedNodeId) ?? null;
-  }, [selectedNodeId]);
+  }, [canvasNodes, selectedNodeId]);
 
   // Local state for retry policy editing
   const [retryPolicy, setRetryPolicy] = React.useState<RetryPolicyState>({
@@ -109,10 +116,23 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
   }
 
   return (
-    <div className="space-y-2 text-xs">
-      <div className="font-medium">Run</div>
+    <div className="space-y-4 text-xs">
+      <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Run</div>
+            <div className="mt-1 text-sm font-semibold text-foreground">
+              {runId ? 'Live run' : 'Design mode'}
+            </div>
+          </div>
+          <div className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+            runId ? 'bg-emerald-500/10 text-emerald-500' : 'bg-cyan-500/10 text-cyan-500'
+          }`}>
+            {runId ? 'ACTIVE' : 'DRAFT'}
+          </div>
+        </div>
       {runId ? (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2">
           <div className="text-gray-500">runId</div>
           <div className="font-mono truncate" title={runId}>{runId}</div>
           <div className="text-gray-500">status</div>
@@ -121,26 +141,45 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
           <div>{stats.checkpoints}</div>
         </div>
       ) : (
-        <div className="text-gray-500">No active run</div>
+        <div className="mt-2 text-muted-foreground">
+          <div>No active run</div>
+          <div className="mt-1">Build, validate, then press Run when the DAG is ready.</div>
+        </div>
       )}
+      </div>
 
-      <div className="font-medium mt-3">Selection</div>
+      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Selection</div>
       {selectedNodeId ? (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="text-gray-500">nodeId</div>
+        <div className="space-y-3 rounded-xl border border-border/70 bg-card/80 p-3">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
+              {(selectedNode?.data?.label as string | undefined) ?? 'Selected node'}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Configure execution safety and runtime behavior for this step.
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/20 p-2">
+            <div className="text-muted-foreground">nodeId</div>
             <div className="font-mono truncate" title={selectedNodeId}>{selectedNodeId}</div>
             {selectedNode?.type && (
               <>
-                <div className="text-gray-500">type</div>
+                <div className="text-muted-foreground">type</div>
                 <div>{selectedNode.type}</div>
               </>
             )}
           </div>
 
           {/* Timeout config */}
-          <div className="border-t border-white/10 pt-2">
-            <div className="font-medium text-gray-400 mb-1">Timeout</div>
+          <div className="rounded-lg border border-border/70 bg-background/50 p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="font-medium text-foreground">Timeout</div>
+              <span className="text-[10px] text-muted-foreground">Safety guard</span>
+            </div>
+            <div className="mb-2 text-[11px] text-muted-foreground">
+              Prevent stalled agent work from blocking the whole workflow.
+            </div>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -148,61 +187,79 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
                 placeholder="seconds"
                 value={nodeTimeout}
                 onChange={(e) => handleTimeoutChange(e.target.value)}
-                className="w-20 px-1.5 py-1 text-[10px] bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
+                className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-[11px] text-foreground outline-none focus:border-primary"
               />
-              <span className="text-gray-500 text-[10px]">seconds (0 = no timeout)</span>
+              <span className="text-muted-foreground text-[10px]">seconds, 0 = no timeout</span>
             </div>
           </div>
 
           {/* Retry policy editor */}
-          <div className="border-t border-white/10 pt-2">
-            <div className="font-medium text-gray-400 mb-1">Retry Policy</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <label className="text-gray-500 text-[10px]">Max retries</label>
+          <div className="rounded-lg border border-border/70 bg-background/50 p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="font-medium text-foreground">Retry Policy</div>
+              <span className="text-[10px] text-muted-foreground">Failure recovery</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-muted-foreground text-[10px]">Max retries</label>
               <input
                 type="number"
                 min="0"
                 max="10"
                 value={retryPolicy.max_retries}
                 onChange={(e) => handleRetryChange('max_retries', e.target.value)}
-                className="w-full px-1.5 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary"
               />
 
-              <label className="text-gray-500 text-[10px]">Backoff type</label>
+              <label className="text-muted-foreground text-[10px]">Backoff type</label>
               <select
                 value={retryPolicy.backoff_type}
                 onChange={(e) => handleRetryChange('backoff_type', e.target.value)}
-                className="w-full px-1 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary"
               >
                 <option value="exponential">Exponential</option>
                 <option value="fixed">Fixed</option>
                 <option value="linear">Linear</option>
               </select>
 
-              <label className="text-gray-500 text-[10px]">Base (sec)</label>
+              <label className="text-muted-foreground text-[10px]">Base (sec)</label>
               <input
                 type="number"
                 min="1"
                 max="300"
                 value={retryPolicy.backoff_base}
                 onChange={(e) => handleRetryChange('backoff_base', e.target.value)}
-                className="w-full px-1.5 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary"
               />
 
-              <label className="text-gray-500 text-[10px]">Max (sec)</label>
+              <label className="text-muted-foreground text-[10px]">Max (sec)</label>
               <input
                 type="number"
                 min="1"
                 max="3600"
                 value={retryPolicy.backoff_max}
                 onChange={(e) => handleRetryChange('backoff_max', e.target.value)}
-                className="w-full px-1.5 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700 rounded text-zinc-200"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary"
               />
             </div>
           </div>
         </div>
       ) : (
-        <div className="text-gray-500">No node selected</div>
+        <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 p-4">
+          <div className="text-sm font-semibold text-foreground">No node selected</div>
+          <div className="mt-2 text-[11px] leading-5 text-muted-foreground">
+            Select a canvas node to edit retries, timeouts, and runtime metadata. The builder should feel like a checklist, not a treasure hunt.
+          </div>
+          <div className="mt-3 space-y-2">
+            {['Choose a starter recipe', 'Wire inputs to agents', 'Run and inspect checkpoints'].map((step, index) => (
+              <div key={step} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[9px] font-semibold text-primary">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                {step}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

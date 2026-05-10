@@ -475,14 +475,20 @@ function NodeItem({ node, onDragStart }: NodeItemProps) {
     <div
       draggable
       onDragStart={handleDragStart}
-      className="flex items-center gap-2 px-2 py-1.5 rounded cursor-grab active:cursor-grabbing
-                 bg-muted/40 hover:bg-muted/80 border border-transparent hover:border-border/50
-                 transition-colors select-none"
+      className="group cursor-grab select-none rounded-xl border border-border/60 bg-background/60 p-2.5
+                 transition active:cursor-grabbing hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 hover:shadow-lg hover:shadow-black/10"
       title={node.description}
     >
-      <span className="text-base w-5 text-center">{node.icon ?? '📦'}</span>
-      <div className="flex-1 min-w-0">
-        <div className="text-[11px] font-medium text-foreground truncate">{node.label}</div>
+      <div className="flex items-start gap-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card text-base shadow-sm">
+          {node.icon ?? '📦'}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[12px] font-semibold text-foreground">{node.label}</div>
+          <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
+            {node.description}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -598,10 +604,10 @@ export function NodePalette({
 
   if (collapsed) {
     return (
-      <div className={`w-10 h-full bg-card border-r flex flex-col items-center py-2 ${className}`}>
+      <div className={`w-12 h-full bg-card/95 border-r flex flex-col items-center py-3 ${className}`}>
         <button
           onClick={onToggleCollapse}
-          className="p-2 rounded hover:bg-muted transition-colors"
+          className="rounded-xl border border-border/70 bg-background p-2 transition-colors hover:bg-muted"
           title="Expand node palette"
         >
           <span className="text-lg">📦</span>
@@ -611,36 +617,46 @@ export function NodePalette({
   }
 
   return (
-    <div className={`w-56 h-full bg-card border-r flex flex-col ${className}`}>
+    <div className={`w-72 h-full bg-card/95 border-r flex flex-col ${className}`}>
       {/* Header */}
-      <div className="px-2 py-2 border-b flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-foreground">Nodes</span>
+      <div className="border-b px-3 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Nodes</div>
+            <div className="mt-1 text-sm font-black tracking-[-0.02em] text-foreground">
+              Build blocks
+            </div>
+          </div>
         {onToggleCollapse && (
           <button
             onClick={onToggleCollapse}
-            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
+            className="rounded-lg border border-border/70 bg-background px-2 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             title="Collapse palette"
           >
             ◀
           </button>
         )}
+        </div>
+        <div className="mt-3 rounded-xl border border-primary/15 bg-primary/10 p-2 text-[11px] leading-5 text-muted-foreground">
+          Drag a card to the canvas, or use a starter blueprint when the canvas is empty.
+        </div>
       </div>
 
       {/* Search */}
-      <div className="px-2 py-2 border-b">
+      <div className="border-b px-3 py-3">
         <Input
           size="sm"
           placeholder="Search nodes..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="text-[11px] h-7"
+          className="h-8 text-[12px]"
         />
       </div>
 
       {/* Node categories */}
-      <div className="flex-1 overflow-y-auto px-2 py-2 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin">
         {groupedNodes.length === 0 ? (
-          <div className="text-[11px] text-muted-foreground text-center py-4">
+          <div className="rounded-xl border border-dashed border-border/70 px-3 py-5 text-center text-[11px] text-muted-foreground">
             No nodes match "{searchTerm}"
           </div>
         ) : (
@@ -658,8 +674,8 @@ export function NodePalette({
       </div>
 
       {/* Footer tip */}
-      <div className="px-2 py-1.5 border-t text-[10px] text-muted-foreground">
-        Drag nodes to canvas or press <kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">n</kbd>
+      <div className="border-t px-3 py-2 text-[10px] text-muted-foreground">
+        Drag nodes to canvas, press <kbd className="rounded bg-muted px-1 py-0.5 text-[9px]">/</kbd> for quick add, or <kbd className="rounded bg-muted px-1 py-0.5 text-[9px]">n</kbd> to hide this rail.
       </div>
     </div>
   );
