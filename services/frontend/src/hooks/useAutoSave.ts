@@ -62,10 +62,23 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
   const retryCountRef = useRef<Map<string, number>>(new Map());
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   // Initialize flow service
   useEffect(() => {
     flowServiceRef.current = getFlowService(httpClient);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      if (idleResetTimerRef.current) {
+        clearTimeout(idleResetTimerRef.current);
+      }
+    };
   }, []);
 
   // Convert store flow to API format
@@ -179,6 +192,7 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
           clearTimeout(idleResetTimerRef.current);
         }
         idleResetTimerRef.current = setTimeout(() => {
+          if (!isMountedRef.current) return;
           setStatus((current) => (current === 'saved' ? 'idle' : current));
         }, 2000);
       }
