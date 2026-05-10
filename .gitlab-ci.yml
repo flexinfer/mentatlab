@@ -280,22 +280,31 @@ test-integration-smoke-agent:
         echo "WARNING: HARBOR_USER/HARBOR_PASSWORD not set — docker push may fail"
       fi
     - |
+      image_tag() {
+        printf '%s' "${CI_PIPELINE_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+          | sed -E 's/\.[0-9]+Z$/Z/; s/[-:]//g; s/T/-/; s/Z$//'
+      }
+
+      MENTATLAB_IMAGE_TAG="${MENTATLAB_IMAGE_TAG:-$(image_tag)}"
+      echo "Using image tag ${MENTATLAB_IMAGE_TAG}"
+
       build_image() {
         local name="$1" context="$2"
         echo "=== Building ${name} from ${context} ==="
 
-        local latest_tag_args=""
+        local release_tag_args=""
         if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-          latest_tag_args="-t ${REGISTRY}/${name}:latest"
+          release_tag_args="-t ${REGISTRY}/${name}:${MENTATLAB_IMAGE_TAG} -t ${REGISTRY}/${name}:latest"
         fi
 
-        if ! DOCKER_BUILDKIT=1 docker build -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${latest_tag_args} "${context}"; then
+        if ! DOCKER_BUILDKIT=1 docker build -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${release_tag_args} "${context}"; then
           echo "WARNING: ${name} build failed, retrying without cache..."
-          DOCKER_BUILDKIT=1 docker build --no-cache -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${latest_tag_args} "${context}"
+          DOCKER_BUILDKIT=1 docker build --no-cache -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${release_tag_args} "${context}"
         fi
 
         docker push "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
         if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+          docker push "${REGISTRY}/${name}:${MENTATLAB_IMAGE_TAG}"
           docker push "${REGISTRY}/${name}:latest"
         fi
       }
@@ -473,10 +482,8 @@ deploy:
       echo "=== Deploying MentatLab to ${NAMESPACE} ==="
       cd k8s
 
-      # Use :latest tag — BuildKit multi-name push does not reliably push
-      # SHA-tagged manifests (see issue #50). Commit SHA is recorded via
-      # kubectl annotation for traceability instead.
-      IMAGE_TAG="latest"
+      IMAGE_TAG="$(printf '%s' "${CI_PIPELINE_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+        | sed -E 's/\.[0-9]+Z$/Z/; s/[-:]//g; s/T/-/; s/Z$//')"
       echo "Setting image tags to ${IMAGE_TAG}..."
       kustomize edit set image \
         "registry.harbor.lan/library/mentatlab-orchestrator-go=${REGISTRY}/mentatlab-orchestrator-go:${IMAGE_TAG}" \
