@@ -12,10 +12,16 @@ import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import {
   Background,
   Controls,
+  type Edge,
+  Handle,
   MiniMap,
+  type Node,
+  type NodeProps,
+  Position,
   ReactFlow,
   ReactFlowProvider,
 } from 'reactflow';
+import { LayoutTemplate, PanelLeft, Plus, Sparkles } from 'lucide-react';
 
 // Layout components
 import { WorkspaceProvider, useWorkspace } from './WorkspaceProvider';
@@ -46,11 +52,52 @@ import { CanvasDropZone, NodePalette, QuickAddMenu } from '../canvas';
 // Hooks
 import { useKeyboardShortcuts, type KeyboardShortcut, commonShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import { MediaNodeType } from '@/types/graph';
+import { NODE_TYPES } from '@/nodes';
 import ChatNode from '@/nodes/ChatNode';
 import ConditionalNode from '@/nodes/ConditionalNode';
 import ForEachNode from '@/nodes/ForEachNode';
 import GateNode from '@/nodes/GateNode';
 import PythonCodeNode from '@/nodes/PythonCodeNode';
+
+type WorkflowNodeData = {
+  label?: string;
+  blueprint?: string;
+};
+
+const MEDIA_NODE_LABELS: Partial<Record<MediaNodeType, string>> = {
+  [MediaNodeType.MEDIA_UPLOAD]: 'Media Upload',
+  [MediaNodeType.MEDIA_DOWNLOAD]: 'Media Download',
+  [MediaNodeType.MEDIA_DISPLAY]: 'Media Display',
+  [MediaNodeType.IMAGE_RESIZE]: 'Image Resize',
+  [MediaNodeType.IMAGE_RECOGNITION]: 'Image Recognition',
+};
+
+function GenericWorkflowNode({ data, type, selected }: NodeProps<WorkflowNodeData>) {
+  const label = data.label ?? MEDIA_NODE_LABELS[type as MediaNodeType] ?? type ?? 'Workflow Node';
+
+  return (
+    <div
+      className={`relative min-w-[170px] rounded-lg border bg-card px-3 py-2 text-[11px] shadow-sm transition ${
+        selected ? 'border-primary shadow-primary/20' : 'border-border'
+      }`}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-primary !border-primary" />
+      <div className="flex items-center gap-2">
+        <span className="flex h-7 w-7 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
+          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-foreground">{label}</div>
+          <div className="truncate text-[10px] text-muted-foreground">
+            {data.blueprint ?? 'Workflow step'}
+          </div>
+        </div>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-primary !border-primary" />
+    </div>
+  );
+}
 
 const flowNodeTypes = {
   chat: ChatNode,
@@ -58,11 +105,97 @@ const flowNodeTypes = {
   conditional: ConditionalNode,
   forEach: ForEachNode,
   gate: GateNode,
+  [MediaNodeType.MEDIA_UPLOAD]: GenericWorkflowNode,
+  [MediaNodeType.MEDIA_DOWNLOAD]: GenericWorkflowNode,
+  [MediaNodeType.MEDIA_DISPLAY]: GenericWorkflowNode,
+  [MediaNodeType.IMAGE_RESIZE]: GenericWorkflowNode,
+  [MediaNodeType.IMAGE_RECOGNITION]: GenericWorkflowNode,
 } as const;
 
 const BackgroundAny = Background as any;
 const ControlsAny = Controls as any;
 const MiniMapAny = MiniMap as any;
+
+type WorkflowTemplate = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  accent: string;
+  nodes: Array<{
+    type: string;
+    label: string;
+    position: { x: number; y: number };
+    data?: Record<string, unknown>;
+  }>;
+  edges: Array<{
+    source: number;
+    target: number;
+    label?: string;
+  }>;
+};
+
+const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
+  {
+    id: 'research-brief',
+    eyebrow: 'Agent research',
+    title: 'Research Brief',
+    description: 'Collect source material, ask an agent to synthesize it, then route the output through a policy gate.',
+    accent: 'from-cyan-400/30 via-sky-500/15 to-transparent',
+    nodes: [
+      { type: MediaNodeType.MEDIA_UPLOAD, label: 'Source Drop', position: { x: 60, y: 120 } },
+      { type: NODE_TYPES.CHAT, label: 'Synthesis Agent', position: { x: 220, y: 80 }, data: { prompt: 'Summarize the evidence, cite assumptions, and identify next actions.' } },
+      { type: NODE_TYPES.GATE, label: 'Human Review Gate', position: { x: 380, y: 120 } },
+      { type: MediaNodeType.MEDIA_DOWNLOAD, label: 'Brief Export', position: { x: 540, y: 120 } },
+    ],
+    edges: [
+      { source: 0, target: 1, label: 'sources' },
+      { source: 1, target: 2, label: 'brief' },
+      { source: 2, target: 3, label: 'approved' },
+    ],
+  },
+  {
+    id: 'media-pipeline',
+    eyebrow: 'Multimodal ops',
+    title: 'Media Pipeline',
+    description: 'Ingest media, transform it, classify the result, and preview/download the artifact.',
+    accent: 'from-emerald-400/30 via-teal-500/15 to-transparent',
+    nodes: [
+      { type: MediaNodeType.MEDIA_UPLOAD, label: 'Media Upload', position: { x: 60, y: 120 } },
+      { type: MediaNodeType.IMAGE_RESIZE, label: 'Normalize Asset', position: { x: 210, y: 60 } },
+      { type: MediaNodeType.IMAGE_RECOGNITION, label: 'Vision Classifier', position: { x: 360, y: 120 } },
+      { type: MediaNodeType.MEDIA_DISPLAY, label: 'Preview Result', position: { x: 540, y: 60 } },
+      { type: MediaNodeType.MEDIA_DOWNLOAD, label: 'Download', position: { x: 540, y: 210 } },
+    ],
+    edges: [
+      { source: 0, target: 1, label: 'asset' },
+      { source: 1, target: 2, label: 'normalized' },
+      { source: 2, target: 3, label: 'preview' },
+      { source: 2, target: 4, label: 'artifact' },
+    ],
+  },
+  {
+    id: 'ops-triage',
+    eyebrow: 'Control flow',
+    title: 'Ops Triage',
+    description: 'Run a diagnostic agent, branch on severity, and loop through remediation candidates.',
+    accent: 'from-amber-300/30 via-orange-500/15 to-transparent',
+    nodes: [
+      { type: NODE_TYPES.CHAT, label: 'Triage Agent', position: { x: 60, y: 110 }, data: { prompt: 'Classify incident severity and propose a safe first mitigation.' } },
+      { type: NODE_TYPES.CONDITIONAL, label: 'Severity Branch', position: { x: 210, y: 110 }, data: { type: 'if', expression: 'severity <= medium', branches: { proceed: { targets: [] }, escalate: { targets: [] } } } },
+      { type: NODE_TYPES.FOR_EACH, label: 'Mitigation Loop', position: { x: 360, y: 40 }, data: { collection: 'candidates', itemVar: 'candidate' } },
+      { type: NODE_TYPES.GATE, label: 'Operator Approval', position: { x: 360, y: 220 } },
+      { type: NODE_TYPES.PYTHON_CODE, label: 'Verification Probe', position: { x: 540, y: 130 } },
+    ],
+    edges: [
+      { source: 0, target: 1, label: 'severity' },
+      { source: 1, target: 2, label: 'low/medium' },
+      { source: 1, target: 3, label: 'high' },
+      { source: 2, target: 4, label: 'candidate' },
+      { source: 3, target: 4, label: 'approved' },
+    ],
+  },
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Layout Component (exported)
@@ -299,6 +432,8 @@ function CanvasWorkspace({
 }) {
   const nodes = useCanvasStore((state) => state.nodes);
   const edges = useCanvasStore((state) => state.edges);
+  const setNodes = useCanvasStore((state) => state.setNodes);
+  const setEdges = useCanvasStore((state) => state.setEdges);
   const onNodesChange = useCanvasStore((state) => state.onNodesChange);
   const onEdgesChange = useCanvasStore((state) => state.onEdgesChange);
   const onConnect = useCanvasStore((state) => state.onConnect);
@@ -322,6 +457,33 @@ function CanvasWorkspace({
     } catch {}
   }, [edges.length, nodes.length]);
 
+  const applyWorkflowTemplate = React.useCallback((template: WorkflowTemplate) => {
+    const prefix = `${template.id}-${Date.now()}`;
+    const nextNodes: Node[] = template.nodes.map((node, index) => ({
+      id: `${prefix}-${index}`,
+      type: node.type,
+      position: node.position,
+      selected: index === 0,
+      data: {
+        label: node.label,
+        blueprint: template.title,
+        ...(node.data ?? {}),
+      },
+    }));
+    const nextEdges: Edge[] = template.edges.map((edge, index) => ({
+      id: `${prefix}-edge-${index}`,
+      source: nextNodes[edge.source].id,
+      target: nextNodes[edge.target].id,
+      label: edge.label,
+      animated: true,
+    }));
+
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    setSelectedNodeId(nextNodes[0]?.id ?? null);
+    didAutoFitRef.current = false;
+  }, [setEdges, setNodes, setSelectedNodeId]);
+
   return (
     <div className="flex h-full">
       <NodePalette
@@ -334,9 +496,12 @@ function CanvasWorkspace({
           <PanelShell
             title={
               <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-sm font-black text-primary shadow-[0_0_32px_hsl(var(--primary)/0.12)]">
+                  DAG
+                </div>
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-                    Canvas
+                    Mission Canvas
                   </div>
                   <div className="text-sm font-semibold text-foreground">Workflow Builder</div>
                 </div>
@@ -354,17 +519,27 @@ function CanvasWorkspace({
               </div>
             }
             toolbar={
-              <button
-                onClick={() => setQuickAddMenuOpen(true)}
-                className="rounded-md border border-border/70 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-muted"
-              >
-                Add Node
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setNodePaletteOpen((open) => !open)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <PanelLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                  Palette
+                </button>
+                <button
+                  onClick={() => setQuickAddMenuOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-primary/50 bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-[0_0_24px_hsl(var(--primary)/0.18)] transition-colors hover:bg-primary/90"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Add Node
+                </button>
+              </div>
             }
             className="h-full overflow-hidden"
           >
             <CanvasDropZone className="h-full">
-              <div className="relative h-full min-h-[420px]">
+              <div className="relative h-full min-h-[420px] overflow-hidden">
                 <ReactFlow
                   nodeTypes={flowNodeTypes as any}
                   nodes={nodes}
@@ -375,6 +550,9 @@ function CanvasWorkspace({
                   onSelectionChange={(selection: any) => {
                     const firstNodeId = selection?.nodes?.[0]?.id ?? null;
                     setSelectedNodeId(firstNodeId);
+                    window.dispatchEvent(new CustomEvent(firstNodeId ? 'graphNodeSelected' : 'graphNodeCleared', {
+                      detail: { nodeId: firstNodeId },
+                    }));
                   }}
                   onInit={(instance: any) => {
                     reactFlowRef.current = instance;
@@ -387,17 +565,11 @@ function CanvasWorkspace({
                 </ReactFlow>
 
                 {nodes.length === 0 && (
-                  <div className="pointer-events-none absolute inset-x-8 top-8 max-w-sm rounded-xl border border-dashed border-border/80 bg-background/88 p-4 shadow-lg backdrop-blur">
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-                      Empty Workflow
-                    </div>
-                    <div className="mt-2 text-sm font-semibold text-foreground">
-                      Start by dragging a node into the canvas.
-                    </div>
-                    <div className="mt-1 text-sm text-muted-foreground">
-                      Use the palette on the left or press <span className="font-mono">/</span> to open quick add.
-                    </div>
-                  </div>
+                  <EmptyWorkflowCoach
+                    templates={WORKFLOW_TEMPLATES}
+                    onApplyTemplate={applyWorkflowTemplate}
+                    onQuickAdd={() => setQuickAddMenuOpen(true)}
+                  />
                 )}
               </div>
             </CanvasDropZone>
@@ -411,6 +583,73 @@ function CanvasWorkspace({
             />
           </PanelShell>
         </ReactFlowProvider>
+      </div>
+    </div>
+  );
+}
+
+function EmptyWorkflowCoach({
+  templates,
+  onApplyTemplate,
+  onQuickAdd,
+}: {
+  templates: WorkflowTemplate[];
+  onApplyTemplate: (template: WorkflowTemplate) => void;
+  onQuickAdd: () => void;
+}) {
+  return (
+    <div className="absolute left-6 top-6 z-10 w-[min(760px,calc(100%-3rem))] rounded-2xl border border-border/80 bg-background/95 p-5 shadow-2xl shadow-black/20 backdrop-blur-xl">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-xl">
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+            <LayoutTemplate className="h-3 w-3" aria-hidden="true" />
+            Starter blueprints
+          </div>
+          <h2 className="mt-3 text-xl font-black tracking-[-0.03em] text-foreground">
+            Start with a runnable mission shape.
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Choose a connected DAG pattern, then tune the selected step in the inspector.
+          </p>
+        </div>
+        <button
+          onClick={onQuickAdd}
+          className="inline-flex min-w-[126px] items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border/70 bg-card px-3 py-2 text-xs font-semibold text-foreground transition hover:border-primary/50 hover:bg-primary/10"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          Build by hand
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        {templates.map((template) => (
+          <button
+            key={template.id}
+            onClick={() => onApplyTemplate(template)}
+            className="group relative overflow-hidden rounded-xl border border-border/70 bg-card/80 p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-xl hover:shadow-black/10 focus:outline-none focus:ring-2 focus:ring-primary/50"
+          >
+            <div className={`absolute inset-x-0 top-0 h-24 bg-gradient-to-br ${template.accent}`} />
+            <div className="relative">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {template.eyebrow}
+              </div>
+              <div className="mt-2 text-sm font-bold text-foreground">{template.title}</div>
+              <p className="mt-2 min-h-[56px] text-[11px] leading-5 text-muted-foreground">
+                {template.description}
+              </p>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <span className="whitespace-nowrap rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                  {template.nodes.length} nodes
+                  <span className="mx-1 text-border">/</span>
+                  {template.edges.length} edges
+                </span>
+                <span className="whitespace-nowrap font-semibold text-primary transition group-hover:translate-x-0.5">
+                  Use blueprint
+                </span>
+              </div>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );
