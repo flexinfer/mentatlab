@@ -23,7 +23,7 @@ images:
   - name: registry.harbor.lan/library/mentatlab-orchestrator-go
     newTag: 20260515-225850 # {"$imagepolicy": "flux-system:mentatlab-orchestrator-go:tag"}
   - name: registry.harbor.lan/library/mentatlab-gateway-go
-    newTag: 20260510-173221 # {"$imagepolicy": "flux-system:mentatlab-gateway-go:tag"}
+    newTag: 20260515-225850 # {"$imagepolicy": "flux-system:mentatlab-gateway-go:tag"}
   - name: registry.harbor.lan/library/mentatlab-frontend
     newTag: 20260515-225850 # {"$imagepolicy": "flux-system:mentatlab-frontend:tag"}
   - name: registry.harbor.lan/library/mentatlab-echoagent
