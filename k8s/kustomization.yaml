@@ -27,7 +27,7 @@ images:
   - name: registry.harbor.lan/library/mentatlab-frontend
     newTag: 20260510-173221 # {"$imagepolicy": "flux-system:mentatlab-frontend:tag"}
   - name: registry.harbor.lan/library/mentatlab-echoagent
-    newTag: 20260510-173221 # {"$imagepolicy": "flux-system:mentatlab-echoagent:tag"}
+    newTag: 20260515-225850 # {"$imagepolicy": "flux-system:mentatlab-echoagent:tag"}
 # Common labels for all resources (use 'labels' not 'commonLabels' to avoid modifying immutable selectors)
 labels:
   - pairs:
