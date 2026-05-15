@@ -217,9 +217,17 @@ describe('TopBar', () => {
     expect(screen.getByTestId('save-status')).toBeInTheDocument();
   });
 
-  it('hides connection status indicator when not connected', () => {
+  it('hides connection status indicator when disconnected', () => {
     render(<TopBar />);
     expect(screen.queryByTestId('connection-indicator')).not.toBeInTheDocument();
+  });
+
+  it('renders reconnecting state in the header', () => {
+    mockConnection.status = 'reconnecting';
+    mockConnection.transport = 'websocket';
+    render(<TopBar />);
+    expect(screen.getByTestId('connection-indicator')).toBeInTheDocument();
+    expect(screen.getByText('Reconnecting…')).toBeInTheDocument();
   });
 
   it('renders compact connection status indicator when connected', () => {

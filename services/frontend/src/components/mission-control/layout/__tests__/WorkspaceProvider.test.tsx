@@ -24,22 +24,25 @@ const mockCreateSession = vi.hoisted(() => vi.fn());
 const mockCloseSession = vi.hoisted(() => vi.fn());
 const mockAddSessionMessage = vi.hoisted(() => vi.fn());
 const mockSetConnectionStatus = vi.hoisted(() => vi.fn());
+const mockConnectLiveTransport = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockDisconnectLiveTransport = vi.hoisted(() => vi.fn());
+const mockFeatureFlags = vi.hoisted(() => ({
+  NEW_STREAMING: true,
+  CONNECT_WS: true,
+  MISSION_CONSOLE: true,
+  MISSION_GRAPH: true,
+  NETWORK_PANEL: true,
+  ORCHESTRATOR_PANEL: true,
+  ALLOW_REMOTE_COGPAK_UI: true,
+  DEMO_MODE: true,
+  MULTIMODAL_UPLOAD: false,
+  S3_STORAGE: false,
+  AUTO_CONNECT: false,
+  CONTRACT_OVERLAY: false,
+}));
 
 vi.mock('@/config/features', () => ({
-  FeatureFlags: {
-    NEW_STREAMING: true,
-    CONNECT_WS: true,
-    MISSION_CONSOLE: true,
-    MISSION_GRAPH: true,
-    NETWORK_PANEL: true,
-    ORCHESTRATOR_PANEL: true,
-    ALLOW_REMOTE_COGPAK_UI: true,
-    DEMO_MODE: true,
-    MULTIMODAL_UPLOAD: false,
-    S3_STORAGE: false,
-    AUTO_CONNECT: false,
-    CONTRACT_OVERLAY: false,
-  },
+  FeatureFlags: mockFeatureFlags,
 }));
 
 vi.mock('@/stores', () => ({
@@ -78,6 +81,13 @@ vi.mock('@/services/api/orchestratorService', () => ({
 
 vi.mock('@/hooks/useFlowLoader', () => ({
   useFlowLoader: vi.fn(),
+}));
+
+vi.mock('@/hooks/useStreamingTransport', () => ({
+  useStreamingTransport: () => ({
+    connect: mockConnectLiveTransport,
+    disconnect: mockDisconnectLiveTransport,
+  }),
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,6 +146,12 @@ describe('WorkspaceProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    mockConnectLiveTransport.mockResolvedValue(undefined);
+    Object.assign(mockFeatureFlags, {
+      CONNECT_WS: true,
+      AUTO_CONNECT: false,
+      S3_STORAGE: false,
+    });
     vi.mocked(useCanvasStore.getState).mockReturnValue({
       nodes: [],
       edges: [],
@@ -324,6 +340,31 @@ describe('WorkspaceProvider', () => {
     );
     expect(screen.getByTestId('connect-ws').textContent).toBe('true');
     expect(screen.getByTestId('s3-storage').textContent).toBe('false');
+  });
+
+  it('auto-connects to the default stream on mount when enabled', async () => {
+    mockFeatureFlags.AUTO_CONNECT = true;
+    render(
+      <WorkspaceProvider>
+        <TestConsumer />
+      </WorkspaceProvider>
+    );
+
+    await act(async () => {});
+    expect(mockConnectLiveTransport).toHaveBeenCalledWith('default-stream-id');
+  });
+
+  it('does not auto-connect when CONNECT_WS is disabled', async () => {
+    mockFeatureFlags.AUTO_CONNECT = true;
+    mockFeatureFlags.CONNECT_WS = false;
+    render(
+      <WorkspaceProvider>
+        <TestConsumer />
+      </WorkspaceProvider>
+    );
+
+    await act(async () => {});
+    expect(mockConnectLiveTransport).not.toHaveBeenCalled();
   });
 
   it('applies feature flag overrides', () => {

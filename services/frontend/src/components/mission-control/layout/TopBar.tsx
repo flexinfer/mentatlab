@@ -340,17 +340,17 @@ const TRANSPORT_LABELS: Record<string, string> = {
 function ConnectionStatusIndicator() {
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
   const transportType = useStreamingStore((s) => s.transportType ?? 'none');
-  if (connectionStatus !== StreamConnectionState.CONNECTED) {
+  if (connectionStatus === StreamConnectionState.DISCONNECTED) {
     return null;
   }
-  const style = STATUS_STYLES[StreamConnectionState.CONNECTED];
+  const style = STATUS_STYLES[connectionStatus] ?? STATUS_STYLES[StreamConnectionState.ERROR];
   const transportLabel = TRANSPORT_LABELS[transportType] ?? '';
 
   return (
     <div className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/30 px-2.5 py-1" data-testid="connection-indicator">
       <span className={`w-2 h-2 rounded-full ${style.dot}`} />
       <span className={`text-[11px] font-medium ${style.text}`}>
-        {style.label}{transportLabel ? ` (${transportLabel})` : ''}
+        {style.label}{transportLabel && connectionStatus === StreamConnectionState.CONNECTED ? ` (${transportLabel})` : ''}
       </span>
     </div>
   );
