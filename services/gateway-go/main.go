@@ -15,8 +15,8 @@ import (
 
 	"github.com/flexinfer/mentatlab/services/gateway-go/hub"
 	"github.com/flexinfer/mentatlab/services/gateway-go/middleware"
-	"github.com/flexinfer/mentatlab/services/gateway-go/tracing"
 	"github.com/flexinfer/mentatlab/services/gateway-go/traces"
+	"github.com/flexinfer/mentatlab/services/gateway-go/tracing"
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -40,6 +40,8 @@ type Config struct {
 	RateLimitRPS          float64
 	RateLimitBurst        int
 	ShutdownTimeout       time.Duration
+	WSPongWait            time.Duration
+	WSPingPeriod          time.Duration
 	TracingEnabled        bool
 	OTLPEndpoint          string
 }
@@ -59,6 +61,8 @@ func loadConfig() *Config {
 		RateLimitRPS:          100,
 		RateLimitBurst:        200,
 		ShutdownTimeout:       10 * time.Second,
+		WSPongWait:            getEnvDuration("WS_PONG_WAIT", 60*time.Second),
+		WSPingPeriod:          getEnvDuration("WS_PING_PERIOD", 54*time.Second),
 		TracingEnabled:        getEnv("TRACING_ENABLED", "false") == "true",
 		OTLPEndpoint:          getEnv("OTLP_ENDPOINT", "localhost:4317"),
 	}
@@ -77,6 +81,18 @@ func getEnv(key, defaultVal string) string {
 		return val
 	}
 	return defaultVal
+}
+
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultVal
+	}
+	parsed, err := time.ParseDuration(val)
+	if err != nil || parsed <= 0 {
+		return defaultVal
+	}
+	return parsed
 }
 
 func main() {
@@ -121,6 +137,8 @@ func main() {
 	wsHub := hub.NewHubWithAddress(cfg.RedisAddr,
 		hub.WithLogger(logger),
 		hub.WithAllowedOrigins(cfg.AllowedOrigins),
+		hub.WithPongWait(cfg.WSPongWait),
+		hub.WithPingPeriod(cfg.WSPingPeriod),
 		hub.WithAuthValidator(func(r *http.Request) (string, string, error) {
 			userInfo, err := authMiddleware.ValidateWebSocketToken(r)
 			if err != nil {

@@ -695,6 +695,19 @@ func TestConfigurablePingPong(t *testing.T) {
 			t.Errorf("expected auto-derived pingPeriod %v, got %v", expected, hub.pingPeriod)
 		}
 	})
+
+	t.Run("normalizes invalid pingPeriod from config", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr:  "localhost:6379",
+			Logger:     testLogger(),
+			PongWait:   30 * time.Second,
+			PingPeriod: 30 * time.Second,
+		})
+		expected := (30 * time.Second * 9) / 10
+		if hub.pingPeriod != expected {
+			t.Errorf("expected normalized pingPeriod %v, got %v", expected, hub.pingPeriod)
+		}
+	})
 }
 
 func TestRedisBackoff(t *testing.T) {

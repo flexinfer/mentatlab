@@ -150,6 +150,7 @@ func NewHubWithAddress(redisAddr string, opts ...HubOption) *Hub {
 	for _, opt := range opts {
 		opt(h)
 	}
+	h.normalizeHeartbeatTiming()
 
 	return h
 }
@@ -163,16 +164,27 @@ func NewHub(redisAddr string) *Hub {
 // NewHubWithConfig creates a new Hub with full configuration struct.
 // Deprecated: Use NewHubWithAddress with Options instead.
 func NewHubWithConfig(cfg *HubConfig) *Hub {
-	var opts []HubOption
-	if cfg != nil {
-		opts = append(opts, WithLogger(cfg.Logger))
-		opts = append(opts, WithAllowedOrigins(cfg.AllowedOrigins))
-		opts = append(opts, WithAuthValidator(cfg.AuthValidator))
-		opts = append(opts, WithPongWait(cfg.PongWait))
-		opts = append(opts, WithPingPeriod(cfg.PingPeriod))
+	if cfg == nil {
+		return NewHubWithAddress("localhost:6379")
 	}
 
+	var opts []HubOption
+	opts = append(opts, WithLogger(cfg.Logger))
+	opts = append(opts, WithAllowedOrigins(cfg.AllowedOrigins))
+	opts = append(opts, WithAuthValidator(cfg.AuthValidator))
+	opts = append(opts, WithPongWait(cfg.PongWait))
+	opts = append(opts, WithPingPeriod(cfg.PingPeriod))
+
 	return NewHubWithAddress(cfg.RedisAddr, opts...)
+}
+
+func (h *Hub) normalizeHeartbeatTiming() {
+	if h.pongWait <= 0 {
+		h.pongWait = 60 * time.Second
+	}
+	if h.pingPeriod <= 0 || h.pingPeriod >= h.pongWait {
+		h.pingPeriod = (h.pongWait * 9) / 10
+	}
 }
 
 // Run starts the hub's main loop.
