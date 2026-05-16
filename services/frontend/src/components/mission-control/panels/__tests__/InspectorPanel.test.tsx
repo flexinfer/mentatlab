@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { describe, test, expect, beforeEach, vi } from 'vitest';
 
 // Hoisted mocks
@@ -31,6 +31,18 @@ vi.mock('@/stores/canvas', () => ({
 }));
 
 import InspectorPanel from '../InspectorPanel';
+
+function selectGraphNode(nodeId: string) {
+  act(() => {
+    window.dispatchEvent(new CustomEvent('graphNodeSelected', { detail: { nodeId } }));
+  });
+}
+
+function clearGraphNodeSelection() {
+  act(() => {
+    window.dispatchEvent(new CustomEvent('graphNodeCleared'));
+  });
+}
 
 describe('InspectorPanel', () => {
   beforeEach(() => {
@@ -94,7 +106,7 @@ describe('InspectorPanel', () => {
     render(<InspectorPanel runId="run-1" />);
 
     // Simulate graphNodeSelected custom event
-    window.dispatchEvent(new CustomEvent('graphNodeSelected', { detail: { nodeId: 'node-X' } }));
+    selectGraphNode('node-X');
 
     await waitFor(() => {
       expect(screen.getByText('node-X')).toBeTruthy();
@@ -107,7 +119,7 @@ describe('InspectorPanel', () => {
     ];
 
     render(<InspectorPanel runId="run-1" />);
-    window.dispatchEvent(new CustomEvent('graphNodeSelected', { detail: { nodeId: 'node-Y' } }));
+    selectGraphNode('node-Y');
 
     await waitFor(() => {
       expect(screen.getByText('conditional')).toBeTruthy();
@@ -122,13 +134,13 @@ describe('InspectorPanel', () => {
     render(<InspectorPanel runId="run-1" />);
 
     // Select a node
-    window.dispatchEvent(new CustomEvent('graphNodeSelected', { detail: { nodeId: 'node-Z' } }));
+    selectGraphNode('node-Z');
     await waitFor(() => {
       expect(screen.getByText('node-Z')).toBeTruthy();
     });
 
     // Clear selection
-    window.dispatchEvent(new CustomEvent('graphNodeCleared'));
+    clearGraphNodeSelection();
     await waitFor(() => {
       expect(screen.getByText('No node selected')).toBeTruthy();
     });
@@ -140,7 +152,7 @@ describe('InspectorPanel', () => {
     ];
 
     render(<InspectorPanel runId="run-1" />);
-    window.dispatchEvent(new CustomEvent('graphNodeSelected', { detail: { nodeId: 'nodeA' } }));
+    selectGraphNode('nodeA');
 
     await waitFor(() => {
       expect(screen.getByText('Timeout')).toBeTruthy();
@@ -154,12 +166,57 @@ describe('InspectorPanel', () => {
     ];
 
     render(<InspectorPanel runId="run-1" />);
-    window.dispatchEvent(new CustomEvent('graphNodeSelected', { detail: { nodeId: 'nodeB' } }));
+    selectGraphNode('nodeB');
 
     await waitFor(() => {
       expect(screen.getByText('Retry Policy')).toBeTruthy();
       expect(screen.getByText('Max retries')).toBeTruthy();
       expect(screen.getByText('Backoff type')).toBeTruthy();
+    });
+  });
+
+  test('shows readiness checklist for selected chat nodes', async () => {
+    mockCanvasStoreState.nodes = [
+      { id: 'chat-1', type: 'chat', data: { label: 'Synthesis Agent', prompt: 'Write a brief.' } },
+    ];
+
+    render(<InspectorPanel runId="run-1" />);
+    selectGraphNode('chat-1');
+
+    await waitFor(() => {
+      expect(screen.getByText('Configuration Checklist')).toBeTruthy();
+      expect(screen.getByText('Prompt')).toBeTruthy();
+      expect(screen.getByText('Prompt configured')).toBeTruthy();
+    });
+  });
+
+  test('flags unresolved FlexInfer runtime env in checklist', async () => {
+    mockCanvasStoreState.nodes = [
+      {
+        id: 'mcp-1',
+        type: 'mcp:flexinfer-template-inference',
+        data: {
+          label: 'FlexInfer Inference',
+          tool_name: 'flexinfer__inference_chat',
+          runtime_contract: {
+            required_env: ['FLEXINFER_PROXY_URL', 'FLEXINFER_MODEL', 'FLEXINFER_PROMPT'],
+          },
+          tool_args: {
+            proxy_url: '${FLEXINFER_PROXY_URL}',
+            model: '${FLEXINFER_MODEL}',
+            prompt: '${FLEXINFER_PROMPT}',
+          },
+        },
+      },
+    ];
+
+    render(<InspectorPanel runId="run-1" />);
+    selectGraphNode('mcp-1');
+
+    await waitFor(() => {
+      expect(screen.getByText('Runtime env')).toBeTruthy();
+      expect(screen.getByText('FLEXINFER_PROXY_URL, FLEXINFER_MODEL, FLEXINFER_PROMPT')).toBeTruthy();
+      expect(screen.getAllByText('Pending').length).toBeGreaterThan(0);
     });
   });
 
