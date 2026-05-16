@@ -10,6 +10,138 @@ interface RetryPolicyState {
   backoff_max: number;
 }
 
+interface ChecklistItem {
+  label: string;
+  detail: string;
+  done: boolean;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function hasText(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isPlaceholder(value: unknown): boolean {
+  return typeof value === 'string' && /^\$\{[^}]+\}$/.test(value.trim());
+}
+
+function hasAnyConfigured(data: Record<string, unknown>, keys: string[]): boolean {
+  return keys.some((key) => {
+    const value = data[key];
+    if (typeof value === 'number' || typeof value === 'boolean') return true;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object' && value !== null) return Object.keys(value).length > 0;
+    return hasText(value);
+  });
+}
+
+function runtimeContractRequiredEnv(data: Record<string, unknown>): string[] {
+  const contract = asRecord(data.runtime_contract);
+  const requiredEnv = contract.required_env;
+  return Array.isArray(requiredEnv)
+    ? requiredEnv.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
+
+function runtimeEnvConfigured(data: Record<string, unknown>, envNames: string[]): boolean {
+  if (envNames.length === 0) return true;
+  const env = asRecord(data.env);
+  const toolArgs = asRecord(data.tool_args);
+  return envNames.every((name) => {
+    const envValue = env[name];
+    if (hasText(envValue) && !isPlaceholder(envValue)) return true;
+
+    const argKey = name
+      .replace(/^FLEXINFER_/, '')
+      .toLowerCase();
+    const argValue = toolArgs[argKey] ?? toolArgs[name.toLowerCase()];
+    return hasText(argValue) && !isPlaceholder(argValue);
+  });
+}
+
+function selectedNodeChecklist(selectedNode: { type?: string; data?: unknown } | null): ChecklistItem[] {
+  if (!selectedNode) return [];
+
+  const type = selectedNode.type ?? 'agent';
+  const data = asRecord(selectedNode.data);
+  const checklist: ChecklistItem[] = [
+    {
+      label: 'Label',
+      detail: hasText(data.label) ? String(data.label) : 'Add an operator-readable label',
+      done: hasText(data.label),
+    },
+  ];
+
+  if (type === 'chat') {
+    checklist.push({
+      label: 'Prompt',
+      detail: hasText(data.prompt) ? 'Prompt configured' : 'Add the instruction this agent should follow',
+      done: hasText(data.prompt),
+    });
+  } else if (type === 'conditional') {
+    checklist.push({
+      label: 'Branch expression',
+      detail: hasText(data.expression) ? String(data.expression) : 'Set the expression that chooses a branch',
+      done: hasText(data.expression),
+    });
+  } else if (type === 'forEach') {
+    checklist.push({
+      label: 'Collection',
+      detail: hasText(data.collection) ? String(data.collection) : 'Choose the collection to iterate over',
+      done: hasText(data.collection),
+    });
+  } else if (type === 'gate') {
+    checklist.push({
+      label: 'Approval prompt',
+      detail: hasText(data.description) ? String(data.description) : 'Describe what the operator is approving',
+      done: hasText(data.description),
+    });
+  } else if (type.startsWith('mcp:')) {
+    const requiredEnv = runtimeContractRequiredEnv(data);
+    checklist.push(
+      {
+        label: 'MCP tool',
+        detail: hasText(data.tool_name) ? String(data.tool_name) : 'Choose a tool from the MCP catalog',
+        done: hasText(data.tool_name),
+      },
+      {
+        label: 'Runtime env',
+        detail: requiredEnv.length > 0 ? requiredEnv.join(', ') : 'No required environment variables',
+        done: runtimeEnvConfigured(data, requiredEnv),
+      }
+    );
+  } else if (type.startsWith('media:') || type.startsWith('ai:')) {
+    checklist.push({
+      label: 'Media contract',
+      detail: hasAnyConfigured(data, ['source', 'media_ref', 'accepted_types', 'format', 'width', 'height', 'model', 'prompt'])
+        ? 'Media input or operation settings configured'
+        : 'Set media input, output, or operation fields for this step',
+      done: hasAnyConfigured(data, ['source', 'media_ref', 'accepted_types', 'format', 'width', 'height', 'model', 'prompt']),
+    });
+  } else {
+    checklist.push({
+      label: 'Execution target',
+      detail: hasAnyConfigured(data, ['agent_id', 'agentId', 'command', 'image'])
+        ? 'Agent or command target configured'
+        : 'Choose an agent, command, or image for this step',
+      done: hasAnyConfigured(data, ['agent_id', 'agentId', 'command', 'image']),
+    });
+  }
+
+  checklist.push({
+    label: 'Runtime safety',
+    detail: data.timeout || data.retry_policy ? 'Timeout or retry guard configured' : 'Consider timeout and retry settings before running',
+    done: Boolean(data.timeout || data.retry_policy),
+  });
+
+  return checklist;
+}
+
 export default function InspectorPanel({ runId }: { runId: string | null }) {
   const [stats, setStats] = React.useState<{ checkpoints: number; status?: string }>({ checkpoints: 0 });
   const [eventSelectedNodeId, setEventSelectedNodeId] = React.useState<string | null>(null);
@@ -63,6 +195,7 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
     const nodes = canvasNodes ?? useCanvasStore.getState().nodes;
     return nodes.find((n) => n.id === selectedNodeId) ?? null;
   }, [canvasNodes, selectedNodeId]);
+  const checklist = React.useMemo(() => selectedNodeChecklist(selectedNode), [selectedNode]);
 
   // Local state for retry policy editing
   const [retryPolicy, setRetryPolicy] = React.useState<RetryPolicyState>({
@@ -169,6 +302,39 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
                 <div>{selectedNode.type}</div>
               </>
             )}
+          </div>
+
+          <div className="rounded-lg border border-border/70 bg-background/50 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="font-medium text-foreground">Configuration Checklist</div>
+              <span className="text-[10px] text-muted-foreground">
+                {checklist.filter((item) => item.done).length}/{checklist.length} ready
+              </span>
+            </div>
+            <div className="space-y-2">
+              {checklist.map((item) => (
+                <div key={item.label} className="flex items-start gap-2">
+                  <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+                    item.done ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`} />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">{item.label}</span>
+                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
+                        item.done
+                          ? 'bg-emerald-500/10 text-emerald-500'
+                          : 'bg-amber-500/10 text-amber-500'
+                      }`}>
+                        {item.done ? 'Ready' : 'Pending'}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 break-words text-[10px] leading-4 text-muted-foreground">
+                      {item.detail}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Timeout config */}

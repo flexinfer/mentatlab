@@ -21,7 +21,23 @@ import {
   ReactFlow,
   ReactFlowProvider,
 } from 'reactflow';
-import { LayoutTemplate, PanelLeft, Plus, Sparkles } from 'lucide-react';
+import {
+  Activity,
+  Bot,
+  Camera,
+  Download,
+  FileInput,
+  Image as ImageIcon,
+  LayoutTemplate,
+  Mic,
+  PanelLeft,
+  Plus,
+  type LucideIcon,
+  Sparkles,
+  Upload,
+  Wand2,
+  Webhook,
+} from 'lucide-react';
 
 // Layout components
 import { WorkspaceProvider, useWorkspace } from './WorkspaceProvider';
@@ -63,34 +79,179 @@ import PythonCodeNode from '@/nodes/PythonCodeNode';
 type WorkflowNodeData = {
   label?: string;
   blueprint?: string;
+  agent_id?: string;
+  mcp_server?: string;
+  runtime_contract?: {
+    kind?: string;
+    required_env?: string[];
+  };
+  tool_name?: string;
 };
 
-const MEDIA_NODE_LABELS: Partial<Record<MediaNodeType, string>> = {
-  [MediaNodeType.MEDIA_UPLOAD]: 'Media Upload',
-  [MediaNodeType.MEDIA_DOWNLOAD]: 'Media Download',
-  [MediaNodeType.MEDIA_DISPLAY]: 'Media Display',
-  [MediaNodeType.IMAGE_RESIZE]: 'Image Resize',
-  [MediaNodeType.IMAGE_RECOGNITION]: 'Image Recognition',
+type WorkflowNodeMeta = {
+  label: string;
+  summary: string;
+  accent: string;
+  Icon: LucideIcon;
 };
 
-function GenericWorkflowNode({ data, type, selected }: NodeProps<WorkflowNodeData>) {
-  const label = data.label ?? MEDIA_NODE_LABELS[type as MediaNodeType] ?? type ?? 'Workflow Node';
+const MEDIA_NODE_META: Partial<Record<MediaNodeType, WorkflowNodeMeta>> = {
+  [MediaNodeType.MEDIA_UPLOAD]: {
+    label: 'Media Upload',
+    summary: 'Ingest file, stream, or capture input',
+    accent: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-500',
+    Icon: Upload,
+  },
+  [MediaNodeType.CAMERA_CAPTURE]: {
+    label: 'Camera',
+    summary: 'Capture image or video from a device',
+    accent: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-500',
+    Icon: Camera,
+  },
+  [MediaNodeType.MICROPHONE_CAPTURE]: {
+    label: 'Microphone',
+    summary: 'Record audio for downstream agents',
+    accent: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-500',
+    Icon: Mic,
+  },
+  [MediaNodeType.IMAGE_RESIZE]: {
+    label: 'Image Resize',
+    summary: 'Normalize dimensions before analysis',
+    accent: 'border-amber-500/35 bg-amber-500/10 text-amber-500',
+    Icon: ImageIcon,
+  },
+  [MediaNodeType.IMAGE_FILTER]: {
+    label: 'Image Filter',
+    summary: 'Apply deterministic image transforms',
+    accent: 'border-amber-500/35 bg-amber-500/10 text-amber-500',
+    Icon: Wand2,
+  },
+  [MediaNodeType.AUDIO_TRANSCODE]: {
+    label: 'Audio Transcode',
+    summary: 'Convert audio formats for agents',
+    accent: 'border-amber-500/35 bg-amber-500/10 text-amber-500',
+    Icon: Activity,
+  },
+  [MediaNodeType.IMAGE_RECOGNITION]: {
+    label: 'Image Recognition',
+    summary: 'Classify visual content',
+    accent: 'border-sky-500/35 bg-sky-500/10 text-sky-500',
+    Icon: Bot,
+  },
+  [MediaNodeType.OBJECT_DETECTION]: {
+    label: 'Object Detection',
+    summary: 'Locate entities in visual media',
+    accent: 'border-sky-500/35 bg-sky-500/10 text-sky-500',
+    Icon: Bot,
+  },
+  [MediaNodeType.SPEECH_TO_TEXT]: {
+    label: 'Speech to Text',
+    summary: 'Transcribe audio into text',
+    accent: 'border-sky-500/35 bg-sky-500/10 text-sky-500',
+    Icon: Mic,
+  },
+  [MediaNodeType.TEXT_TO_SPEECH]: {
+    label: 'Text to Speech',
+    summary: 'Render text output as audio',
+    accent: 'border-sky-500/35 bg-sky-500/10 text-sky-500',
+    Icon: Activity,
+  },
+  [MediaNodeType.OCR]: {
+    label: 'OCR',
+    summary: 'Extract text from images or documents',
+    accent: 'border-sky-500/35 bg-sky-500/10 text-sky-500',
+    Icon: FileInput,
+  },
+  [MediaNodeType.IMAGE_GENERATION]: {
+    label: 'Image Generation',
+    summary: 'Create visual artifacts from prompts',
+    accent: 'border-sky-500/35 bg-sky-500/10 text-sky-500',
+    Icon: Wand2,
+  },
+  [MediaNodeType.MEDIA_DISPLAY]: {
+    label: 'Media Display',
+    summary: 'Preview generated artifacts',
+    accent: 'border-indigo-500/35 bg-indigo-500/10 text-indigo-500',
+    Icon: ImageIcon,
+  },
+  [MediaNodeType.MEDIA_DOWNLOAD]: {
+    label: 'Media Download',
+    summary: 'Export processed artifacts',
+    accent: 'border-indigo-500/35 bg-indigo-500/10 text-indigo-500',
+    Icon: Download,
+  },
+  [MediaNodeType.WEBHOOK_SENDER]: {
+    label: 'Webhook',
+    summary: 'Send workflow output downstream',
+    accent: 'border-cyan-500/35 bg-cyan-500/10 text-cyan-500',
+    Icon: Webhook,
+  },
+};
+
+function MediaWorkflowNode({ data, type, selected }: NodeProps<WorkflowNodeData>) {
+  const meta = MEDIA_NODE_META[type as MediaNodeType] ?? {
+    label: 'Media Step',
+    summary: 'Process multimodal workflow data',
+    accent: 'border-primary/30 bg-primary/10 text-primary',
+    Icon: Sparkles,
+  };
+  const label = data.label ?? meta.label;
+  const Icon = meta.Icon;
 
   return (
     <div
-      className={`relative min-w-[170px] rounded-lg border bg-card px-3 py-2 text-[11px] shadow-sm transition ${
+      className={`relative min-w-[190px] rounded-lg border bg-card px-3 py-2.5 text-[11px] shadow-sm transition ${
         selected ? 'border-primary shadow-primary/20' : 'border-border'
       }`}
     >
       <Handle type="target" position={Position.Top} className="!bg-primary !border-primary" />
-      <div className="flex items-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary">
-          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+      <div className="flex items-start gap-2.5">
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${meta.accent}`}>
+          <Icon className="h-4 w-4" aria-hidden="true" />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate font-semibold text-foreground">{label}</div>
-          <div className="truncate text-[10px] text-muted-foreground">
-            {data.blueprint ?? 'Workflow step'}
+          <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{meta.summary}</div>
+          {data.blueprint && (
+            <div className="mt-2 inline-flex max-w-full rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+              <span className="truncate">{data.blueprint}</span>
+            </div>
+          )}
+        </div>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="!bg-primary !border-primary" />
+    </div>
+  );
+}
+
+function MCPTemplateNode({ data, selected }: NodeProps<WorkflowNodeData>) {
+  const requiredEnv = data.runtime_contract?.required_env ?? [];
+  const label = data.label ?? 'MCP Template';
+  const toolName = data.tool_name ?? 'tool pending';
+
+  return (
+    <div
+      className={`relative min-w-[220px] rounded-lg border bg-card px-3 py-2.5 text-[11px] shadow-sm transition ${
+        selected ? 'border-primary shadow-primary/20' : 'border-border'
+      }`}
+    >
+      <Handle type="target" position={Position.Top} className="!bg-primary !border-primary" />
+      <div className="flex items-start gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-violet-500/35 bg-violet-500/10 text-violet-500">
+          <Bot className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-semibold text-foreground">{label}</div>
+          <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+            {toolName}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-medium text-violet-500">
+              {data.mcp_server || 'mcp'}
+            </span>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+              {requiredEnv.length} env
+            </span>
           </div>
         </div>
       </div>
@@ -99,17 +260,20 @@ function GenericWorkflowNode({ data, type, selected }: NodeProps<WorkflowNodeDat
   );
 }
 
+const mediaFlowNodeTypes = Object.fromEntries(
+  Object.values(MediaNodeType).map((type) => [type, MediaWorkflowNode])
+);
+
 const flowNodeTypes = {
   chat: ChatNode,
   pythonCode: PythonCodeNode,
   conditional: ConditionalNode,
   forEach: ForEachNode,
   gate: GateNode,
-  [MediaNodeType.MEDIA_UPLOAD]: GenericWorkflowNode,
-  [MediaNodeType.MEDIA_DOWNLOAD]: GenericWorkflowNode,
-  [MediaNodeType.MEDIA_DISPLAY]: GenericWorkflowNode,
-  [MediaNodeType.IMAGE_RESIZE]: GenericWorkflowNode,
-  [MediaNodeType.IMAGE_RECOGNITION]: GenericWorkflowNode,
+  ...mediaFlowNodeTypes,
+  'mcp:flexinfer-template-readiness': MCPTemplateNode,
+  'mcp:flexinfer-template-activate': MCPTemplateNode,
+  'mcp:flexinfer-template-inference': MCPTemplateNode,
 } as const;
 
 const BackgroundAny = Background as any;
