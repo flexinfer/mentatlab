@@ -124,34 +124,77 @@
 }
 
 @layer utilities {
-  /* Glassmorphism Utilities */
+  .mc-shell {
+    @apply border border-border/70 bg-card shadow-sm;
+  }
+
+  .mc-shell-header {
+    @apply border-b border-border/70 bg-muted/20;
+  }
+
+  .mc-resize-handle {
+    @apply bg-border/40 transition-colors hover:bg-primary/30;
+  }
+
+  .mc-control-surface {
+    @apply rounded-md border border-border/70 bg-muted/30;
+  }
+
+  .mc-primary-action {
+    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12);
+  }
+
+  @media (max-width: 720px) {
+    .mc-mobile-hide {
+      display: none !important;
+    }
+
+    .mc-main-panel {
+      flex: 1 1 100% !important;
+      width: 100% !important;
+    }
+
+    .mc-canvas-padding {
+      padding: 0.5rem;
+    }
+
+    .mc-empty-coach {
+      left: 0.75rem;
+      top: 0.75rem;
+      width: calc(100% - 1.5rem);
+      max-height: calc(100% - 1.5rem);
+      overflow: auto;
+    }
+  }
+
+  /* Compatibility aliases kept subdued while older surfaces migrate. */
   .glass {
-    @apply bg-background/60 backdrop-blur-md border border-white/10;
+    @apply border border-border/70 bg-card/95 shadow-sm;
   }
 
   .glass-panel {
-    @apply bg-card/80 backdrop-blur-md border border-border/70 shadow-sm;
+    @apply border border-border/70 bg-card shadow-sm;
   }
 
   .neon-text {
-    text-shadow: 0 0 1px hsl(var(--primary) / 0.15);
+    text-shadow: none;
   }
 
   .neon-border {
-    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.12);
+    box-shadow: 0 0 0 1px hsl(var(--border));
   }
 }
 
 /* React Flow Overrides */
 .react-flow__node {
-  @apply !bg-card/90 !backdrop-blur-md !border !border-border/70 !rounded-md;
+  @apply !bg-card !border !border-border/70 !rounded-md;
   color: hsl(var(--foreground)) !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18) !important;
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.12) !important;
 }
 
 .react-flow__handle {
   @apply !bg-primary !w-3 !h-3 !border-2 !border-background;
-  box-shadow: 0 0 2px hsl(var(--primary) / 0.2);
+  box-shadow: none;
 }
 
 .react-flow__edge-path {
@@ -160,7 +203,7 @@
 }
 
 .react-flow__controls {
-  @apply rounded-lg p-1 !bg-card/85 !backdrop-blur-md !border !border-border/70 !shadow-sm;
+  @apply rounded-md p-1 !bg-card !border !border-border/70 !shadow-sm;
 }
 
 .react-flow__controls-button {
@@ -168,7 +211,7 @@
 }
 
 .react-flow__minimap {
-  @apply rounded-lg !bg-card/85 !backdrop-blur-md !border !border-border/70 !shadow-sm;
+  @apply rounded-md !bg-card !border !border-border/70 !shadow-sm;
 }
 
 /* Scrollbar Styling */
