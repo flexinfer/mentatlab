@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -167,10 +166,10 @@ func main() {
 	// Initialize API key store (requires Redis)
 	var apiKeyStore *auth.APIKeyStore
 	if cfg.RunStoreType == "redis" {
-		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
-		apiKeyRedis := redisClient(redisAddr, cfg.RedisPassword, cfg.RedisDB)
-		if apiKeyRedis != nil {
-			apiKeyStore = auth.NewAPIKeyStore(apiKeyRedis)
+		if opts, oerr := factories.ResolveRedisOptions(cfg); oerr != nil {
+			logger.Error("failed to resolve redis options for API key store", "error", oerr)
+		} else {
+			apiKeyStore = auth.NewAPIKeyStore(redis.NewClient(opts))
 			logger.Info("API key store initialized (Redis)")
 		}
 	}
@@ -294,13 +293,4 @@ func main() {
 	}
 
 	logger.Info("server stopped")
-}
-
-// redisClient creates a Redis client for the given address.
-func redisClient(addr, password string, db int) *redis.Client {
-	return redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: password,
-		DB:       db,
-	})
 }

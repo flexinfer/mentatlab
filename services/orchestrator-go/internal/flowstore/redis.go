@@ -37,6 +37,22 @@ func NewRedisStore(addr string) (*RedisStore, error) {
 	return &RedisStore{client: client}, nil
 }
 
+// NewRedisStoreFromOptions creates a store from redis.Options (e.g. parsed
+// from a redis:// URL via redis.ParseURL), honoring DB index and password.
+// It verifies the connection before returning.
+func NewRedisStoreFromOptions(opts *redis.Options) (*RedisStore, error) {
+	client := redis.NewClient(opts)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("redis connection failed: %w", err)
+	}
+
+	return &RedisStore{client: client}, nil
+}
+
 // NewRedisStoreWithClient creates a store using an existing Redis client.
 func NewRedisStoreWithClient(client *redis.Client) *RedisStore {
 	return &RedisStore{client: client}
