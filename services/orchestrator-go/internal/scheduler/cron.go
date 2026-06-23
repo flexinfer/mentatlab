@@ -30,13 +30,13 @@ type Schedule struct {
 
 // CronRunner evaluates cron schedules every minute and triggers flow runs.
 type CronRunner struct {
-	scheduler  *Scheduler
-	flowStore  flowstore.FlowStore
-	runStore   runstore.RunStore
-	schedules  map[string]*Schedule
-	mu         sync.RWMutex
-	logger     *slog.Logger
-	stopCh     chan struct{}
+	scheduler *Scheduler
+	flowStore flowstore.FlowStore
+	runStore  runstore.RunStore
+	schedules map[string]*Schedule
+	mu        sync.RWMutex
+	logger    *slog.Logger
+	stopCh    chan struct{}
 }
 
 // NewCronRunner creates a new cron runner.
@@ -143,10 +143,19 @@ func (cr *CronRunner) evaluate(now time.Time) {
 		if !s.Enabled {
 			continue
 		}
-		if cronMatches(s.Cron, now) {
-			copy := *s
-			toRun = append(toRun, &copy)
+		if !cronMatches(s.Cron, now) {
+			continue
 		}
+		// Dedup within the minute: skip if we already triggered this schedule
+		// for the current minute. This prevents a double-fire (e.g. the initial
+		// aligned evaluate plus the first ticker tick) and makes missed-tick
+		// behavior explicit — a tick missed while the orchestrator was down is
+		// simply skipped (no catch-up), since cronMatches only matches "now".
+		if s.LastRunAt != nil && s.LastRunAt.Truncate(time.Minute).Equal(now.Truncate(time.Minute)) {
+			continue
+		}
+		copy := *s
+		toRun = append(toRun, &copy)
 	}
 	cr.mu.RUnlock()
 
