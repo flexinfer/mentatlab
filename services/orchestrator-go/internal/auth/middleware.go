@@ -100,9 +100,12 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 				m.unauthorized(w, "invalid api key")
 				return
 			}
-			// Inject API key owner as claims
+			// Inject API key owner + scopes as claims so downstream scope
+			// enforcement can authorize per-endpoint.
 			claims := &Claims{
-				Email: apiKey.Owner,
+				Email:      apiKey.Owner,
+				Scopes:     apiKey.Scopes,
+				AuthMethod: AuthMethodAPIKey,
 			}
 			ctx := context.WithValue(r.Context(), claimsContextKey, claims)
 			// Also set X-User-Email header so getOwnerFromRequest works
@@ -144,8 +147,41 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		}
 
 		// Add claims to context
+		claims.AuthMethod = AuthMethodOIDC
 		ctx := context.WithValue(r.Context(), claimsContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// ScopeEnforcementMiddleware enforces API-key scopes per request method:
+// mutating methods (POST/PUT/PATCH/DELETE) require the "write" scope, reads
+// require "read". It applies ONLY to API-key principals — OIDC users and
+// auth-disabled requests are governed by roles/groups, not scopes. For
+// backward compatibility, API keys that declare no scopes are treated as
+// unrestricted (legacy behavior); only keys that declare scopes are enforced.
+func ScopeEnforcementMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := GetClaims(r.Context())
+		if claims == nil || claims.AuthMethod != AuthMethodAPIKey || len(claims.Scopes) == 0 {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		required := ScopeRead
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			required = ScopeWrite
+		}
+
+		if !claims.HasScope(required) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "api key missing required scope: " + required,
+			})
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
