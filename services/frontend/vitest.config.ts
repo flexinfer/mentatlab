@@ -25,8 +25,23 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'lcov'],
-      include: ['src/components/**', 'src/stores/**', 'src/hooks/**'],
+      include: [
+        'src/components/**',
+        'src/stores/**',
+        'src/hooks/**',
+        'src/services/streaming/**',
+        'src/transport/**',
+      ],
       exclude: ['**/__tests__/**', '**/*.test.*', '**/*.spec.*', '**/e2e/**'],
+      // Per-file floors for the critical streaming/transport modules, set just
+      // below current coverage so they cannot silently regress. Only the keyed
+      // files are gated; untested neighbors are reported but not enforced.
+      // Ratchet up as coverage improves.
+      thresholds: {
+        'src/services/streaming/parse.ts': { statements: 55, branches: 80, functions: 50, lines: 55 },
+        'src/services/streaming/orchestratorSSE.ts': { statements: 40, branches: 50, functions: 75, lines: 40 },
+        'src/transport/event-pipeline.ts': { statements: 70, branches: 70, functions: 70, lines: 70 },
+      },
     },
   },
 });
