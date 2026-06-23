@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -564,7 +565,26 @@ func (s *MemoryStore) GetEventsSince(ctx context.Context, runID string, lastEven
 		return result, nil
 	}
 
-	// Find events after lastEventID
+	// Numeric sequence comparison, matching the redis store: return events
+	// whose sequence is strictly greater than lastEventID. This makes "0" (and
+	// any id at/below the first) replay from the beginning, so SSE Last-Event-ID
+	// resumption behaves identically on both backends. Falls back to
+	// exact-match-then-after for non-numeric ids.
+	if lastSeq, err := strconv.ParseInt(lastEventID, 10, 64); err == nil {
+		var result []*types.Event
+		for _, evt := range run.events {
+			seq, perr := strconv.ParseInt(evt.ID, 10, 64)
+			if perr != nil {
+				continue
+			}
+			if seq > lastSeq {
+				result = append(result, evt)
+			}
+		}
+		return result, nil
+	}
+
+	// Find events after lastEventID (non-numeric id fallback).
 	var result []*types.Event
 	found := false
 	for _, evt := range run.events {
