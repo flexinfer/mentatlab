@@ -8,6 +8,7 @@
 - Product spec: `20-product-spec.md`
 - **Implementation plan: `30-implementation-plan.md`** - M0-M16 milestone plan
 - **M16 issue checklist: `31-m16-issue-checklist.md`** - PR-sized execution board
+- **Feature robustness plan: `60-plan-feature-robustness-2026-06-23.md`** - Full-stack vertical hardening (resilience/validation/testing/security); store plan_id `plan-mentatlab-feature-robustness-full-stack-vertical-hardening-cc0ae3`. Kill-test results: `robustness-killtest-notes.md`.
 - **Decisions: `40-decisions.md`** - Go-first, archive aspirational specs, keep agents
 - Worklog: `50-worklog.md`
 
