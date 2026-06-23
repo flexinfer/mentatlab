@@ -55,6 +55,9 @@ func (s *Server) setupRoutes() {
 	// Apply auth middleware to API subrouter if configured
 	if s.authMiddleware != nil {
 		api.Use(s.authMiddleware.Handler)
+		// Enforce API-key scopes per method (write for mutations, read for GETs).
+		// No-op for OIDC users and unscoped/legacy keys.
+		api.Use(auth.ScopeEnforcementMiddleware)
 	}
 
 	// Audit logging for authenticated API operations

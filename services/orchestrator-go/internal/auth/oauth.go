@@ -186,8 +186,38 @@ type Claims struct {
 	Expiry        time.Time `json:"exp,omitempty"`
 	IssuedAt      time.Time `json:"iat,omitempty"`
 
+	// Scopes carries the authorization scopes for the principal. Populated for
+	// API-key authentication; empty for OIDC users (governed by roles/groups).
+	Scopes []string `json:"scopes,omitempty"`
+	// AuthMethod records how the principal authenticated ("apikey" or "oidc").
+	AuthMethod string `json:"auth_method,omitempty"`
+
 	// Raw is the underlying ID token
 	Raw *oidc.IDToken `json:"-"`
+}
+
+// Auth method markers and API-key scope identifiers.
+const (
+	AuthMethodOIDC   = "oidc"
+	AuthMethodAPIKey = "apikey"
+
+	ScopeRead  = "read"
+	ScopeWrite = "write"
+	ScopeAdmin = "admin"
+)
+
+// HasScope reports whether the principal holds the given scope. A "*" or
+// "admin" scope grants everything, and "write" implies "read".
+func (c *Claims) HasScope(scope string) bool {
+	for _, s := range c.Scopes {
+		if s == scope || s == "*" || s == ScopeAdmin {
+			return true
+		}
+		if scope == ScopeRead && s == ScopeWrite {
+			return true
+		}
+	}
+	return false
 }
 
 // HasRole checks if the user has a specific role.
