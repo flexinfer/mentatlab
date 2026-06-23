@@ -281,6 +281,15 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownGrace)
 	defer cancel()
 
+	// Stop accepting new runs and drain in-flight runs (bounded by the grace
+	// period). Anything still running when the grace expires is reconciled by
+	// startup recovery on the next boot.
+	if err := sched.Shutdown(ctx); err != nil {
+		logger.Warn("scheduler drain did not complete within grace; remaining runs will be recovered on next start", "error", err)
+	} else {
+		logger.Info("scheduler drained")
+	}
+
 	// Shutdown tracer
 	if tracingProvider != nil {
 		if err := tracingProvider.Shutdown(ctx); err != nil {

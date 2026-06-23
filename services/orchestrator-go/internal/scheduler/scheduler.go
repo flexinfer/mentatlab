@@ -3,6 +3,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -20,6 +21,10 @@ import (
 )
 
 var tracer = otel.Tracer("mentatlab/scheduler")
+
+// ErrSchedulerDraining is returned by EnqueueRun when the scheduler is shutting
+// down and no longer accepting new runs.
+var ErrSchedulerDraining = errors.New("scheduler is draining; not accepting new runs")
 
 // CommandResolver resolves a NodeSpec to a command line to execute.
 type CommandResolver func(node *types.NodeSpec) []string
@@ -51,6 +56,7 @@ type Scheduler struct {
 	resolveCmd         CommandResolver
 	runs               map[string]*runContext
 	runsMu             sync.Mutex
+	draining           bool          // set during graceful shutdown; rejects new runs
 	sem                chan struct{} // Parallelism limiter
 	defaultMaxRetries  int
 	defaultBackoffSecs int
@@ -201,6 +207,10 @@ func (s *Scheduler) EnqueueRun(ctx context.Context, runID, name string, plan *ty
 	s.runsMu.Lock()
 	defer s.runsMu.Unlock()
 
+	if s.draining {
+		return ErrSchedulerDraining
+	}
+
 	if _, exists := s.runs[runID]; exists {
 		return nil // Already enqueued
 	}
@@ -329,6 +339,41 @@ func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
 		s.runLoop(runCtx, rctx)
 	}()
 
+	return nil
+}
+
+// ActiveRuns returns the number of runs currently tracked by the scheduler.
+func (s *Scheduler) ActiveRuns() int {
+	s.runsMu.Lock()
+	defer s.runsMu.Unlock()
+	return len(s.runs)
+}
+
+// Shutdown stops accepting new runs and waits for in-flight runs to finish,
+// bounded by ctx. It is used for graceful shutdown so a rolling deploy does
+// not abandon active runs. Runs still in flight when ctx expires are left for
+// startup recovery to reconcile on the next boot (see runstore.RecoverInterruptedRuns).
+func (s *Scheduler) Shutdown(ctx context.Context) error {
+	// Stop accepting new runs and snapshot the in-flight set's done channels.
+	s.runsMu.Lock()
+	s.draining = true
+	dones := make([]chan struct{}, 0, len(s.runs))
+	for _, rctx := range s.runs {
+		dones = append(dones, rctx.done)
+	}
+	s.runsMu.Unlock()
+
+	if len(dones) > 0 {
+		s.logger.Info("draining in-flight runs before shutdown", slog.Int("active_runs", len(dones)))
+	}
+
+	for _, done := range dones {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	return nil
 }
 
