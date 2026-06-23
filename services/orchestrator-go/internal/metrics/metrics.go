@@ -132,6 +132,16 @@ var (
 		[]string{"status"},
 	)
 
+	// RunStoreFallbackTotal counts Redis-to-memory fallback events.
+	RunStoreFallbackTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Namespace: "mentatlab",
+			Subsystem: "orchestrator",
+			Name:      "runstore_fallback_total",
+			Help:      "Total number of Redis-to-memory store fallback events",
+		},
+	)
+
 	// RunStoreOperations counts runstore operations.
 	RunStoreOperations = promauto.NewCounterVec(
 		prometheus.CounterOpts{
@@ -172,5 +182,17 @@ var (
 			Help:      "SSE connection duration in seconds",
 			Buckets:   []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
 		},
+	)
+
+	// CircuitBreakerState tracks circuit breaker state per backend.
+	// Values: 0=closed, 1=half-open, 2=open
+	CircuitBreakerState = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "mentatlab",
+			Subsystem: "orchestrator",
+			Name:      "circuit_breaker_state",
+			Help:      "Circuit breaker state (0=closed, 1=half-open, 2=open)",
+		},
+		[]string{"backend"},
 	)
 )

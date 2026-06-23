@@ -74,10 +74,10 @@ pdm run pytest  # This uses pytest.ini which sets pythonpath
    ```bash
    # Gateway
    cd services/gateway && pdm run pytest
-   
-   # Orchestrator  
+
+   # Orchestrator
    cd services/orchestrator && pdm run pytest
-   
+
    # Frontend
    cd services/frontend && npm test
    ```
@@ -156,7 +156,7 @@ npm install
    ```bash
    # Run only specific test file
    pdm run pytest tests/test_routes.py
-   
+
    # Run tests matching pattern
    pdm run pytest -k "test_flow"
    ```
@@ -165,10 +165,10 @@ npm install
    ```bash
    # Show print statements
    pdm run pytest -s
-   
+
    # Stop on first failure
    pdm run pytest -x
-   
+
    # Verbose output
    pdm run pytest -vv
    ```

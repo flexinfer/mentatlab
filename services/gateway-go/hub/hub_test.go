@@ -653,6 +653,84 @@ func TestWebSocketAuthentication(t *testing.T) {
 	})
 }
 
+func TestConfigurablePingPong(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr: "localhost:6379",
+			Logger:    testLogger(),
+		})
+		if hub.pongWait != 60*time.Second {
+			t.Errorf("expected default pongWait 60s, got %v", hub.pongWait)
+		}
+		expectedPing := (60 * time.Second * 9) / 10
+		if hub.pingPeriod != expectedPing {
+			t.Errorf("expected default pingPeriod %v, got %v", expectedPing, hub.pingPeriod)
+		}
+	})
+
+	t.Run("custom values", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr:  "localhost:6379",
+			Logger:     testLogger(),
+			PongWait:   120 * time.Second,
+			PingPeriod: 100 * time.Second,
+		})
+		if hub.pongWait != 120*time.Second {
+			t.Errorf("expected pongWait 120s, got %v", hub.pongWait)
+		}
+		if hub.pingPeriod != 100*time.Second {
+			t.Errorf("expected pingPeriod 100s, got %v", hub.pingPeriod)
+		}
+	})
+
+	t.Run("auto-derive pingPeriod from pongWait", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr: "localhost:6379",
+			Logger:    testLogger(),
+			PongWait:  90 * time.Second,
+			// PingPeriod not set → should be 90% of PongWait
+		})
+		expected := (90 * time.Second * 9) / 10
+		if hub.pingPeriod != expected {
+			t.Errorf("expected auto-derived pingPeriod %v, got %v", expected, hub.pingPeriod)
+		}
+	})
+
+	t.Run("normalizes invalid pingPeriod from config", func(t *testing.T) {
+		hub := NewHubWithConfig(&HubConfig{
+			RedisAddr:  "localhost:6379",
+			Logger:     testLogger(),
+			PongWait:   30 * time.Second,
+			PingPeriod: 30 * time.Second,
+		})
+		expected := (30 * time.Second * 9) / 10
+		if hub.pingPeriod != expected {
+			t.Errorf("expected normalized pingPeriod %v, got %v", expected, hub.pingPeriod)
+		}
+	})
+}
+
+func TestRedisBackoff(t *testing.T) {
+	tests := []struct {
+		attempt  int
+		expected time.Duration
+	}{
+		{1, 1 * time.Second},
+		{2, 2 * time.Second},
+		{3, 4 * time.Second},
+		{4, 8 * time.Second},
+		{5, 16 * time.Second},
+		{6, 30 * time.Second}, // capped
+		{10, 30 * time.Second},
+	}
+	for _, tt := range tests {
+		got := redisBackoff(tt.attempt)
+		if got != tt.expected {
+			t.Errorf("redisBackoff(%d) = %v, want %v", tt.attempt, got, tt.expected)
+		}
+	}
+}
+
 func TestWebSocketOriginValidation(t *testing.T) {
 	tests := []struct {
 		name           string

@@ -28,7 +28,8 @@ export type RunStatus =
   | "running"
   | "succeeded"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "waiting_approval";
 
 // --- Control Flow Types ---
 export interface ConditionalBranch {
@@ -57,6 +58,27 @@ export interface SubflowConfig {
   output_mapping?: Record<string, string>;
 }
 
+export interface GateConfig {
+  description?: string;
+  timeout?: number;      // Timeout in seconds
+  auto_reject?: boolean; // Auto-reject on timeout
+}
+
+export type BackoffType = 'fixed' | 'exponential' | 'linear';
+
+export interface RetryPolicy {
+  max_retries: number;
+  backoff_type?: BackoffType;
+  backoff_base?: number;  // Base duration in seconds
+  backoff_max?: number;   // Max backoff in seconds
+}
+
+export interface MCPConfig {
+  tool_name: string;
+  server?: string;
+  tool_args?: Record<string, unknown>;
+}
+
 // --- Plan Definitions ---
 
 /**
@@ -81,6 +103,7 @@ export interface PlanNode {
   env?: Record<string, string>; // Environment variables
   inputs?: string[]; // Node IDs this depends on
   timeout?: number; // Timeout in nanoseconds (Go duration)
+  heartbeat_timeout?: number; // Heartbeat timeout in nanoseconds (Go duration)
   retries?: number; // Max retry attempts (backend: NodeSpec.Retries)
 
   // Legacy fields (UI-specific, may not be sent to backend)
@@ -93,6 +116,13 @@ export interface PlanNode {
   conditional?: ConditionalConfig;
   for_each?: ForEachConfig;
   subflow?: SubflowConfig;
+  gate?: GateConfig;
+
+  // Per-node retry policy (overrides global defaults)
+  retry_policy?: RetryPolicy;
+
+  // Structured MCP metadata for consistent direct-run and persisted-flow execution paths
+  mcp?: MCPConfig;
 }
 
 export interface PlanEdge {
@@ -106,6 +136,7 @@ export interface PlanEdge {
 export interface RunPlan {
   nodes: PlanNode[];
   edges: PlanEdge[];
+  timeout?: string;  // Go duration string, e.g. "30m", "1h"
   metadata?: Record<string, unknown>;
 }
 
@@ -118,7 +149,10 @@ export interface Run {
   started_at?: string;
   finished_at?: string;
   owner?: string;
+  trace_id?: string;
   plan?: RunPlan;
+  flow_id?: string;
+  parent_run_id?: string;
   metadata?: Record<string, unknown>;
   nodes?: Record<string, NodeStatus>;
   summary?: Record<string, unknown>;
@@ -136,6 +170,7 @@ export interface NodeStatus {
 export interface CreateRunRequest {
   name?: string;
   plan: RunPlan;
+  auto_start?: boolean;
   mode?: RunMode;
   options?: {
     dryRun?: boolean;

@@ -25,10 +25,10 @@ def setup_application():
             if '://' in redis_url:
                 protocol, rest = redis_url.split('://', 1)
                 redis_url = f"{protocol}://:{os.getenv('REDIS_PASSWORD')}@{rest}"
-        
+
         redis_manager = RedisStateManager(redis_url)
         logger.info("Redis manager initialized")
-        
+
         # Setup health check endpoints - try different ways to access FastAPI
         try:
             # Try newer NiceGUI API first
@@ -42,11 +42,11 @@ def setup_application():
             logger.info("Health check endpoints configured")
         except Exception as health_error:
             logger.warning(f"Could not setup health endpoints: {health_error}")
-        
+
         # Check UI mode from environment variable
         ui_mode = os.getenv('PSYCHE_UI_MODE', 'legacy').lower()
         logger.info(f"UI mode: {ui_mode}")
-        
+
         # Import and create appropriate UI
         if ui_mode == 'streaming':
             from ui.streaming_main_window import create_ui
@@ -54,13 +54,13 @@ def setup_application():
         else:
             from ui.main_window import create_ui
             logger.info("Using legacy UI mode")
-        
+
         # Create main UI
         create_ui()
         logger.info("UI initialized")
-        
+
         return redis_manager
-        
+
     except Exception as e:
         logger.error(f"Application setup failed: {e}")
         raise
@@ -86,10 +86,10 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == '__main__':
     # Setup application components
     redis_manager = setup_application()
-    
+
     # Configure server settings
     logger.info(f"Starting Psyche Simulation on {API_HOST}:{API_PORT}")
-    
+
     ui.run(
         title='Psyche Simulation',
         favicon='🧠',

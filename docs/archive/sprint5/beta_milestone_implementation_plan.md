@@ -1,9 +1,9 @@
 # Beta Milestone Implementation Plan
 ## Multimodal Support & Streaming Inference API
 
-*Version: 1.0*  
-*Date: August 2, 2025*  
-*Timeline: Q3-Q4 2025 (16 weeks)*  
+*Version: 1.0*
+*Date: August 2, 2025*
+*Timeline: Q3-Q4 2025 (16 weeks)*
 *Dependencies: Sprint 5 K8s Infrastructure*
 
 ---
@@ -39,9 +39,9 @@ definitions:
   pin:
     properties:
       type:
-        enum: 
+        enum:
           - "string"
-          - "number" 
+          - "number"
           - "boolean"
           - "json"
           - "binary"
@@ -76,19 +76,19 @@ definitions:
 # services/storage/app/storage_manager.py
 class StorageManager:
     def __init__(self):
-        self.s3_client = boto3.client('s3', 
+        self.s3_client = boto3.client('s3',
             endpoint_url=os.getenv('S3_ENDPOINT'),
             aws_access_key_id=os.getenv('S3_ACCESS_KEY'),
             aws_secret_access_key=os.getenv('S3_SECRET_KEY')
         )
         self.bucket_name = os.getenv('S3_BUCKET', 'mentatlab-media')
-    
-    def generate_key(self, workspace_id: str, flow_id: str, 
-                    execution_id: str, node_id: str, 
+
+    def generate_key(self, workspace_id: str, flow_id: str,
+                    execution_id: str, node_id: str,
                     pin_name: str, ext: str) -> str:
         timestamp = int(time.time() * 1000)
         return f"{workspace_id}/{flow_id}/{execution_id}/{node_id}/{pin_name}_{timestamp}.{ext}"
-    
+
     async def upload(self, file_data: bytes, metadata: dict) -> dict:
         # Validate file type and size
         # Upload to S3 with metadata
@@ -112,7 +112,7 @@ class StorageManager:
 class MultimodalEdgeProcessor:
     async def process_edge_data(self, edge: Edge, data: Any) -> Any:
         source_pin = self.get_source_pin(edge)
-        
+
         if source_pin.type in ['audio', 'image', 'video']:
             if isinstance(data, dict) and 'ref' in data:
                 # Validate reference
@@ -121,7 +121,7 @@ class MultimodalEdgeProcessor:
                 # Upload raw data
                 ref = await self.storage.upload(data, source_pin.metadata)
                 return self.create_reference(ref, source_pin.type)
-        
+
         return data  # Traditional data types
 ```
 
@@ -137,17 +137,17 @@ class MultimodalEdgeProcessor:
 **K8s Job Configuration Updates:**
 ```python
 # services/orchestrator/app/k8s_scheduler.py
-def create_multimodal_job(self, agent_manifest: dict, 
+def create_multimodal_job(self, agent_manifest: dict,
                          input_refs: dict) -> V1Job:
     # Calculate resource requirements based on input
     resources = self.calculate_resources(agent_manifest, input_refs)
-    
+
     # Add volume mounts for large file processing
     volumes = self.create_ephemeral_volumes(resources)
-    
+
     # Configure environment variables with S3 credentials
     env_vars = self.create_storage_env_vars()
-    
+
     return self.create_k8s_job(
         resources=resources,
         volumes=volumes,
@@ -178,8 +178,8 @@ class StreamingConnectionManager(ConnectionManager):
         super().__init__()
         self.stream_registry = StreamRegistry()
         self.buffer_manager = BufferManager()
-    
-    async def create_stream(self, agent_id: str, 
+
+    async def create_stream(self, agent_id: str,
                           pin_name: str) -> StreamSession:
         stream_id = generate_stream_id()
         session = StreamSession(
@@ -190,12 +190,12 @@ class StreamingConnectionManager(ConnectionManager):
         )
         await self.stream_registry.register(session)
         return session
-    
-    async def stream_chunk(self, stream_id: str, 
+
+    async def stream_chunk(self, stream_id: str,
                          chunk: StreamChunk) -> None:
         # Buffer management for reliability
         await self.buffer_manager.add(stream_id, chunk)
-        
+
         # Forward to subscribers
         subscribers = await self.get_subscribers(stream_id)
         for sub in subscribers:
@@ -255,12 +255,12 @@ async def sse_stream(stream_id: str):
     async def event_generator():
         async with manager.subscribe(stream_id) as subscription:
             yield f"event: stream_start\ndata: {json.dumps({'stream_id': stream_id})}\n\n"
-            
+
             async for chunk in subscription:
                 yield f"event: stream_data\ndata: {json.dumps(chunk.to_dict())}\n\n"
-            
+
             yield f"event: stream_end\ndata: {json.dumps({'stream_id': stream_id})}\n\n"
-    
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
@@ -284,10 +284,10 @@ async def sse_stream(stream_id: str):
 ```python
 # sdk/python/mentatlab/streaming.py
 class StreamingAgent(BaseAgent):
-    async def stream_output(self, pin_name: str, 
+    async def stream_output(self, pin_name: str,
                           data_iterator: AsyncIterator[Any]):
         stream_id = await self.init_stream(pin_name)
-        
+
         try:
             async for chunk in data_iterator:
                 await self.send_chunk(stream_id, chunk)
@@ -364,15 +364,15 @@ resources:
 class AudioTranscriber(StreamingAgent):
     def __init__(self):
         self.model = whisper.load_model("base")
-    
+
     async def process(self, inputs: dict) -> dict:
         audio_ref = inputs["audio"]
         audio_data = await self.download_media(audio_ref)
-        
+
         # Stream transcription segments
         async for segment in self.transcribe_streaming(audio_data):
             await self.stream_output("transcript", segment)
-        
+
         return {"status": "completed"}
 ```
 
@@ -456,7 +456,7 @@ tests:
       - classify_image: "vit-base"
       - generate_description: "gpt-4"
       - validate_output: "json_schema"
-  
+
   - name: "Video Analysis Pipeline"
     flow:
       - upload_video: "test_video.mp4"
@@ -506,7 +506,7 @@ development:
   s3_storage:
     capacity: "50TB"
     bandwidth: "10Gbps"
-  
+
 production:
   kubernetes:
     nodes: 20
@@ -548,7 +548,7 @@ class MultimodalScheduler(K8sScheduler):
             job = self.create_multimodal_job(manifest, resources)
         else:
             job = super().schedule_agent(manifest, inputs)
-        
+
         return self.submit_job(job)
 ```
 
@@ -575,7 +575,7 @@ validator.add_multimodal_rules()
 ### Migration Path
 
 1. **Phase 1**: Feature flags for multimodal types
-2. **Phase 2**: Opt-in streaming for compatible agents  
+2. **Phase 2**: Opt-in streaming for compatible agents
 3. **Phase 3**: Gradual agent migration
 4. **Phase 4**: Full platform capability
 
@@ -602,13 +602,13 @@ rollback_stages:
       - Set ENABLE_MULTIMODAL=false
       - Route to text-only endpoints
       - Maintain service availability
-  
+
   - name: "Revert Schema Changes"
     steps:
       - Deploy previous schema version
       - Run migration scripts
       - Validate existing agents
-  
+
   - name: "Full Rollback"
     steps:
       - Revert to Sprint 5 baseline
@@ -660,24 +660,24 @@ rollback_stages:
 test_pyramid:
   unit_tests:
     coverage: "> 90%"
-    focus: 
+    focus:
       - Pin validation
       - Reference generation
       - Stream management
-  
+
   integration_tests:
     coverage: "> 80%"
     focus:
       - End-to-end flows
       - Agent communication
       - Storage integration
-  
+
   performance_tests:
     scenarios:
       - Load testing
       - Stress testing
       - Endurance testing
-  
+
   acceptance_tests:
     - User workflows
     - API compatibility
@@ -732,16 +732,16 @@ dependencies:
   storage:
     - minio: "RELEASE.2025-01-01"
     - boto3: "1.26.0"
-  
+
   streaming:
     - websockets: "11.0"
     - sse-starlette: "1.6.0"
-  
+
   ml_models:
     - transformers: "4.35.0"
     - whisper: "20230314"
     - ultralytics: "8.0.0"
-  
+
   infrastructure:
     - kubernetes: "1.28+"
     - redis: "7.0+"
@@ -759,11 +759,11 @@ streaming:
   POST /api/v1/streams/init:
     description: Initialize streaming session
     returns: {stream_id, ws_url}
-  
+
   GET /api/v1/streams/{stream_id}/sse:
     description: SSE streaming endpoint
     produces: text/event-stream
-  
+
   WS /ws/streams/{stream_id}:
     description: WebSocket streaming
     protocol: JSON messages
@@ -772,7 +772,7 @@ storage:
   POST /api/v1/storage/upload:
     description: Upload multimodal file
     returns: {ref, metadata}
-  
+
   GET /api/v1/storage/{ref}:
     description: Download file by reference
     returns: Binary data
@@ -780,7 +780,7 @@ storage:
 
 ---
 
-**Document Version:** 1.0  
-**Created:** August 2, 2025  
-**Review Schedule:** Weekly during implementation  
+**Document Version:** 1.0
+**Created:** August 2, 2025
+**Review Schedule:** Weekly during implementation
 **Approval:** Required from Platform, Security, and Product leads

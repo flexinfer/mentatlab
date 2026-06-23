@@ -5,6 +5,7 @@ This guide covers everything you need to build agents for the MentatLab orchestr
 ## Overview
 
 Agents are containerized units of work that:
+
 - Execute tasks within a DAG (directed acyclic graph) workflow
 - Communicate via NDJSON events over stdout
 - Run in Kubernetes Jobs or subprocess mode
@@ -50,23 +51,23 @@ Every agent must be registered with a manifest. Here's the complete schema:
 
 ### Required Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Unique identifier (e.g., `myorg.agent-name`) |
-| `name` | string | Human-readable display name |
-| `version` | string | Semantic version (e.g., `1.0.0`) |
+| Field     | Type   | Description                                  |
+| --------- | ------ | -------------------------------------------- |
+| `id`      | string | Unique identifier (e.g., `myorg.agent-name`) |
+| `name`    | string | Human-readable display name                  |
+| `version` | string | Semantic version (e.g., `1.0.0`)             |
 
 ### Optional Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `image` | string | Container image URL for K8s execution |
-| `command` | string[] | Entrypoint command override |
-| `capabilities` | string[] | Tags for filtering/discovery |
-| `schema` | object | JSON Schema for input/output validation |
-| `description` | string | Agent description |
-| `author` | string | Author name/email |
-| `metadata` | object | Custom key-value pairs |
+| Field          | Type     | Description                             |
+| -------------- | -------- | --------------------------------------- |
+| `image`        | string   | Container image URL for K8s execution   |
+| `command`      | string[] | Entrypoint command override             |
+| `capabilities` | string[] | Tags for filtering/discovery            |
+| `schema`       | object   | JSON Schema for input/output validation |
+| `description`  | string   | Agent description                       |
+| `author`       | string   | Author name/email                       |
+| `metadata`     | object   | Custom key-value pairs                  |
 
 ---
 
@@ -78,7 +79,7 @@ Agents communicate with the orchestrator via **newline-delimited JSON (NDJSON)**
 
 ```json
 {
-  "type": "log|checkpoint|metric|node_status|result",
+  "type": "log|checkpoint|metric|output|result|error|progress|heartbeat",
   "level": "debug|info|warn|error",
   "message": "Human-readable message",
   "data": { "key": "value" },
@@ -90,6 +91,7 @@ Agents communicate with the orchestrator via **newline-delimited JSON (NDJSON)**
 ### Event Types
 
 #### 1. Log Events
+
 Used for general logging and debugging.
 
 ```json
@@ -98,15 +100,22 @@ Used for general logging and debugging.
 ```
 
 #### 2. Checkpoint Events
+
 Report progress through execution stages.
 
 ```json
 {"type":"checkpoint","data":{"stage":"start","progress":0.0},"ts":"2024-01-15T10:30:00Z"}
 {"type":"checkpoint","data":{"stage":"processing","progress":0.5,"items_processed":50},"ts":"2024-01-15T10:30:05Z"}
+{"type":"checkpoint","data":{"stage":"processing","progress":0.5,"state":{"cursor":"page-42"}},"ts":"2024-01-15T10:30:05Z"}
 {"type":"checkpoint","data":{"stage":"end","progress":1.0},"ts":"2024-01-15T10:30:10Z"}
 ```
 
+Checkpoint `state` is optional resumable JSON. The orchestrator persists the
+latest `state` per run node, rejects states larger than 1 MiB, and injects the
+last state as `context.resume_state` plus `RESUME_STATE` when retrying the node.
+
 #### 3. Metric Events
+
 Emit metrics for monitoring and cost tracking.
 
 ```json
@@ -114,14 +123,74 @@ Emit metrics for monitoring and cost tracking.
 {"type":"metric","data":{"name":"api_latency_ms","value":250},"ts":"2024-01-15T10:30:10Z"}
 ```
 
-#### 4. Result Events
+#### 4. Output Events
+
+Emit structured outputs for downstream nodes in a DAG. The orchestrator captures these and stores them via `runstore.SetNodeOutputs()`. Downstream nodes access values through the expression environment as `inputs.nodeId.key`.
+
+```json
+{"type":"output","data":{"key":"summary","value":"The quick brown fox..."},"ts":"2024-01-15T10:30:10Z"}
+{"type":"output","data":{"key":"word_count","value":150},"ts":"2024-01-15T10:30:10Z"}
+```
+
+Each output event must have `key` (string) and `value` (any JSON type) in its `data` field.
+
+#### 5. Result Events
+
 Final output of the agent (optional, can also use exit code + stdout).
 
 ```json
-{"type":"result","data":{"summary":"The quick brown fox...","word_count":150},"ts":"2024-01-15T10:30:10Z"}
+{
+  "type": "result",
+  "data": { "summary": "The quick brown fox...", "word_count": 150 },
+  "ts": "2024-01-15T10:30:10Z"
+}
 ```
 
----
+#### 6. Error Events
+
+Emit structured errors to classify failures as transient (retryable) or permanent. The orchestrator uses the `retryable` hint to decide whether to retry the node or fail permanently.
+
+```json
+{"type":"error","level":"error","message":"Model not ready","data":{"code":"MODEL_NOT_READY","message":"Model not ready","retryable":true},"ts":"2024-01-15T10:30:10Z"}
+{"type":"error","level":"error","message":"Invalid input","data":{"code":"INVALID_INPUT","message":"Missing required field 'text'","retryable":false},"ts":"2024-01-15T10:30:10Z"}
+```
+
+**Error fields** (inside `data`):
+
+| Field       | Type    | Description                                                                       |
+| ----------- | ------- | --------------------------------------------------------------------------------- |
+| `code`      | string  | Machine-readable error code (e.g., `MODEL_NOT_READY`, `TIMEOUT`, `INVALID_INPUT`) |
+| `message`   | string  | Human-readable description                                                        |
+| `retryable` | boolean | `true` = transient failure (scheduler retries), `false` = permanent failure       |
+| `details`   | object  | Optional additional context                                                       |
+
+**Retry contract**: When an agent emits `{"type":"error","data":{"retryable":true}}` and then exits with a non-zero code, the orchestrator rewrites the exit code to `3` (the transient-retry convention), which triggers the node's retry policy. Non-retryable errors leave the exit code unchanged and the node fails permanently.
+
+#### 7. Progress Events
+
+Emit runtime progress for long-running work. Mission Control can render these as node progress bars.
+
+```json
+{"type":"progress","level":"info","message":"Processing batch 4/10","data":{"percent":40,"message":"Processing batch 4/10","eta_seconds":18},"ts":"2024-01-15T10:30:10Z"}
+```
+
+**Progress fields** (inside `data`):
+
+| Field         | Type   | Description                                      |
+| ------------- | ------ | ------------------------------------------------ |
+| `percent`     | number | Required completion percentage from `0` to `100` |
+| `message`     | string | Optional human-readable progress status          |
+| `eta_seconds` | number | Optional estimated seconds remaining             |
+| `current`     | number | Optional current step for compatibility          |
+| `total`       | number | Optional total steps for compatibility           |
+
+#### 8. Heartbeat Events
+
+Emit heartbeat events during long-running work so the orchestrator can detect stalled agents after the configured node heartbeat timeout.
+
+```json
+{"type":"heartbeat","ts":"2024-01-15T10:30:10Z"}
+```
 
 ## Python SDK
 
@@ -140,6 +209,9 @@ from agents.common.emit import (
     log_info,
     log_error,
     checkpoint,
+    emit_error,
+    emit_heartbeat,
+    emit_progress,
     emit_event,
     set_correlation_id,
 )
@@ -157,13 +229,20 @@ def main():
         result = process_input()
 
         # Report progress
-        checkpoint("processing", 0.5, {"items": 50})
+        emit_progress(percent=50, message="Processing inputs", eta_seconds=10)
+        emit_heartbeat()
 
         # Emit final result
         emit_event(type="result", data={"output": result})
         checkpoint("end", 1.0)
 
     except Exception as e:
+        emit_error(
+            "INTERNAL_ERROR",
+            str(e),
+            retryable=False,
+            details={"traceback": traceback.format_exc()},
+        )
         log_error(f"Agent failed: {e}", {"traceback": traceback.format_exc()})
         checkpoint("error", 0.0, {"error": str(e)})
         return 1
@@ -193,7 +272,21 @@ emit_event(
 # Convenience functions
 log_info(message: str, data: Optional[Dict] = None) -> None
 log_error(message: str, data: Optional[Dict] = None) -> None
-checkpoint(stage: str, progress: float, extra: Optional[Dict] = None) -> None
+checkpoint(stage: str, progress: float, extra: Optional[Dict] = None, state: Optional[Any] = None) -> None
+emit_progress(
+    current: Optional[int] = None,
+    total: Optional[int] = None,
+    percent: Optional[float] = None,
+    message: Optional[str] = None,
+    eta_seconds: Optional[float] = None,
+) -> None
+emit_heartbeat() -> None
+emit_error(
+    code: str,
+    message: str,
+    retryable: bool = False,
+    details: Optional[Dict] = None,
+) -> None
 ```
 
 ---
@@ -231,6 +324,18 @@ func logInfo(message string, data map[string]interface{}) {
     emit(Event{Type: "log", Level: "info", Message: message, Data: data})
 }
 
+func emitError(code, message string, retryable bool, details map[string]interface{}) {
+    payload := map[string]interface{}{
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+    }
+    if len(details) > 0 {
+        payload["details"] = details
+    }
+    emit(Event{Type: "error", Level: "error", Message: message, Data: payload})
+}
+
 func checkpoint(stage string, progress float64, extra map[string]interface{}) {
     data := map[string]interface{}{
         "stage":    stage,
@@ -242,11 +347,26 @@ func checkpoint(stage string, progress float64, extra map[string]interface{}) {
     emit(Event{Type: "checkpoint", Data: data})
 }
 
+func emitOutput(key string, value interface{}) {
+    emit(Event{Type: "output", Data: map[string]interface{}{"key": key, "value": value}})
+}
+
 func main() {
     checkpoint("start", 0.0, nil)
     logInfo("Processing started", map[string]interface{}{"args": os.Args[1:]})
 
+    // Permanent failure example
+    if len(os.Args) < 2 {
+        emitError("INVALID_INPUT", "missing required CLI argument", false, nil)
+        os.Exit(1)
+    }
+
+    // Transient failure example:
+    // emitError("MODEL_NOT_READY", "model is still loading", true, map[string]interface{}{"model": "my-model"})
+    // os.Exit(1)
+
     // Do work...
+    emitOutput("result", "processed data")
 
     checkpoint("end", 1.0, nil)
 }
@@ -254,47 +374,47 @@ func main() {
 
 ---
 
-## JavaScript/Node.js SDK
+## TypeScript/Node.js SDK
 
-```javascript
-#!/usr/bin/env node
+The TypeScript SDK lives in `sdk/typescript` and publishes as `@mentatlab/agent-sdk`.
+It provides typed NDJSON event helpers plus a `createAgent({ onInput, onCancel })`
+factory for Node.js agents.
 
-function emit(event) {
-  const fullEvent = {
-    ...event,
-    ts: event.ts || new Date().toISOString(),
-  };
-  console.log(JSON.stringify(fullEvent));
-}
+```typescript
+import {
+  createAgent,
+  emitHeartbeat,
+  emitOutput,
+  emitProgress,
+} from "@mentatlab/agent-sdk";
 
-function logInfo(message, data = {}) {
-  emit({ type: 'log', level: 'info', message, data });
-}
+const agent = createAgent({
+  agentId: "example.typescript",
+  version: "0.1.0",
+  async onInput(spec, context, runtime) {
+    emitProgress({ percent: 25, message: "Starting work" });
 
-function logError(message, data = {}) {
-  emit({ type: 'log', level: 'error', message, data });
-}
+    if (runtime.signal.aborted) {
+      return { cancelled: true };
+    }
 
-function checkpoint(stage, progress, extra = {}) {
-  emit({ type: 'checkpoint', data: { stage, progress, ...extra } });
-}
+    emitHeartbeat();
+    emitOutput("result", { prompt: spec.prompt ?? null });
 
-// Main
-checkpoint('start', 0.0, { args: process.argv.slice(2) });
-logInfo('Agent starting');
+    return {
+      output: `Processed: ${spec.prompt ?? ""}`,
+      executionId: runtime.executionId ?? context.execution_id ?? null,
+    };
+  },
+});
 
-try {
-  // Do work...
-  const result = processInput();
+agent.run().then((code) => process.exit(code));
+```
 
-  emit({ type: 'result', data: { output: result } });
-  checkpoint('end', 1.0);
-
-} catch (error) {
-  logError('Agent failed', { error: error.message });
-  checkpoint('error', 0.0, { error: error.message });
-  process.exit(1);
-}
+```bash
+cd sdk/typescript
+npm install
+npm test
 ```
 
 ---
@@ -400,12 +520,12 @@ python -m my_agent 2>&1 | jq -c '.'
 
 ### Common Issues
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| Events not appearing | stdout not flushed | Call `sys.stdout.flush()` after each emit |
-| Invalid JSON errors | Non-JSON in stdout | Ensure only NDJSON on stdout, use stderr for debug |
-| Agent timeout | Long-running without checkpoints | Emit checkpoints regularly |
-| K8s OOMKilled | Memory limit exceeded | Set appropriate resource limits |
+| Issue                | Cause                            | Solution                                           |
+| -------------------- | -------------------------------- | -------------------------------------------------- |
+| Events not appearing | stdout not flushed               | Call `sys.stdout.flush()` after each emit          |
+| Invalid JSON errors  | Non-JSON in stdout               | Ensure only NDJSON on stdout, use stderr for debug |
+| Agent timeout        | Long-running without checkpoints | Emit checkpoints regularly                         |
+| K8s OOMKilled        | Memory limit exceeded            | Set appropriate resource limits                    |
 
 ### Viewing Logs in K8s
 
@@ -528,6 +648,141 @@ if __name__ == "__main__":
                                                │   Clients       │
                                                └─────────────────┘
 ```
+
+---
+
+## Workflow Patterns
+
+### Gate Nodes (Manual Approval)
+
+Gate nodes pause execution until an external signal (approve/reject). Use them for human-in-the-loop workflows.
+
+```json
+{
+  "nodes": [
+    { "id": "process", "agent_id": "myorg.processor" },
+    {
+      "id": "review",
+      "type": "gate",
+      "gate": {
+        "description": "Review output before publishing",
+        "timeout": 3600,
+        "auto_reject": true
+      }
+    },
+    { "id": "publish", "agent_id": "myorg.publisher" }
+  ],
+  "edges": [
+    { "from": "process", "to": "review" },
+    { "from": "review", "to": "publish" }
+  ]
+}
+```
+
+When the gate node is reached, its status becomes `waiting_approval`. Approve or reject via the API:
+
+```bash
+# Approve
+curl -X POST http://orchestrator:7070/api/v1/runs/{runId}/nodes/review/approve
+
+# Reject
+curl -X POST http://orchestrator:7070/api/v1/runs/{runId}/nodes/review/reject
+```
+
+### Webhook Triggers
+
+Create a webhook to allow external systems to trigger runs:
+
+```bash
+# Create webhook for a flow
+curl -X POST http://orchestrator:7070/api/v1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"flow_id": "my-flow-id"}'
+
+# Response includes a token
+# {"flow_id": "my-flow-id", "webhook_token": "abc123...", "webhook_url": "/api/v1/webhooks/trigger/my-flow-id"}
+
+# Trigger a run via webhook
+curl -X POST http://orchestrator:7070/api/v1/webhooks/trigger/my-flow-id \
+  -H "X-Webhook-Token: abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"input_params": {"key": "value"}}'
+```
+
+### Cron Scheduled Runs
+
+Create cron-style schedules for recurring workflow execution:
+
+```bash
+# Create a schedule (runs every hour)
+curl -X POST http://orchestrator:7070/api/v1/schedules \
+  -H "Content-Type: application/json" \
+  -d '{
+    "flow_id": "my-flow-id",
+    "cron": "0 * * * *",
+    "input_params": {"source": "scheduled"},
+    "enabled": true
+  }'
+
+# List schedules
+curl http://orchestrator:7070/api/v1/schedules
+
+# Delete a schedule
+curl -X DELETE http://orchestrator:7070/api/v1/schedules/{id}
+```
+
+Cron expressions use standard 5-field format: `minute hour day-of-month month day-of-week`.
+
+### Run Cloning
+
+Clone a previous run or create runs directly from flows:
+
+```bash
+# Clone a run (reuses same plan)
+curl -X POST http://orchestrator:7070/api/v1/runs/{runId}/clone \
+  -H "Content-Type: application/json" \
+  -d '{"auto_start": true}'
+
+# Create a run from a flow
+curl -X POST http://orchestrator:7070/api/v1/flows/{flowId}/run \
+  -H "Content-Type: application/json" \
+  -d '{"timeout": "30m"}'
+```
+
+### Per-Node Retry Policies
+
+Configure retry behavior per node with different backoff strategies:
+
+```json
+{
+  "id": "flaky-api-call",
+  "agent_id": "myorg.api-caller",
+  "retry_policy": {
+    "max_retries": 5,
+    "backoff_type": "exponential",
+    "backoff_base": 2000000000,
+    "backoff_max": 60000000000
+  }
+}
+```
+
+Supported `backoff_type` values: `fixed`, `exponential`, `linear`. Durations are in nanoseconds (Go `time.Duration`).
+
+### Run-Level Timeouts
+
+Set a timeout on the entire run plan:
+
+```json
+{
+  "plan": {
+    "nodes": [...],
+    "edges": [...],
+    "timeout": "30m"
+  }
+}
+```
+
+The server default is configured via `ORCH_DEFAULT_RUN_TIMEOUT` (e.g., `30m`). Plan-level timeout overrides the default.
 
 ---
 

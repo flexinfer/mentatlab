@@ -233,12 +233,12 @@ class Logger {
     try {
       const logs = this.getStoredLogs();
       logs.push(entry);
-      
+
       // Keep only last 100 entries
       if (logs.length > 100) {
         logs.splice(0, logs.length - 100);
       }
-      
+
       localStorage.setItem('mentatlab_logs', JSON.stringify(logs));
     } catch (error) {
       // Ignore localStorage errors
@@ -289,31 +289,31 @@ class Logger {
 export const logger = new Logger();
 
 // Export convenience functions for common use cases
-export const logError = (message: string, error?: Error, context?: LogContext) => 
+export const logError = (message: string, error?: Error, context?: LogContext) =>
   logger.error(message, error, context);
 
-export const logWarning = (message: string, context?: LogContext) => 
+export const logWarning = (message: string, context?: LogContext) =>
   logger.warn(message, context);
 
-export const logInfo = (message: string, context?: LogContext) => 
+export const logInfo = (message: string, context?: LogContext) =>
   logger.info(message, context);
 
-export const logDebug = (message: string, context?: LogContext) => 
+export const logDebug = (message: string, context?: LogContext) =>
   logger.debug(message, context);
 
-export const logUserAction = (action: string, context?: LogContext) => 
+export const logUserAction = (action: string, context?: LogContext) =>
   logger.userAction(action, context);
 
-export const logApiCall = (method: string, url: string, status?: number, context?: LogContext) => 
+export const logApiCall = (method: string, url: string, status?: number, context?: LogContext) =>
   logger.api(method, url, status, context);
 
-export const logWebSocketEvent = (action: string, context?: LogContext) => 
+export const logWebSocketEvent = (action: string, context?: LogContext) =>
   logger.websocket(action, context);
 
-export const logPerformance = (metric: string, value: number, context?: LogContext) => 
+export const logPerformance = (metric: string, value: number, context?: LogContext) =>
   logger.performance(metric, value, context);
 
-export const logSecurityEvent = (event: string, context?: LogContext) => 
+export const logSecurityEvent = (event: string, context?: LogContext) =>
   logger.security(event, context);
 
 export default logger;

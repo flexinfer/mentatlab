@@ -25,4 +25,3 @@ export function openCogpakUi(remoteEntry: string, title = 'CogPak UI'): void {
     console.error('[remoteUi] Failed to dispatch openCogpak', err);
   }
 }
-

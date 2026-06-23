@@ -7,6 +7,8 @@ include:
     file:
       - /k3s/ci/caches/gitlab-ci-cache.yml
 
+  - project: 'services/tech-radar'
+    file: '/ci/radar.yml'
 stages:
   - lint
   - test
@@ -16,9 +18,17 @@ stages:
 
 variables:
   REGISTRY: registry.harbor.lan/library
+  HARBOR_DOCKERHUB_MIRROR: registry.harbor.lan/dockerhub-cache
+  GO_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/golang:${GO_VERSION}-alpine
+  NODE_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/node:${NODE_VERSION}-alpine
+  PYTHON_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/python:3.12-alpine
+  DOCKER_CLI_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/docker:24-cli
+  DOCKER_DIND_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/library/docker:24-dind
+  KUBECTL_CI_IMAGE: ${HARBOR_DOCKERHUB_MIRROR}/alpine/k8s:1.31.0
   BUILDKIT_HOST: "tcp://buildkitd-central.ci-build.svc.cluster.local:1234"
   GO_VERSION: "1.24"
   NODE_VERSION: "20"
+  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
   # Work around GitLab advertising an in-cluster clone URL to runners outside the cluster
   GIT_STRATEGY: none
   GITLAB_EXTERNAL_HOST: gitlab.flexinfer.ai
@@ -60,9 +70,34 @@ variables:
     fi
     echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
     git init -q .
+    git remote remove origin >/dev/null 2>&1 || true
     git remote add origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git"
-    git fetch -q --depth "${GIT_DEPTH:-20}" origin "${CI_COMMIT_SHA}"
+    for i in 1 2 3 4 5; do
+      if git fetch -q --depth "${GIT_DEPTH:-20}" origin "${CI_COMMIT_SHA}"; then
+        break
+      fi
+      if [ "$i" -eq 5 ]; then
+        echo "ERROR: git fetch failed after ${i} attempts"
+        exit 1
+      fi
+      echo "git fetch failed (attempt ${i}/5); retrying..."
+      sleep $((i * 2))
+    done
     git checkout -q -f "${CI_COMMIT_SHA}"
+
+.npm_ci_verify: &npm_ci_verify
+  - |
+    set -euo pipefail
+    mkdir -p "${NPM_CONFIG_CACHE}"
+    rm -rf node_modules
+    npm ci --cache "${NPM_CONFIG_CACHE}" --prefer-offline || true
+    if [ ! -x node_modules/.bin/tsc ]; then
+      echo "npm install incomplete after first attempt; retrying clean npm ci..."
+      rm -rf node_modules
+      npm cache clean --force || true
+      npm ci --cache "${NPM_CONFIG_CACHE}"
+    fi
+    test -x node_modules/.bin/tsc
 
 # Cache settings
 .go-cache: &go-cache
@@ -77,7 +112,7 @@ variables:
   cache:
     key: node-${CI_COMMIT_REF_SLUG}
     paths:
-      - services/frontend/node_modules/
+      - .npm/
     policy: pull-push
     when: on_success
 
@@ -87,7 +122,7 @@ variables:
 
 lint-go:
   stage: lint
-  image: golang:${GO_VERSION}-alpine
+  image: $GO_CI_IMAGE
   <<: *go-cache
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
@@ -103,14 +138,14 @@ lint-go:
 
 lint-frontend:
   stage: lint
-  image: node:${NODE_VERSION}-alpine
+  image: $NODE_CI_IMAGE
   <<: *node-cache
   before_script:
     - *apk_add_git
     - *clone_repo
   script:
     - cd services/frontend
-    - npm ci --prefer-offline
+    - *npm_ci_verify
     - npm run lint
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
@@ -122,7 +157,7 @@ lint-frontend:
 
 test-go:
   stage: test
-  image: golang:${GO_VERSION}-alpine
+  image: $GO_CI_IMAGE
   <<: *go-cache
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
@@ -130,23 +165,75 @@ test-go:
     - *apk_add_git
     - *clone_repo
   script:
-    - (cd services/gateway-go && go mod download && go test -v ./...)
-    - (cd services/orchestrator-go && go mod download && go test -v ./...)
+    - (cd services/gateway-go && go mod download && go test -v -coverprofile=cover.out ./... && go tool cover -func=cover.out)
+    - (cd services/orchestrator-go && go mod download && go test -v -coverprofile=cover.out ./... && go tool cover -func=cover.out)
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
 test-frontend:
   stage: test
-  image: node:${NODE_VERSION}-alpine
+  image: $NODE_CI_IMAGE
   <<: *node-cache
   before_script:
     - *apk_add_git
     - *clone_repo
   script:
     - cd services/frontend
-    - npm ci --prefer-offline
+    - *npm_ci_verify
+    - npm test -- --coverage
+  coverage: '/All files\s*\|\s*(\d+\.\d+)/'
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+test-typescript-sdk:
+  stage: test
+  image: $NODE_CI_IMAGE
+  <<: *node-cache
+  before_script:
+    - *apk_add_git
+    - *clone_repo
+  script:
+    - cd sdk/typescript
+    - *npm_ci_verify
     - npm test
+    - npm pack --dry-run
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+test-integration-smoke-go:
+  stage: test
+  image: $GO_CI_IMAGE
+  <<: *go-cache
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+  before_script:
+    - *apk_add_git
+    - *clone_repo
+  script:
+    - >
+      (cd services/orchestrator-go &&
+      go mod download &&
+      go test -v -count=1 ./internal/api -run 'TestRunFlowPreservesMCPPayloadInCreatedRunPlan|TestRunFlowPreservesFlexInferPayloadInCreatedRunPlan')
+    - >
+      (cd services/orchestrator-go &&
+      go test -v -count=1 ./internal/scheduler -run 'TestLoomRunSessionManagerLifecycleCalls')
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+test-integration-smoke-agent:
+  stage: test
+  image: $PYTHON_CI_IMAGE
+  before_script:
+    - *apk_add_git
+    - *clone_repo
+  script:
+    - python3 -m pip install --no-cache-dir pytest
+    - python3 -m pytest -q agents/loom-mcp-executor/test_main.py
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -155,89 +242,25 @@ test-frontend:
 # BUILD STAGE
 # ==============================================================================
 
-build-images:
+.build-template: &build-template
   stage: build
-  image: registry.harbor.lan/library/ci-builder:latest
-  variables:
-    BUILDKIT_STEP_LOG_MAX_SIZE: "50000000"
-  before_script:
-    - *clone_repo
-    - |
-      echo "Waiting for BuildKit..."
-      for i in $(seq 1 30); do
-        if buildctl --addr "${BUILDKIT_HOST}" debug info >/dev/null 2>&1; then
-          echo "BuildKit is ready"; break
-        fi
-        echo "[$i/30] not ready yet"; sleep 2
-      done
-      buildctl --addr "${BUILDKIT_HOST}" debug info
-  script:
-    - |
-      set -euo pipefail
-      CACHE_REPO="registry.harbor.lan/library/build-cache"
-
-      build_image() {
-        local name="$1" context="$2"
-        echo "=== Building ${name} from ${context} ==="
-
-        local tags="--output type=image,push=true"
-        tags="${tags},name=${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
-
-        if [ "$CI_COMMIT_BRANCH" = "main" ]; then
-          tags="${tags},name=${REGISTRY}/${name}:latest"
-        fi
-
-        buildctl --addr "${BUILDKIT_HOST}" build \
-          --frontend dockerfile.v0 \
-          --local context="${context}" \
-          --local dockerfile="${context}" \
-          --opt platform=linux/amd64 \
-          --opt "build-arg:GOPROXY=${GOPROXY:-}" \
-          --opt "build-arg:npm_config_registry=${npm_config_registry:-}" \
-          --opt "build-arg:NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY:-}" \
-          --opt "build-arg:PIP_INDEX_URL=${PIP_INDEX_URL:-}" \
-          --opt "build-arg:PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}" \
-          --export-cache "type=registry,ref=${CACHE_REPO}:${name},mode=max,image-manifest=true" \
-          --import-cache "type=registry,ref=${CACHE_REPO}:${name}" \
-          ${tags}
-      }
-
-      build_image "mentatlab-orchestrator-go" "services/orchestrator-go"
-      build_image "mentatlab-gateway-go" "services/gateway-go"
-      build_image "mentatlab-frontend" "services/frontend"
-      build_image "mentatlab-echoagent" "services/agents/echo"
-      build_image "mentatlab-psyche-sim" "agents/psyche-sim"
-      build_image "mentatlab-ctm-cogpack" "agents/ctm-cogpack"
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
-# ==============================================================================
-# E2E TEST STAGE
-# ==============================================================================
-
-e2e-test:
-  stage: e2e
-  needs: [build-images]
-  image: docker:24-cli
+  image: $DOCKER_CLI_CI_IMAGE
   services:
-    - name: docker:24-dind
+    - name: $DOCKER_DIND_CI_IMAGE
       alias: docker
-      command: ["--tls=false"]
+      command: ["--tls=false", "--insecure-registry=registry.harbor.lan"]
+  timeout: 2h
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
-    ORCHESTRATOR_IMAGE: "${REGISTRY}/mentatlab-orchestrator-go:${CI_COMMIT_SHORT_SHA}"
-    GATEWAY_IMAGE: "${REGISTRY}/mentatlab-gateway-go:${CI_COMMIT_SHORT_SHA}"
-    FRONTEND_IMAGE: "${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}"
   before_script:
-    - apk add --no-cache docker-compose curl jq git
-    # Clone repo (global GIT_STRATEGY is none)
-    - |
-      echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
-      git init -q .
-      git remote add origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git"
-      git fetch -q --depth 20 origin "${CI_COMMIT_SHA}"
-      git checkout -q -f "${CI_COMMIT_SHA}"
+    - apk add --no-cache git
+    - *clone_repo
     - |
       echo "Waiting for Docker daemon..."
       for i in $(seq 1 30); do
@@ -249,27 +272,133 @@ e2e-test:
         sleep 2
       done
     - docker info
+    - |
+      if [ -n "${HARBOR_USER:-}" ] && [ -n "${HARBOR_PASSWORD:-}" ]; then
+        echo "Logging into Harbor with CI/CD credentials..."
+        echo "${HARBOR_PASSWORD}" | docker login registry.harbor.lan -u "${HARBOR_USER}" --password-stdin
+      else
+        echo "WARNING: HARBOR_USER/HARBOR_PASSWORD not set — docker push may fail"
+      fi
+    - |
+      image_tag() {
+        printf '%s' "${CI_PIPELINE_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+          | sed -E 's/\.[0-9]+Z$/Z/; s/[-:]//g; s/T/-/; s/Z$//'
+      }
+
+      MENTATLAB_IMAGE_TAG="${MENTATLAB_IMAGE_TAG:-$(image_tag)}"
+      echo "Using image tag ${MENTATLAB_IMAGE_TAG}"
+
+      build_image() {
+        local name="$1" context="$2"
+        echo "=== Building ${name} from ${context} ==="
+
+        local release_tag_args=""
+        if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+          release_tag_args="-t ${REGISTRY}/${name}:${MENTATLAB_IMAGE_TAG} -t ${REGISTRY}/${name}:latest"
+        fi
+
+        if ! DOCKER_BUILDKIT=1 docker build -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${release_tag_args} "${context}"; then
+          echo "WARNING: ${name} build failed, retrying without cache..."
+          DOCKER_BUILDKIT=1 docker build --no-cache -t "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}" ${release_tag_args} "${context}"
+        fi
+
+        docker push "${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
+        if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+          docker push "${REGISTRY}/${name}:${MENTATLAB_IMAGE_TAG}"
+          docker push "${REGISTRY}/${name}:latest"
+        fi
+      }
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+build-go:
+  <<: *build-template
+  script:
+    - build_image "mentatlab-orchestrator-go" "services/orchestrator-go"
+    - build_image "mentatlab-gateway-go" "services/gateway-go"
+
+build-frontend:
+  <<: *build-template
+  script:
+    - build_image "mentatlab-frontend" "services/frontend"
+
+build-agents:
+  <<: *build-template
+  script:
+    - build_image "mentatlab-echoagent" "services/agents/echo"
+    - build_image "mentatlab-psyche-sim" "agents/psyche-sim"
+    - build_image "mentatlab-ctm-cogpack" "agents/ctm-cogpack"
+
+# ==============================================================================
+# E2E TEST STAGE
+# ==============================================================================
+
+e2e-test:
+  stage: e2e
+  needs: [build-go, build-frontend, build-agents]
+  image: $DOCKER_CLI_CI_IMAGE
+  services:
+    - name: $DOCKER_DIND_CI_IMAGE
+      alias: docker
+      command: ["--tls=false", "--insecure-registry=registry.harbor.lan"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    # Use :latest on main (BuildKit multi-name push may not reliably push SHA tag)
+    ORCHESTRATOR_IMAGE: "${REGISTRY}/mentatlab-orchestrator-go:latest"
+    GATEWAY_IMAGE: "${REGISTRY}/mentatlab-gateway-go:latest"
+    FRONTEND_IMAGE: "${REGISTRY}/mentatlab-frontend:latest"
+  before_script:
+    - apk add --no-cache curl jq git
+    - *clone_repo
+    - |
+      echo "Waiting for Docker daemon..."
+      for i in $(seq 1 30); do
+        if docker info >/dev/null 2>&1; then
+          echo "Docker daemon ready"
+          break
+        fi
+        echo "[$i/30] Docker not ready yet..."
+        sleep 2
+      done
+    - docker info
+    # Authenticate DinD with Harbor
+    # Requires HARBOR_USER and HARBOR_PASSWORD CI/CD variables (Settings > CI/CD > Variables)
+    - |
+      if [ -n "${HARBOR_USER:-}" ] && [ -n "${HARBOR_PASSWORD:-}" ]; then
+        echo "Logging into Harbor with CI/CD credentials..."
+        echo "${HARBOR_PASSWORD}" | docker login registry.harbor.lan -u "${HARBOR_USER}" --password-stdin
+      else
+        echo "WARNING: HARBOR_USER/HARBOR_PASSWORD not set — docker pull may fail"
+        echo "Set these as CI/CD variables: Settings > CI/CD > Variables"
+      fi
   script:
     - |
       echo "=== Starting E2E Tests ==="
 
-      # Create docker-compose override for CI
-      cat > docker-compose.ci.yml << 'EOF'
+      # Create compose override for CI (uses pre-built images instead of building)
+      cat > docker-compose.ci.yml <<CIEOF
       services:
         orchestrator:
-          image: ${ORCHESTRATOR_IMAGE:-registry.harbor.lan/library/mentatlab-orchestrator-go:latest}
+          image: ${ORCHESTRATOR_IMAGE}
           build: !reset null
         gateway:
-          image: ${GATEWAY_IMAGE:-registry.harbor.lan/library/mentatlab-gateway-go:latest}
+          image: ${GATEWAY_IMAGE}
           build: !reset null
         frontend:
-          image: ${FRONTEND_IMAGE:-registry.harbor.lan/library/mentatlab-frontend:latest}
+          image: ${FRONTEND_IMAGE}
           build: !reset null
-      EOF
+      CIEOF
 
-      # Start services
+      # Pull images explicitly (better error messages than compose)
+      echo "Pulling images..."
+      docker pull "${ORCHESTRATOR_IMAGE}"
+      docker pull "${GATEWAY_IMAGE}"
+      docker pull "${FRONTEND_IMAGE}"
+
+      # Start services using docker compose v2 (supports !reset null)
       echo "Starting services..."
-      docker-compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+      docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
 
       # Wait for services to be healthy
       echo "Waiting for services to be healthy..."
@@ -315,11 +444,10 @@ e2e-test:
 
       echo "=== All E2E Tests Passed ==="
   after_script:
-    - docker-compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=100 || true
-    - docker-compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
+    - docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=100 || true
+    - docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
-  allow_failure: true
 
 # ==============================================================================
 # DEPLOY STAGE
@@ -327,41 +455,53 @@ e2e-test:
 
 deploy:
   stage: deploy
-  image: alpine/k8s:1.31.0
-  needs: [build-images]
+  image: $KUBECTL_CI_IMAGE
+  needs: [build-go, build-frontend, build-agents, e2e-test]
   variables:
     NAMESPACE: mentatlab
   before_script:
     - apk add --no-cache git
-    # Clone repo (global GIT_STRATEGY is none)
+    - *clone_repo
     - |
-      echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
-      git init -q .
-      git remote add origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git"
-      git fetch -q --depth 20 origin "${CI_COMMIT_SHA}"
-      git checkout -q -f "${CI_COMMIT_SHA}"
-    - |
-      mkdir -p ~/.kube
-      echo "${KUBECONFIG_K3S}" > ~/.kube/config
-      chmod 600 ~/.kube/config
-    - kubectl version --client
-    - kubectl cluster-info
+      if [ -n "${KUBECONFIG_K3S:-}" ]; then
+        mkdir -p ~/.kube
+        printf '%s' "${KUBECONFIG_K3S}" > ~/.kube/config
+        chmod 600 ~/.kube/config
+        kubectl version --client
+        kubectl cluster-info
+      else
+        echo "KUBECONFIG_K3S is not set; direct kubectl deploy will be skipped (Flux GitOps remains active)."
+      fi
   script:
     - |
+      if [ -z "${KUBECONFIG_K3S:-}" ]; then
+        echo "Skipping direct kubectl deployment because KUBECONFIG_K3S is unset."
+        exit 0
+      fi
+
       echo "=== Deploying MentatLab to ${NAMESPACE} ==="
       cd k8s
 
-      # Update image tags using kustomize
-      echo "Setting image tags to ${CI_COMMIT_SHORT_SHA}..."
+      IMAGE_TAG="$(printf '%s' "${CI_PIPELINE_CREATED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" \
+        | sed -E 's/\.[0-9]+Z$/Z/; s/[-:]//g; s/T/-/; s/Z$//')"
+      echo "Setting image tags to ${IMAGE_TAG}..."
       kustomize edit set image \
-        "registry.harbor.lan/library/mentatlab-orchestrator-go=${REGISTRY}/mentatlab-orchestrator-go:${CI_COMMIT_SHORT_SHA}" \
-        "registry.harbor.lan/library/mentatlab-gateway-go=${REGISTRY}/mentatlab-gateway-go:${CI_COMMIT_SHORT_SHA}" \
-        "registry.harbor.lan/library/mentatlab-frontend=${REGISTRY}/mentatlab-frontend:${CI_COMMIT_SHORT_SHA}" \
-        "registry.harbor.lan/library/mentatlab-echoagent=${REGISTRY}/mentatlab-echoagent:${CI_COMMIT_SHORT_SHA}"
+        "registry.harbor.lan/library/mentatlab-orchestrator-go=${REGISTRY}/mentatlab-orchestrator-go:${IMAGE_TAG}" \
+        "registry.harbor.lan/library/mentatlab-gateway-go=${REGISTRY}/mentatlab-gateway-go:${IMAGE_TAG}" \
+        "registry.harbor.lan/library/mentatlab-frontend=${REGISTRY}/mentatlab-frontend:${IMAGE_TAG}" \
+        "registry.harbor.lan/library/mentatlab-echoagent=${REGISTRY}/mentatlab-echoagent:${IMAGE_TAG}"
 
       # Apply manifests using server-side apply
       echo "Applying manifests..."
       kustomize build . | kubectl apply --server-side --force-conflicts -f -
+
+      # Annotate deployments with the source commit for traceability
+      for dep in orchestrator gateway frontend; do
+        kubectl annotate deployment/${dep} -n ${NAMESPACE} \
+          "mentatlab.io/deployed-commit=${CI_COMMIT_SHORT_SHA}" \
+          "mentatlab.io/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --overwrite || true
+      done
 
       # Wait for rollouts
       echo "Waiting for deployments to roll out..."
@@ -373,4 +513,7 @@ deploy:
       kubectl get pods -n ${NAMESPACE}
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-      when: manual
+      when: on_success
+
+radar-scan:
+  extends: .radar-scan

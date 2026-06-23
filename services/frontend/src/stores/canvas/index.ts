@@ -23,7 +23,7 @@ import {
 } from 'reactflow';
 import { v4 as uuidv4 } from 'uuid';
 import type { Position } from '@/types/graph';
-import type { NodeType } from '@/types/NodeOperations';
+import type { NodeData, NodeType } from '@/types/NodeOperations';
 import type { WorkflowChange } from '@/types/collaboration';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ export interface CanvasState {
   setEdges: (edges: Edge[]) => void;
   updateNodes: (updater: (nodes: Node[]) => Node[]) => void;
   addNode: (node: Node) => void;
-  createNode: (type: NodeType, position: Position) => void;
+  createNode: (type: NodeType, position: Position, data?: NodeData) => void;
   duplicateNode: (nodeId: string) => void;
   deleteNodes: (nodeIds: string[]) => void;
   setSelectedNodeId: (nodeId: string | null) => void;
@@ -143,12 +143,12 @@ export const useCanvasStore = create<CanvasState>()(
         }));
       },
 
-      createNode: (type: NodeType, position: Position) => {
+      createNode: (type: NodeType, position: Position, data?: NodeData) => {
         const newNode: Node = {
           id: uuidv4(),
           type,
           position,
-          data: { label: `${type} Node` },
+          data: { label: `${type} Node`, ...(data ?? {}) },
         };
         set((state) => ({
           nodes: [...state.nodes, newNode],
@@ -191,7 +191,15 @@ export const useCanvasStore = create<CanvasState>()(
         });
       },
 
-      setSelectedNodeId: (nodeId: string | null) => set({ selectedNodeId: nodeId }),
+      setSelectedNodeId: (nodeId: string | null) => {
+        set((state) => {
+          if (state.selectedNodeId === nodeId) {
+            return state;
+          }
+
+          return { selectedNodeId: nodeId };
+        });
+      },
 
       updateNodeConfig: (nodeId: string, data: object) => {
         set((state) => ({

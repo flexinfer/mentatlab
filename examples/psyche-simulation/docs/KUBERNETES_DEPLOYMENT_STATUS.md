@@ -29,7 +29,7 @@ Phase 3.1: Kubernetes Deployment has been successfully implemented for the Psych
 
 ### Deployment Automation Scripts
 - ✅ `deploy.sh` - Comprehensive deployment automation
-- ✅ `rollback.sh` - Safe rollback procedures  
+- ✅ `rollback.sh` - Safe rollback procedures
 - ✅ `health-check.sh` - Health monitoring and validation
 - ✅ `validate-deployment.sh` - Manifest validation
 
@@ -47,7 +47,7 @@ Phase 3.1: Kubernetes Deployment has been successfully implemented for the Psych
 - **Scaling**: Horizontal Pod Autoscaler (2-10 replicas based on CPU/memory)
 - **High Availability**: Pod anti-affinity, disruption budgets
 
-### Redis State Management  
+### Redis State Management
 - **Persistent Storage**: 2Gi persistent volume
 - **Configuration**: Optimized for memory management (256MB with LRU)
 - **Security**: Password authentication, security contexts
@@ -77,7 +77,7 @@ All Kubernetes manifests have been validated using `kubectl apply --dry-run=clie
 
 ```
 ✅ namespace/psyche-simulation created (dry run)
-✅ configmap/psyche-simulation-config created (dry run)  
+✅ configmap/psyche-simulation-config created (dry run)
 ✅ configmap/psyche-simulation-agent-config created (dry run)
 ✅ secret/psyche-simulation-secrets created (dry run)
 ✅ secret/redis-auth created (dry run)
@@ -125,7 +125,7 @@ kubectl port-forward service/psyche-simulation-service 8080:80 -n psyche-simulat
 # Development
 ./deploy.sh -e dev
 
-# Staging  
+# Staging
 ./deploy.sh -e staging
 
 # Production
@@ -149,7 +149,7 @@ kubectl port-forward service/psyche-simulation-service 8080:80 -n psyche-simulat
 ## 🔐 Security Features
 
 - **Container Security**: Non-root execution, read-only filesystems, capability dropping
-- **Network Security**: SSL/TLS termination, security headers, rate limiting  
+- **Network Security**: SSL/TLS termination, security headers, rate limiting
 - **Secrets Management**: Kubernetes secrets with base64 encoding
 - **Access Control**: Multiple ingress configurations for different access patterns
 - **Pod Security**: Security contexts, disruption budgets, anti-affinity rules

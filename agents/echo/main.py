@@ -1,62 +1,46 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
+import os
 import sys
-from typing import List, Optional
-
-# Try to import the common emit helper; fall back to adjusting sys.path if needed
+import time
+from typing import Any, Dict
 try:
-    from agents.common.emit import log_info, log_error, checkpoint, set_correlation_id
+    from agents.common.input_contract import read_input_contract
 except Exception:
-    import os
-    import sys as _sys
-    _sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-    from agents.common.emit import log_info, log_error, checkpoint, set_correlation_id
+    sys.path.append(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    )
+    from agents.common.input_contract import read_input_contract
 
 
-def main(argv: Optional[List[str]] = None) -> int:
-    if argv is None:
-        argv = sys.argv[1:]
+AGENT_MODEL = "echo/0.1.0"
 
-    # optional: allow a first arg like --cid=... to set correlation id
-    if argv and argv[0].startswith("--cid="):
-        cid = argv[0].split("=", 1)[1]
-        if cid:
-            try:
-                set_correlation_id(cid)
-            except Exception:
-                pass
-        argv = argv[1:]
 
-    # Start checkpoint
-    try:
-        checkpoint("start", 0.0, {"args_count": len(argv)})
-        log_info("echo: start", {"args_count": len(argv)})
-    except Exception:
-        pass
+def main() -> int:
+    start = time.time()
+    incoming = read_input_contract()
+    spec = incoming.get("spec", {})
+    context = incoming.get("context", {})
 
-    # Emit one stderr line for demonstration; the orchestrator will treat this as error stream
-    try:
-        sys.stderr.write("[echo] demonstration stderr line\n")
-        sys.stderr.flush()
-    except Exception:
-        pass
+    result: Dict[str, Any] = {"spec": spec}
+    if context:
+        result["context"] = context
+    if len(sys.argv) > 1:
+        result["args"] = sys.argv[1:]
 
-    # For each arg, emit an info log line
-    for i, arg in enumerate(argv):
-        try:
-            log_info("echo: arg", {"index": i, "value": arg})
-        except Exception:
-            # do not fail because of logging issues
-            pass
-
-    # End checkpoint
-    try:
-        checkpoint("end", 1.0, {"args_count": len(argv)})
-        log_info("echo: done", {"args_count": len(argv)})
-    except Exception:
-        pass
-
+    out = {
+        "result": result,
+        "mentat_meta": {
+            "tokens_input": 0,
+            "tokens_output": 0,
+            "seconds": round(time.time() - start, 4),
+            "model": AGENT_MODEL,
+        },
+    }
+    sys.stdout.write(json.dumps(out, separators=(",", ":"), ensure_ascii=False) + "\n")
+    sys.stdout.flush()
     return 0
 
 

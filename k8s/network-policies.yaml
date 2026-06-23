@@ -230,6 +230,80 @@ spec:
           port: 53
 
 ---
+# MinIO: Accept traffic from orchestrator and bucket-init jobs
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-policy
+  namespace: mentatlab
+spec:
+  podSelector:
+    matchLabels:
+      app: minio
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow from orchestrator (artifact storage)
+    - from:
+        - podSelector:
+            matchLabels:
+              app: orchestrator
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Allow from bucket-init jobs
+    - from:
+        - podSelector:
+            matchLabels:
+              job-name: minio-create-bucket
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Allow health checks (kubelet probes)
+    - ports:
+        - protocol: TCP
+          port: 9000
+  egress:
+    # MinIO only needs DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+
+---
+# MinIO init job: Allow egress to MinIO
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: minio-init-policy
+  namespace: mentatlab
+spec:
+  podSelector:
+    matchLabels:
+      job-name: minio-create-bucket
+  policyTypes:
+    - Egress
+  egress:
+    # Allow to MinIO
+    - to:
+        - podSelector:
+            matchLabels:
+              app: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
 # Agent Jobs: Allow egress for agent containers (they may need to fetch data)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

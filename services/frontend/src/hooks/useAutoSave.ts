@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useFlowStore } from '../store/index';
+import { useFlowStore } from '@/stores';
 import { FlowService, Flow, CreateFlowRequest, getFlowService } from '../services/api/flowService';
 import { httpClient } from '../services/api/httpClient';
 
@@ -56,24 +56,43 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
   // Refs for debouncing and tracking
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flowServiceRef = useRef<FlowService | null>(null);
   const lastSavedVersionRef = useRef<Map<string, string>>(new Map());
   const retryCountRef = useRef<Map<string, number>>(new Map());
+  const saveInFlightRef = useRef(false);
+  const queuedSaveRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   // Initialize flow service
   useEffect(() => {
-    flowServiceRef.current = getFlowService(httpClient, null);
+    flowServiceRef.current = getFlowService(httpClient);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      if (idleResetTimerRef.current) {
+        clearTimeout(idleResetTimerRef.current);
+      }
+    };
   }, []);
 
   // Convert store flow to API format
   const toApiFlow = useCallback((flowId: string, flowData: any): CreateFlowRequest => {
+    const nodes = flowData?.graph?.nodes ?? flowData?.nodes ?? [];
+    const edges = flowData?.graph?.edges ?? flowData?.edges ?? [];
+
     return {
       id: flowId,
       name: flowData?.name || flowData?.meta?.name || 'Untitled Flow',
       description: flowData?.description || flowData?.meta?.description,
       graph: {
-        nodes: flowData?.graph?.nodes || [],
-        edges: flowData?.graph?.edges || [],
+        nodes,
+        edges,
       },
       layout: flowData?.layout,
       metadata: {
@@ -122,37 +141,67 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
 
   // Save all pending flows
   const saveAllFlows = useCallback(async () => {
-    const flows = useFlowStore.getState().flows;
-    if (flows.size === 0) return;
+    if (saveInFlightRef.current) {
+      queuedSaveRef.current = true;
+      return;
+    }
 
+    const flows = useFlowStore.getState().flows;
+    if (flows.size === 0) {
+      setPendingChanges(false);
+      setStatus('idle');
+      return;
+    }
+
+    saveInFlightRef.current = true;
     setStatus('saving');
     setError(null);
     setPendingChanges(false);
 
-    const errors: Array<{ flowId: string; error: Error }> = [];
+    try {
+      const errors: Array<{ flowId: string; error: Error }> = [];
+      let softFailures = 0;
 
-    for (const [flowId, flowData] of flows.entries()) {
-      try {
-        await saveFlow(flowId, flowData);
-        onSave?.(flowId);
-      } catch (err) {
-        const error = err as Error;
-        errors.push({ flowId, error });
-        onError?.(error, flowId);
+      for (const [flowId, flowData] of flows.entries()) {
+        try {
+          const saved = await saveFlow(flowId, flowData);
+          if (saved) {
+            onSave?.(flowId);
+          } else {
+            softFailures++;
+          }
+        } catch (err) {
+          const error = err as Error;
+          errors.push({ flowId, error });
+          onError?.(error, flowId);
+        }
       }
-    }
 
-    if (errors.length > 0) {
-      setStatus('error');
-      setError(errors[0].error);
-    } else {
-      setStatus('saved');
-      setLastSavedAt(new Date());
+      if (errors.length > 0) {
+        setStatus('error');
+        setError(errors[0].error);
+      } else if (softFailures > 0) {
+        // saveFlow already set conflict state/error for soft-failure paths.
+        // Avoid overriding that state with "saved".
+      } else {
+        setStatus('saved');
+        setLastSavedAt(new Date());
 
-      // Reset to idle after a brief display of "saved"
-      setTimeout(() => {
-        setStatus((current) => (current === 'saved' ? 'idle' : current));
-      }, 2000);
+        // Reset to idle after a brief display of "saved"
+        if (idleResetTimerRef.current) {
+          clearTimeout(idleResetTimerRef.current);
+        }
+        idleResetTimerRef.current = setTimeout(() => {
+          if (!isMountedRef.current) return;
+          setStatus((current) => (current === 'saved' ? 'idle' : current));
+        }, 2000);
+      }
+    } finally {
+      saveInFlightRef.current = false;
+      if (queuedSaveRef.current) {
+        queuedSaveRef.current = false;
+        void saveAllFlows();
+      }
     }
   }, [saveFlow, onSave, onError]);
 
@@ -209,6 +258,9 @@ export function useAutoSave(options: AutoSaveOptions = {}): AutoSaveState {
       unsubscribe();
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (idleResetTimerRef.current) {
+        clearTimeout(idleResetTimerRef.current);
       }
     };
   }, [enabled, triggerSave]);

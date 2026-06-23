@@ -18,6 +18,7 @@ const (
 	EventTypeNodeStatus  EventType = "node_status"
 	EventTypeRunStatus   EventType = "run_status"
 	EventTypeProgress    EventType = "progress"
+	EventTypeHeartbeat   EventType = "heartbeat"
 	EventTypeError       EventType = "error"
 
 	// Control flow events
@@ -85,9 +86,11 @@ type RunStatusEvent struct {
 
 // ProgressEvent represents the data payload for progress events.
 type ProgressEvent struct {
-	Current int    `json:"current"`
-	Total   int    `json:"total"`
-	Message string `json:"message,omitempty"`
+	Percent    float64  `json:"percent"`
+	Message    string   `json:"message,omitempty"`
+	ETASeconds *float64 `json:"eta_seconds,omitempty"`
+	Current    int      `json:"current,omitempty"`
+	Total      int      `json:"total,omitempty"`
 }
 
 // StreamDataEvent represents generic streaming data from an agent.
@@ -95,6 +98,17 @@ type StreamDataEvent struct {
 	ContentType string          `json:"content_type,omitempty"`
 	Text        string          `json:"text,omitempty"`
 	Raw         json.RawMessage `json:"raw,omitempty"`
+}
+
+// ErrorEvent represents the data payload for structured error events.
+// Agents emit these to classify failures as transient (retryable) or permanent.
+// When Retryable is true the scheduler treats the failure as transient and
+// applies the node's retry policy even if the exit code is not 3.
+type ErrorEvent struct {
+	Code      string                 `json:"code"`
+	Message   string                 `json:"message"`
+	Retryable bool                   `json:"retryable"`
+	Details   map[string]interface{} `json:"details,omitempty"`
 }
 
 // ToSSE formats the event for Server-Sent Events protocol.

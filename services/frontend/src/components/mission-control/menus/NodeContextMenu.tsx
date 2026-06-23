@@ -1,5 +1,5 @@
 import React from 'react';
-import useStore from '../../../store';
+import { useCanvasStore } from '@/stores';
 import { useToast } from '../../../contexts/ToastContext';
 import { cn } from '../../../lib/utils';
 
@@ -19,7 +19,7 @@ interface MenuItem {
  * Provides quick access to common operations like duplicate, delete, etc.
  */
 export function NodeContextMenu() {
-  const { contextMenu, closeContextMenu, nodes, duplicateNode, deleteNodes } = useStore();
+  const { contextMenu, closeContextMenu, nodes, duplicateNode, deleteNodes } = useCanvasStore();
   const toast = useToast();
   const menuRef = React.useRef<HTMLDivElement>(null);
 

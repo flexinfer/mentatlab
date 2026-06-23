@@ -11,16 +11,19 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/api"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/auth"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/config"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/dataflow"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/flowstore"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/factories"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/registry"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/mcpclient"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/tracing"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
-	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
 func main() {
@@ -52,70 +55,76 @@ func main() {
 		slog.String("log_level", cfg.LogLevel),
 	)
 
+	// Initialize tracing
+	tracingProvider, err := tracing.Init(context.Background(), &tracing.Config{
+		ServiceName:    "mentatlab-orchestrator",
+		ServiceVersion: "1.0.0",
+		OTLPEndpoint:   cfg.OTLPEndpoint,
+		Enabled:        cfg.TracingEnabled,
+		SampleRate:     1.0,
+	}, logger)
+	if err != nil {
+		logger.Error("failed to initialize tracing", slog.String("error", err.Error()))
+		// Continue without tracing
+	}
+
 	// Initialize RunStore based on configuration
-	var store runstore.RunStore
-	switch cfg.RunStoreType {
-	case "redis":
-		redisCfg := &runstore.RedisConfig{
-			URL:      cfg.RedisURL,
-			Password: cfg.RedisPassword,
-			DB:       cfg.RedisDB,
-			Prefix:   "runs",
-			TTL:      cfg.RunStoreTTL,
-		}
-		redisStore, err := runstore.NewRedisStore(redisCfg)
-		if err != nil {
-			logger.Error("failed to connect to Redis, falling back to memory store", "error", err)
-			storeCfg := &runstore.Config{
-				EventMaxLen: cfg.EventMaxLen,
-				TTLSeconds:  int64(cfg.RunStoreTTL.Seconds()),
-			}
-			store = runstore.NewMemoryStore(storeCfg)
-		} else {
-			store = redisStore
-			logger.Info("using Redis runstore", slog.String("url", cfg.RedisURL))
-		}
-	default:
-		storeCfg := &runstore.Config{
-			EventMaxLen: cfg.EventMaxLen,
-			TTLSeconds:  int64(cfg.RunStoreTTL.Seconds()),
-		}
-		store = runstore.NewMemoryStore(storeCfg)
-		logger.Info("using in-memory runstore")
+	store, err := factories.CreateRunStore(cfg, logger)
+	if err != nil {
+		logger.Error("failed to initialize runstore", "error", err)
+		os.Exit(1)
 	}
 	defer store.Close()
 
 	// Initialize driver and scheduler
 	emitter := driver.NewRunStoreEmitter(store)
-	subprocessDriver := driver.NewLocalSubprocessDriver(emitter, &driver.SubprocessConfig{
-		EnvPassthrough: map[string]string{
-			"ORCHESTRATOR_URL": "http://localhost:" + cfg.Port,
-		},
-	})
+
+	// Select execution driver based on ORCH_DRIVER config
+	execDriver, err := factories.CreateDriver(cfg, emitter, logger)
+	if err != nil {
+		logger.Error("failed to create driver", "error", err)
+		os.Exit(1)
+	}
 
 	// Command resolver for agents
-	resolveCmd := func(node *types.NodeSpec) []string {
-		if len(node.Command) > 0 {
-			return node.Command
-		}
-		// Default: try to find agent in agents directory
-		// This would be replaced with proper agent resolution in production
-		if node.AgentID != "" {
-			return []string{"python", "-m", "agents." + node.AgentID}
-		}
-		return nil
+	resolveCmd := factories.CreateCommandResolver(cfg)
+	mcpToolClient := mcpclient.New(mcpclient.Config{
+		HubURL:               cfg.MCPHubURL,
+		CatalogURL:           cfg.MCPHubCatalogURL,
+		Profile:              cfg.MCPHubProfile,
+		Servers:              mcpclient.ParseServerList(cfg.MCPHubServers),
+		CFAccessClientID:     cfg.CFAccessClientID,
+		CFAccessClientSecret: cfg.CFAccessClientSecret,
+		Token:                cfg.MCPHubToken,
+	})
+
+	schedulerOpts := []scheduler.Option{
+		scheduler.WithMaxParallelism(cfg.MaxParallelism),
+		scheduler.WithDefaultMaxRetries(cfg.DefaultMaxRetries),
+		scheduler.WithDefaultBackoffSecs(cfg.DefaultBackoffSecs),
+		scheduler.WithDefaultRunTimeout(cfg.DefaultRunTimeout),
+		scheduler.WithLogger(logger.With(slog.String("component", "scheduler"))),
+		scheduler.WithMCPClient(mcpToolClient),
+	}
+	if cfg.AgentContextEnabled {
+		runSessionManager := scheduler.NewLoomRunSessionManager(scheduler.LoomRunSessionManagerConfig{
+			LoomBin:   cfg.LoomBin,
+			AgentID:   cfg.AgentContextAgentID,
+			Namespace: cfg.AgentContextNamespace,
+			Logger:    logger.With(slog.String("component", "run-session")),
+		})
+		schedulerOpts = append(schedulerOpts, scheduler.WithRunSessionManager(runSessionManager))
 	}
 
-	schedCfg := &scheduler.Config{
-		MaxParallelism:     cfg.MaxParallelism,
-		DefaultMaxRetries:  cfg.DefaultMaxRetries,
-		DefaultBackoffSecs: cfg.DefaultBackoffSecs,
-	}
-	sched := scheduler.New(store, subprocessDriver, resolveCmd, schedCfg, logger.With(slog.String("component", "scheduler")))
+	sched := scheduler.NewScheduler(store, execDriver, resolveCmd, schedulerOpts...)
 
 	logger.Info("scheduler initialized",
+		slog.String("driver", cfg.DriverType),
 		slog.Int("max_parallelism", cfg.MaxParallelism),
 		slog.Int("default_retries", cfg.DefaultMaxRetries),
+		slog.Duration("default_run_timeout", cfg.DefaultRunTimeout),
+		slog.Bool("agent_context_enabled", cfg.AgentContextEnabled),
+		slog.String("agent_context_agent_id", cfg.AgentContextAgentID),
 	)
 
 	// Initialize validator
@@ -127,46 +136,37 @@ func main() {
 	}
 
 	// Initialize agent registry
-	var agentRegistry registry.AgentRegistry
-	if cfg.RunStoreType == "redis" {
-		// Parse Redis URL for registry
-		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
-		registryCfg := &registry.RedisConfig{
-			Addr:     redisAddr,
-			Password: cfg.RedisPassword,
-			DB:       cfg.RedisDB,
-		}
-		redisRegistry, err := registry.NewRedisRegistry(registryCfg)
-		if err != nil {
-			logger.Warn("failed to create Redis agent registry, using memory", "error", err)
-			agentRegistry = registry.NewMemoryRegistryWithDefaults()
-		} else {
-			agentRegistry = redisRegistry
-			logger.Info("using Redis agent registry")
-		}
-	} else {
-		agentRegistry = registry.NewMemoryRegistryWithDefaults()
-		logger.Info("using in-memory agent registry with defaults")
+	agentRegistry, err := factories.CreateAgentRegistry(cfg, logger)
+	if err != nil {
+		logger.Error("failed to initialize agent registry", "error", err)
+		os.Exit(1)
 	}
 	defer agentRegistry.Close()
 
 	// Initialize flow store
-	var flows flowstore.FlowStore
-	if cfg.RunStoreType == "redis" {
-		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
-		redisFlows, err := flowstore.NewRedisStore(redisAddr)
-		if err != nil {
-			logger.Warn("failed to create Redis flow store, using memory", "error", err)
-			flows = flowstore.NewMemoryStore()
-		} else {
-			flows = redisFlows
-			logger.Info("using Redis flow store")
-		}
-	} else {
-		flows = flowstore.NewMemoryStore()
-		logger.Info("using in-memory flow store")
+	flows, err := factories.CreateFlowStore(cfg, logger)
+	if err != nil {
+		logger.Error("failed to initialize flow store", "error", err)
+		os.Exit(1)
 	}
 	defer flows.Close()
+
+	// Initialize API key store (requires Redis)
+	var apiKeyStore *auth.APIKeyStore
+	if cfg.RunStoreType == "redis" {
+		redisAddr := strings.TrimPrefix(cfg.RedisURL, "redis://")
+		apiKeyRedis := redisClient(redisAddr, cfg.RedisPassword, cfg.RedisDB)
+		if apiKeyRedis != nil {
+			apiKeyStore = auth.NewAPIKeyStore(apiKeyRedis)
+			logger.Info("API key store initialized (Redis)")
+		}
+	}
+
+	// Initialize CronRunner for scheduled runs
+	cronRunner := scheduler.NewCronRunner(sched, flows, store, logger.With(slog.String("component", "cron")))
+	cronRunner.Start()
+	defer cronRunner.Stop()
+	logger.Info("cron runner started")
 
 	// Initialize K8s client (optional)
 	var k8sClient *k8s.Client
@@ -185,14 +185,60 @@ func main() {
 		}
 	}
 
+	// Initialize dataflow service (optional)
+	var dataflowSvc *dataflow.Service
+	dataflowType := os.Getenv("DATAFLOW_TYPE")
+	if dataflowType != "" {
+		dfCfg := &dataflow.Config{
+			Type:            dataflowType,
+			Endpoint:        os.Getenv("MINIO_ENDPOINT"),
+			Bucket:          os.Getenv("MINIO_BUCKET"),
+			Region:          os.Getenv("MINIO_REGION"),
+			AccessKeyID:     os.Getenv("MINIO_ACCESS_KEY"),
+			SecretAccessKey: os.Getenv("MINIO_SECRET_KEY"),
+			UseSSL:          os.Getenv("MINIO_USE_SSL") == "true",
+			PathPrefix:      "artifacts",
+		}
+		svc, err := dataflow.New(dfCfg)
+		if err != nil {
+			logger.Warn("failed to create dataflow service, artifacts disabled", "error", err)
+		} else {
+			dataflowSvc = svc
+			logger.Info("dataflow service initialized", slog.String("type", dataflowType))
+		}
+	}
+
+	// Initialize OIDC auth middleware (optional, disabled by default)
+	var authMiddleware *auth.Middleware
+	if cfg.OIDCEnabled {
+		authProvider, err := auth.NewProvider(context.Background(), &auth.Config{
+			Issuer:       cfg.OIDCIssuer,
+			ClientID:     cfg.OIDCClientID,
+			ClientSecret: cfg.OIDCClientSecret,
+		})
+		if err != nil {
+			logger.Error("failed to initialize OIDC provider", "error", err)
+		} else {
+			authMiddleware = auth.NewMiddleware(authProvider, &auth.MiddlewareConfig{
+				Enabled:     true,
+				PublicPaths: []string{"/health", "/healthz", "/ready", "/metrics"},
+				APIKeyStore: apiKeyStore,
+			})
+			logger.Info("OIDC auth middleware initialized", slog.String("issuer", cfg.OIDCIssuer))
+		}
+	}
+
 	// Initialize API handlers
 	handlerOpts := &api.HandlerOptions{
-		Registry:  agentRegistry,
-		FlowStore: flows,
-		K8sClient: k8sClient,
+		Registry:    agentRegistry,
+		FlowStore:   flows,
+		K8sClient:   k8sClient,
+		DataflowSvc: dataflowSvc,
+		CronRunner:  cronRunner,
+		APIKeyStore: apiKeyStore,
 	}
 	handlers := api.NewHandlers(store, sched, v, cfg, logger, handlerOpts)
-	server := api.NewServer(handlers)
+	server := api.NewServer(handlers, authMiddleware, cfg.RateLimitRPS, cfg.RateLimitBurst)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -223,9 +269,25 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownGrace)
 	defer cancel()
 
+	// Shutdown tracer
+	if tracingProvider != nil {
+		if err := tracingProvider.Shutdown(ctx); err != nil {
+			logger.Error("tracer shutdown error", slog.String("error", err.Error()))
+		}
+	}
+
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Error("server shutdown error", "error", err)
 	}
 
 	logger.Info("server stopped")
+}
+
+// redisClient creates a Redis client for the given address.
+func redisClient(addr, password string, db int) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr:     addr,
+		Password: password,
+		DB:       db,
+	})
 }

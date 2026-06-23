@@ -24,40 +24,8 @@ func NewMemoryRegistry() *MemoryRegistry {
 func NewMemoryRegistryWithDefaults() *MemoryRegistry {
 	r := NewMemoryRegistry()
 	now := time.Now().UTC()
-
-	// Add default agents (the previously hardcoded ones)
-	defaults := []*Agent{
-		{
-			ID:          "mentatlab.echo",
-			Name:        "Echo Agent",
-			Version:     "1.0.0",
-			Description: "Simple echo agent for testing",
-			Capabilities: []string{"echo", "test"},
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		},
-		{
-			ID:          "mentatlab.psyche-sim",
-			Name:        "Psyche Simulation",
-			Version:     "1.0.0",
-			Description: "Psychological simulation agent",
-			Capabilities: []string{"simulation", "psychology"},
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		},
-		{
-			ID:          "mentatlab.ctm-cogpack",
-			Name:        "CTM CogPack",
-			Version:     "1.0.0",
-			Description: "Cognitive task modeling package",
-			Capabilities: []string{"cognitive", "modeling"},
-			CreatedAt:   now,
-			UpdatedAt:   now,
-		},
-	}
-
-	for _, agent := range defaults {
-		r.agents[agent.ID] = agent
+	for _, agent := range defaultAgents(now) {
+		r.agents[agent.ID] = cloneAgent(agent)
 	}
 
 	return r

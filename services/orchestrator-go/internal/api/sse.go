@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
@@ -18,9 +20,14 @@ import (
 // StreamEvents handles GET /api/v1/runs/{id}/events
 // It implements Server-Sent Events (SSE) for streaming run events.
 func (h *Handlers) StreamEvents(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	vars := mux.Vars(r)
 	runID := vars["id"]
+
+	ctx, span := apiTracer.Start(r.Context(), "api.StreamEvents",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
+
 	startTime := time.Now()
 
 	// Extract request ID for logging

@@ -10,25 +10,25 @@ echo "============================================="
 run_service_tests() {
     local service_path=$1
     local service_name=$2
-    
+
     echo ""
     echo "Testing $service_name..."
     echo "------------------------"
-    
+
     if [ -d "$service_path" ]; then
         cd "$service_path"
-        
+
         # Install dependencies if needed
         if [ -f "pyproject.toml" ]; then
             echo "Installing dependencies for $service_name..."
             pdm install
-            
+
             echo "Running tests for $service_name..."
             pdm run pytest -v || echo "Tests failed for $service_name"
         else
             echo "No pyproject.toml found in $service_path, skipping..."
         fi
-        
+
         cd - > /dev/null
     else
         echo "Service directory not found: $service_path"

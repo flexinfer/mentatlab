@@ -26,4 +26,3 @@ class StreamRegistry {
 }
 
 export const streamRegistry = new StreamRegistry();
-

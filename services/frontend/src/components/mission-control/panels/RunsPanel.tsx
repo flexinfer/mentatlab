@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'; // Assuming this exists, based on other files
 
 /**
  * RunsPanel
- * 
+ *
  * Orchestrator Mission Control:
  * - Create and manage runs
  * - Live inspection via SSE
@@ -25,7 +25,7 @@ export default function RunsPanel(): JSX.Element {
   const [mode, setMode] = useState<RunMode>('plan');
   const [creating, setCreating] = useState<boolean>(false);
   const [posting, setPosting] = useState<boolean>(false);
-  
+
   // Use OrchestratorSSE helper via service factory
   const sseRef = useRef<OrchestratorSSE | null>(null);
 
@@ -35,11 +35,16 @@ export default function RunsPanel(): JSX.Element {
   // Simple toast state
   const [toasts, setToasts] = useState<{ id: number; text: string; tone?: 'info' | 'error' | 'success' }[]>([]);
   const toastSeq = useRef(1);
+  const toastTimersRef = useRef<number[]>([]);
 
   function showToast(text: string, tone: 'info' | 'error' | 'success' = 'info') {
     const id = toastSeq.current++;
     setToasts((t) => [...t, { id, text, tone }]);
-    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
+    const timeoutId = window.setTimeout(() => {
+      setToasts((t) => t.filter((x) => x.id !== id));
+      toastTimersRef.current = toastTimersRef.current.filter((timerId) => timerId !== timeoutId);
+    }, 5000);
+    toastTimersRef.current.push(timeoutId);
   }
 
   // Auto-scroll timeline
@@ -54,6 +59,8 @@ export default function RunsPanel(): JSX.Element {
   useEffect(() => {
     return () => {
       sseRef.current?.close();
+      toastTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      toastTimersRef.current = [];
     };
   }, []);
 
@@ -62,10 +69,11 @@ export default function RunsPanel(): JSX.Element {
     try {
       const res = await orchestratorService.createRun(mode);
       const newRunId = res.runId || res.run_id || res.id;
-      
+
       if (newRunId) {
         setRunIdInput(newRunId);
         setPlanResult(null);
+        setCheckpoints([]);
         await refreshRun(newRunId);
         connectToRun(newRunId);
         showToast(`Run created: ${newRunId}`, 'success');
@@ -81,21 +89,21 @@ export default function RunsPanel(): JSX.Element {
     }
   }
 
-  async function refreshRun(runId: string) {
+  async function refreshRun(runId: string): Promise<boolean> {
     try {
       const run = await orchestratorService.getRun(runId);
       setCurrentRun(run);
-      const cps = await orchestratorService.listCheckpoints(runId);
-      setCheckpoints(cps);
+      return true;
     } catch (err: any) {
       console.error('Refresh failed', err);
       showToast('Failed to load run details', 'error');
+      return false;
     }
   }
 
   function connectToRun(runId: string) {
     disconnectSSE(); // ensure clean state
-    
+
     // Use factory method from service
     const client = orchestratorService.streamRunEvents(runId, {
         onOpen: () => {
@@ -138,16 +146,12 @@ export default function RunsPanel(): JSX.Element {
       if (!runIdInput) return;
       setPosting(true);
       try {
-          await orchestratorService.postCheckpoint(runIdInput, {
-              type: 'user_annotation',
-              data: { note: 'Manual checkpoint', ts: Date.now() }
-          });
-          // Refresh list to be sure, though SSE should catch it
-          const cps = await orchestratorService.listCheckpoints(runIdInput);
-          setCheckpoints(cps);
-          showToast('Checkpoint added', 'success');
+          const ok = await refreshRun(runIdInput);
+          if (ok) {
+              showToast('Run refreshed', 'success');
+          }
       } catch (e: any) {
-          showToast('Failed to post checkpoint', 'error');
+          showToast('Failed to refresh run', 'error');
       } finally {
           setPosting(false);
       }
@@ -166,44 +170,77 @@ export default function RunsPanel(): JSX.Element {
       }
   }
 
+  async function handleCloneRun() {
+      if (!runIdInput) return;
+      try {
+          const res = await orchestratorService.cloneRun(runIdInput, false);
+          const newId = res.run_id || res.runId || res.id;
+          if (newId) {
+              setRunIdInput(newId);
+              setCheckpoints([]);
+              await refreshRun(newId);
+              showToast(`Cloned run: ${newId}`, 'success');
+          }
+      } catch (err: any) {
+          showToast('Clone failed: ' + (err.message || 'unknown'), 'error');
+      }
+  }
+
+  async function handleRerun() {
+      if (!runIdInput) return;
+      try {
+          const res = await orchestratorService.cloneRun(runIdInput, true);
+          const newId = res.run_id || res.runId || res.id;
+          if (newId) {
+              setRunIdInput(newId);
+              setCheckpoints([]);
+              await refreshRun(newId);
+              connectToRun(newId);
+              showToast(`Re-running as: ${newId}`, 'success');
+          }
+      } catch (err: any) {
+          showToast('Re-run failed: ' + (err.message || 'unknown'), 'error');
+      }
+  }
+
   return (
     <div className="h-full flex flex-col gap-4 p-4">
       {/* Top Controls */}
-      <Card className="flex-none p-3 flex flex-wrap gap-4 items-center bg-card/80">
+      <Card className="flex-none p-3 flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2">
             <label className="text-xs font-medium text-muted-foreground">Mode</label>
-            <Select 
-                value={mode} 
+            <Select
+                value={mode}
                 onChange={(e) => setMode(e.target.value as RunMode)}
-                className="w-24 h-8 text-xs bg-muted/50 border-white/10"
+                className="w-24 h-8 text-xs bg-muted/30 border-border/70"
             >
                 <option value="plan">Plan</option>
                 <option value="redis">Redis</option>
                 <option value="k8s">K8s</option>
             </Select>
-            <Button 
-                size="sm" 
-                variant="glow" 
-                onClick={handleCreateRun} 
+            <Button
+                size="sm"
+                variant="glow"
+                onClick={handleCreateRun}
                 disabled={creating}
                 className="h-8 text-xs font-semibold"
             >
                 {creating ? 'Creating...' : '+ New Run'}
             </Button>
         </div>
-        
-        <div className="h-6 w-px bg-white/10" />
+
+        <div className="h-6 w-px bg-border/70" />
 
         <div className="flex items-center gap-2 flex-1">
-             <Input 
+             <Input
                 size="sm"
                 placeholder="Run ID..."
                 value={runIdInput}
                 onChange={(e) => setRunIdInput(e.target.value)}
                 className="font-mono text-xs max-w-[240px]"
              />
-             <Button 
-                size="sm" 
+             <Button
+                size="sm"
                 variant="secondary"
                 onClick={() => { refreshRun(runIdInput); connectToRun(runIdInput); }}
                 className="h-8 text-xs"
@@ -218,7 +255,7 @@ export default function RunsPanel(): JSX.Element {
         </div>
 
         <div className="flex items-center gap-2 text-xs">
-            <span className={cn("w-2 h-2 rounded-full", sseConnected ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" : "bg-zinc-600")} />
+            <span className={cn("w-2 h-2 rounded-full", sseConnected ? "bg-emerald-500" : "bg-zinc-600")} />
             <span className="text-muted-foreground">{sseConnected ? 'Live' : 'Offline'}</span>
         </div>
       </Card>
@@ -231,9 +268,9 @@ export default function RunsPanel(): JSX.Element {
                     <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase">Values</span>
                     {currentRun && (
                         <span className={cn(
-                            "text-[10px] px-2 py-0.5 rounded-full border", 
-                            currentRun.status === 'running' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : 
-                            currentRun.status === 'failed' ? "bg-red-500/10 text-red-400 border-red-500/20" : 
+                            "text-[10px] px-2 py-0.5 rounded-full border",
+                            currentRun.status === 'running' ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                            currentRun.status === 'failed' ? "bg-red-500/10 text-red-400 border-red-500/20" :
                             "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
                         )}>
                             {currentRun.status.toUpperCase()}
@@ -263,7 +300,28 @@ export default function RunsPanel(): JSX.Element {
                 </div>
                 <div className="p-2 border-t border-white/5 bg-zinc-950/30 flex gap-2">
                      <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handlePostCheckpoint} disabled={posting || !runIdInput}>
-                        + Annotation
+                        Refresh
+                     </Button>
+                     <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handleCloneRun} disabled={!runIdInput}>
+                        Clone
+                     </Button>
+                     <Button size="sm" variant="outline" className="h-7 text-[10px]" onClick={handleRerun} disabled={!runIdInput}>
+                        Re-run
+                     </Button>
+                     <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[10px]"
+                        onClick={() => {
+                            if (currentRun?.trace_id) {
+                                window.dispatchEvent(new CustomEvent('openTrace', { detail: { traceId: currentRun.trace_id } }));
+                            } else if (runIdInput) {
+                                window.dispatchEvent(new CustomEvent('openTrace', { detail: { runId: runIdInput } }));
+                            }
+                        }}
+                        disabled={!runIdInput}
+                     >
+                        View Trace
                      </Button>
                      <Button size="sm" variant="destructive" className="h-7 text-[10px] ml-auto" onClick={handleCancelRun} disabled={!runIdInput}>
                         Cancel Run
@@ -277,8 +335,8 @@ export default function RunsPanel(): JSX.Element {
            {toasts.map(t => (
                <div key={t.id} className={cn(
                    "bg-zinc-900 border text-xs px-3 py-2 rounded shadow-xl animate-in slide-in-from-bottom-2 fade-in",
-                   t.tone === 'error' ? "border-red-500/50 text-red-200" : 
-                   t.tone === 'success' ? "border-emerald-500/50 text-emerald-200" : 
+                   t.tone === 'error' ? "border-red-500/50 text-red-200" :
+                   t.tone === 'success' ? "border-emerald-500/50 text-emerald-200" :
                    "border-zinc-700 text-zinc-200"
                )}>
                    {t.text}

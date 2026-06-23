@@ -33,11 +33,12 @@ import NodeCard, { type NodeCardData } from './graph/NodeCard';
 import { useRunGraph, type RunStatus } from './graph/useRunGraph';
 import Badge from '@/components/ui/Badge';
 import { PanelShell } from '@/components/ui/PanelShell';
-import useStore from '../../../store';
+import { useCanvasStore } from '@/stores';
 import { orchestratorService } from '../../../services/api/orchestratorService';
 import { useToast } from '../../../contexts/ToastContext';
 import ConditionalNode from '@/nodes/ConditionalNode';
 import ForEachNode from '@/nodes/ForEachNode';
+import GateNode from '@/nodes/GateNode';
 
 type Props = {
   runId: string | null;
@@ -54,6 +55,7 @@ const nodeTypes = {
   nodeCard: NodeCard,
   conditional: ConditionalNode,
   forEach: ForEachNode,
+  gate: GateNode,
 } as any;
 
 const MiniMapAny = MiniMap as any;
@@ -81,7 +83,7 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
   } = useRunGraph(runId || null);
 
   // Context menu state from store
-  const openContextMenu = useStore((s) => s.openContextMenu);
+  const openContextMenu = useCanvasStore((s) => s.openContextMenu);
   const toast = useToast();
 
   const reactFlowRef = React.useRef<any>(null);
@@ -89,14 +91,15 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
   const fitView = React.useCallback(() => {
     try {
       const inst = reactFlowRef.current;
-      if (inst?.fitView) inst.fitView({ padding: 0.2, includeHiddenNodes: true });
+      if (!inst?.fitView || nodes.length === 0) return;
+      inst.fitView({ padding: 0.2, includeHiddenNodes: true });
     } catch {}
-  }, []);
+  }, [nodes.length]);
 
   React.useEffect(() => {
     // request fit view on first load and any subsequent nonce bumps
     fitView();
-  }, [fitViewNonce]);
+  }, [fitView, fitViewNonce]);
 
   // selection bridging
   const handleSelectionChange = React.useCallback(
@@ -123,14 +126,17 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
     }
 
     try {
-      toast.info(`Retrying ${failed.length} failed node${failed.length > 1 ? 's' : ''}...`);
-      const result = await orchestratorService.retryNodes(runId, failed);
-      toast.success(
-        `Retried ${result.retriedNodes.length} node${result.retriedNodes.length > 1 ? 's' : ''}`
-      );
+      toast.info(`Re-running flow after ${failed.length} failed node${failed.length > 1 ? 's' : ''}...`);
+      const result = await orchestratorService.cloneRun(runId, true);
+      const newRunId = result.runId || result.run_id || result.id;
+      if (newRunId) {
+        toast.success(`Started re-run as ${newRunId}`);
+      } else {
+        toast.success('Started re-run');
+      }
     } catch (err: any) {
       console.error('[GraphPanel] Retry failed:', err);
-      toast.error(err?.message || 'Failed to retry nodes');
+      toast.error(err?.message || 'Failed to re-run flow');
     }
   }, [nodes, runId, toast]);
 
@@ -212,11 +218,7 @@ export default function GraphPanel({ runId, onSelectNode }: Props) {
             onNodeContextMenu={handleNodeContextMenu as any}
             onInit={(instance: any) => {
               reactFlowRef.current = instance;
-              // initial fit at first mount handled by fitViewNonce effect as well
-              try { fitView(); } catch {}
             }}
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
             defaultEdgeOptions={{ animated: true }}
           >
             <BackgroundAny gap={16} color="hsl(var(--muted))" />

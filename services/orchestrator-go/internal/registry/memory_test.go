@@ -317,9 +317,12 @@ func TestMemoryRegistry_DefaultAgents(t *testing.T) {
 	} else if echo.Name != "Echo Agent" {
 		t.Errorf("expected Echo Agent, got %q", echo.Name)
 	}
+	if got, want := echo.Image, defaultEchoAgentImage; got != want {
+		t.Errorf("expected echo image %q, got %q", want, got)
+	}
 
 	// Verify all expected defaults
-	expectedIDs := []string{"mentatlab.echo", "mentatlab.psyche-sim", "mentatlab.ctm-cogpack"}
+	expectedIDs := []string{"mentatlab.echo", "mentatlab.psyche-sim", "mentatlab.ctm-cogpack", "loom-mcp-executor"}
 	for _, id := range expectedIDs {
 		exists, err := reg.Exists(ctx, id)
 		if err != nil {
@@ -328,6 +331,17 @@ func TestMemoryRegistry_DefaultAgents(t *testing.T) {
 		if !exists {
 			t.Errorf("expected %s to exist", id)
 		}
+	}
+
+	mcpExec, err := reg.Get(ctx, "loom-mcp-executor")
+	if err != nil {
+		t.Fatalf("expected loom-mcp-executor to be pre-loaded: %v", err)
+	}
+	if got := mcpExec.Command; len(got) != 2 || got[0] != "python" || got[1] != "agents/loom-mcp-executor/main.py" {
+		t.Fatalf("unexpected command for loom-mcp-executor: %#v", got)
+	}
+	if got, want := mcpExec.Image, defaultMCPExecutorImage; got != want {
+		t.Fatalf("unexpected image for loom-mcp-executor: got %q want %q", got, want)
 	}
 }
 

@@ -41,17 +41,21 @@ spec:
         fsGroup: 1000
       containers:
         - name: frontend
-          image: registry.harbor.lan/library/mentatlab-frontend:latest
-          imagePullPolicy: IfNotPresent
+          image: registry.harbor.lan/library/mentatlab-frontend:v0.0.0-placeholder
+          imagePullPolicy: Always
           ports:
             - containerPort: 5173
               name: http
           env:
             - name: PORT
               value: "5173"
-            # For reference; the image is typically built with the public Gateway URL
+            # Browser-accessible gateway URL — uses the ingress hostname so
+            # API calls to /api/* and WebSocket at /ws/* resolve correctly.
             - name: VITE_GATEWAY_BASE_URL
-              value: "http://192.168.50.244:8080"
+              valueFrom:
+                configMapKeyRef:
+                  name: mentatlab-urls
+                  key: GATEWAY_PUBLIC_URL
           resources:
             requests:
               cpu: 100m
@@ -85,14 +89,14 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            - name: cache
-              mountPath: /home/node/.cache
-            - name: vite-temp
-              mountPath: /app/node_modules/.vite-temp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
       volumes:
         - name: tmp
           emptyDir: {}
-        - name: cache
+        - name: nginx-cache
           emptyDir: {}
-        - name: vite-temp
+        - name: nginx-run
           emptyDir: {}

@@ -59,7 +59,7 @@ func TestExecuteForEach_Sequential(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-seq", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-seq", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestExecuteForEach_Parallel(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-parallel", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-parallel", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -180,6 +180,81 @@ func TestExecuteForEach_Parallel(t *testing.T) {
 	}
 	if maxConcurrent > 3 {
 		t.Errorf("Max concurrency %d exceeded MaxParallel of 3", maxConcurrent)
+	}
+}
+
+func TestExecuteForEach_AppliesRuntimeSafetyCap(t *testing.T) {
+	store := runstore.NewMemoryStore(nil)
+
+	var concurrentMax int32
+	var current int32
+
+	driver := &mockDriver{
+		runNodeFunc: func(ctx context.Context, runID, nodeID string, cmd []string, env map[string]string, timeout float64) (int, error) {
+			curr := atomic.AddInt32(&current, 1)
+			for {
+				max := atomic.LoadInt32(&concurrentMax)
+				if curr <= max || atomic.CompareAndSwapInt32(&concurrentMax, max, curr) {
+					break
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+			atomic.AddInt32(&current, -1)
+			return 0, nil
+		},
+	}
+	logger := slog.Default()
+
+	s := New(store, driver, testCommandResolver, nil, logger)
+	ctx := context.Background()
+
+	plan := &types.Plan{
+		Nodes: []types.NodeSpec{
+			{ID: "input", Type: "agent"},
+			{
+				ID:   "loop",
+				Type: types.NodeTypeForEach,
+				ForEach: &types.ForEachConfig{
+					Collection:  "inputs.input.items",
+					ItemVar:     "item",
+					MaxParallel: types.MaxForEachParallelSafetyCap * 2, // Intentionally above cap
+					Body:        []string{"process"},
+				},
+				Inputs: []string{"input"},
+			},
+			{ID: "process", Type: "agent", Command: []string{"echo"}},
+		},
+	}
+
+	runID, err := store.CreateRun(ctx, "test-foreach-cap", plan, "")
+	if err != nil {
+		t.Fatalf("Failed to create run: %v", err)
+	}
+
+	items := make([]interface{}, types.MaxForEachParallelSafetyCap*3)
+	for i := range items {
+		items[i] = i
+	}
+	if err := store.SetNodeOutputs(ctx, runID, "input", map[string]interface{}{"items": items}); err != nil {
+		t.Fatalf("Failed to set outputs: %v", err)
+	}
+
+	rctx := &runContext{
+		runID:      runID,
+		nodeSpecs:  make(map[string]*types.NodeSpec),
+		dependents: make(map[string]map[string]bool),
+	}
+	for i := range plan.Nodes {
+		rctx.nodeSpecs[plan.Nodes[i].ID] = &plan.Nodes[i]
+	}
+
+	node := rctx.nodeSpecs["loop"]
+	if err := s.executeForEach(ctx, rctx, node); err != nil {
+		t.Fatalf("executeForEach failed: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&concurrentMax); got > int32(types.MaxForEachParallelSafetyCap) {
+		t.Fatalf("max concurrency %d exceeded runtime safety cap %d", got, types.MaxForEachParallelSafetyCap)
 	}
 }
 
@@ -223,7 +298,7 @@ func TestExecuteForEach_EmptyCollection(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-empty", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-empty", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -300,7 +375,7 @@ func TestExecuteForEach_ErrorInIteration(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-error", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-error", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -384,7 +459,7 @@ func TestExecuteForEach_Cancellation(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(context.Background(), "test-foreach-cancel", plan)
+	runID, err := store.CreateRun(context.Background(), "test-foreach-cancel", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -446,7 +521,7 @@ func TestExecuteForEach_InvalidCollection(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-invalid", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-invalid", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -496,7 +571,7 @@ func TestExecuteForEach_NonSliceCollection(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-nonslice", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-nonslice", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -543,7 +618,7 @@ func TestExecuteForEach_NoConfig(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-noconfig", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-noconfig", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -614,7 +689,7 @@ func TestExecuteForEach_IterationEnvVars(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-env", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-env", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -697,7 +772,7 @@ func TestExecuteForEach_EmitEvents(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-foreach-events", plan)
+	runID, err := store.CreateRun(ctx, "test-foreach-events", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -765,7 +840,7 @@ func TestExecuteLoopBody_EmptyBody(t *testing.T) {
 	ctx := context.Background()
 
 	plan := &types.Plan{}
-	runID, err := store.CreateRun(ctx, "test-empty-body", plan)
+	runID, err := store.CreateRun(ctx, "test-empty-body", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -792,7 +867,7 @@ func TestExecuteLoopBody_MissingBodyNode(t *testing.T) {
 	ctx := context.Background()
 
 	plan := &types.Plan{}
-	runID, err := store.CreateRun(ctx, "test-missing-body", plan)
+	runID, err := store.CreateRun(ctx, "test-missing-body", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -826,7 +901,7 @@ func TestExecuteBodyNode_NoCommand(t *testing.T) {
 	ctx := context.Background()
 
 	plan := &types.Plan{}
-	runID, err := store.CreateRun(ctx, "test-no-cmd", plan)
+	runID, err := store.CreateRun(ctx, "test-no-cmd", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -844,16 +919,19 @@ func TestExecuteBodyNode_NoCommand(t *testing.T) {
 	}
 
 	err = s.executeBodyNode(ctx, rctx, spec, map[string]interface{}{}, 0)
-	if err != nil {
-		t.Errorf("Node with no command should succeed: %v", err)
+	if err == nil {
+		t.Fatal("expected error for node with no command")
 	}
 
-	// Check that node was marked as succeeded
+	// Check that node was marked as failed
 	state, err := store.GetNodeState(ctx, runID, "no_cmd_node")
 	if err != nil {
 		t.Fatalf("Failed to get node state: %v", err)
 	}
-	if state.Status != types.NodeStatusSucceeded {
-		t.Errorf("Node should be succeeded, got %v", state.Status)
+	if state.Status != types.NodeStatusFailed {
+		t.Errorf("Node should be failed, got %v", state.Status)
+	}
+	if state.Error == "" {
+		t.Error("Node failure should include explicit error details")
 	}
 }

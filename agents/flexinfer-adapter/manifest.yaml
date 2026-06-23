@@ -1,0 +1,59 @@
+id: mentatlab.flexinfer-adapter
+version: "0.1.0"
+image: registry.harbor.lan/library/mentatlab-flexinfer-adapter:v0.1.0-dev
+runtime: python3.12
+description: >
+  Adapter agent for FlexInfer model inference. Wraps FlexInfer MCP tools
+  with model lifecycle awareness (readiness checks, activation, retry on
+  transient states). Supports inference, model listing, activation, and
+  GPU status queries.
+longRunning: false
+
+env:
+  - LOOM_BIN=loom
+
+inputs:
+  - name: spec
+    type: json
+    metadata:
+      description: >
+        Action specification. Fields: model (string), action (enum:
+        inference|list|get|activate|scale|gpu_status), params (object).
+  - name: context
+    type: json
+    metadata:
+      description: Session and execution context.
+
+outputs:
+  - name: result
+    type: json
+    metadata:
+      description: Action result with model, action, result, and mentat_meta fields.
+  - name: error
+    type: json
+    metadata:
+      description: Structured error with code, message, and retryable flag.
+
+capabilities:
+  actions:
+    - inference
+    - list
+    - get
+    - activate
+    - scale
+    - gpu_status
+  supports_progress: false
+  supports_heartbeat: false
+
+ui:
+  title: FlexInfer Adapter
+  description: Invoke FlexInfer models with lifecycle-aware inference
+  icon: "\U0001F9E0"
+  catalog:
+    visible: true
+    category: AI Inference
+    tags:
+      - inference
+      - flexinfer
+      - llm
+      - image-generation

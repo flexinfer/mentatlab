@@ -73,18 +73,14 @@ func Init(ctx context.Context, cfg *Config, logger *slog.Logger) (*Provider, err
 		return nil, err
 	}
 
-	// Create resource with service info
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceName(cfg.ServiceName),
-			semconv.ServiceVersion(cfg.ServiceVersion),
-		),
+	// Create resource with service info.
+	// Use NewWithAttributes only (not resource.Merge with Default) to avoid
+	// schema URL conflicts between the SDK's default resource and semconv.
+	res := resource.NewWithAttributes(
+		semconv.SchemaURL,
+		semconv.ServiceName(cfg.ServiceName),
+		semconv.ServiceVersion(cfg.ServiceVersion),
 	)
-	if err != nil {
-		return nil, err
-	}
 
 	// Create sampler based on sample rate
 	var sampler sdktrace.Sampler

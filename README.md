@@ -2,64 +2,88 @@
 
 # MentatLab
 
-MentatLab is a research platform for developing and testing advanced AI agents. It provides a mission control interface for monitoring agent activities, a graph-based execution engine, and a set of tools for building complex agent workflows.
+MentatLab is an AI agent orchestration platform with a Mission Control interface for building, monitoring, and executing agent workflows as DAGs.
 
 ## Features
 
-- **Mission Control UI**: Real-time visualization of agent networks, streaming logs, and performance metrics.
-- **Graph Engine**: Define and execute complex agent workflows as DAGs.
-- **Kubernetes Integration**: Scalable execution of agents as K8s pods.
-- **Go Backend**: High-performance services for gateway and orchestration.
-- **Cyberpunk Aesthetic**: Immersive, sci-fi inspired interface.
+- **Mission Control UI**: Visual canvas for building workflows, real-time event streaming, and performance metrics
+- **DAG Engine**: Execute agent workflows with conditionals, forEach loops, and data flow between nodes
+- **Kubernetes Integration**: Run agents as K8s pods with job watching, retries, and CronJob support
+- **Go Backend**: High-performance gateway and orchestrator services
+- **Agent Contract**: Simple stdin/stdout NDJSON protocol for agents in any language
 
 ## Architecture
 
-The system consists of the following components:
+```
+Browser → Gateway (Go, :8080) → Orchestrator (Go, :7070) → Agents
+               ↓                        ↓
+             Redis ←───────────────────┘
+```
 
-- **Frontend**: React application with Vite, Tailwind CSS, and React Flow.
-- **Gateway**: Go-based service for WebSocket handling and API proxying.
-- **Orchestrator**: Go-based service for graph execution and agent management.
-- **Redis**: Message broker for real-time events and state storage.
+- **Frontend**: React + ReactFlow canvas, Zustand state, Tailwind CSS (Vite)
+- **Gateway**: API proxy + WebSocket hub for real-time events
+- **Orchestrator**: DAG scheduler, agent registry, flow store, run management
+- **Redis**: Message broker and state storage
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
+### Docker Compose (recommended)
 
-- Docker & Kubernetes (k3s recommended)
-- Go 1.23+
-- Node.js 18+
+```bash
+docker-compose up
+```
 
-### Development
+Services start at:
+- Redis: localhost:6379
+- Frontend: http://localhost:5173
+- Gateway: http://localhost:8080
+- Orchestrator: http://localhost:7070
 
-1.  **Start Services**:
+### Manual Development
 
-    ```bash
-    # Start Redis
-    docker run -d -p 6379:6379 redis
+```bash
+# Terminal 1: Redis
+docker run -d --name mentatlab-redis -p 6379:6379 redis:7-alpine
 
-    # Start Orchestrator
-    cd services/orchestrator-go
-    go run main.go
+# Terminal 2: Orchestrator
+cd services/orchestrator-go && go run ./cmd/orchestrator/
 
-    # Start Gateway
-    cd services/gateway-go
-    go run main.go
-    ```
+# Terminal 3: Gateway
+cd services/gateway-go && go run main.go
 
-2.  **Start Frontend**:
+# Terminal 4: Frontend
+cd services/frontend && npm install && npm run dev
+```
 
-    ```bash
-    cd services/frontend
-    npm install
-    npm run dev
-    ```
+Open http://localhost:5173 in your browser.
 
-3.  **Access UI**:
-    Open [http://localhost:5173](http://localhost:5173) in your browser.
+## Creating Agents
+
+Scaffold a new agent using `mentatctl`:
+
+```bash
+cd cli/mentatctl
+python main.py agent create --template python --name my-agent
+```
+
+Templates available: `python`, `nodejs`, `rust`, `go`
+
+Agents communicate via stdin/stdout NDJSON. See [docs/agent-sdk.md](docs/agent-sdk.md) for the full contract.
+
+## Example Flows
+
+Pre-built flows in `examples/`:
+
+| Flow | Description |
+|------|-------------|
+| `hello_chat.json` | Prompt → LLM → Console |
+| `conditional_routing.json` | Classify input and route to different agents |
+| `foreach_batch.json` | Process a collection of items in parallel |
+| `data_pipeline.json` | Multi-stage pipeline with parallel enrichment |
 
 ## Deployment
 
-Use the provided deployment script to deploy to a Kubernetes cluster:
+GitOps via Flux CD to K3s. Manifests in `k8s/`.
 
 ```bash
 ./k8s/deploy.sh --namespace mentatlab
@@ -67,11 +91,22 @@ Use the provided deployment script to deploy to a Kubernetes cluster:
 
 ## Configuration
 
-Environment variables can be used to configure the services:
+| Variable | Service | Default | Description |
+|----------|---------|---------|-------------|
+| `PORT` | Both | 8080/7070 | Service port |
+| `REDIS_URL` | Both | redis:6379 | Redis connection |
+| `ORCHESTRATOR_BASE_URL` | Gateway | http://localhost:7070 | Orchestrator URL |
+| `ORCH_RUNSTORE` | Orchestrator | memory | Run storage backend (memory/redis) |
+| `TRACING_ENABLED` | Both | false | Enable OpenTelemetry tracing |
+| `OTLP_ENDPOINT` | Both | — | OTLP collector endpoint |
 
-- `PORT`: Service port (default: 8080/7070)
-- `REDIS_URL`: Redis connection string (default: redis:6379)
-- `ORCHESTRATOR_BASE_URL`: URL of the orchestrator service (gateway only)
+## Documentation
+
+- [Agent SDK](docs/agent-sdk.md) — Agent contract, event protocol, SDK reference
+- [Architecture](docs/architecture.md) — System design and component overview
+- [CI/CD Setup](docs/ci-cd-setup.md) — Pipeline configuration
+- [Local Development](docs/local-development-guide.md) — Development environment setup
+- [ROADMAP](ROADMAP.md) — Current milestones and progress
 
 ## License
 

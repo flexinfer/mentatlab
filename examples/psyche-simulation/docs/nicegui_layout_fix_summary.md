@@ -3,7 +3,7 @@
 ## Problem
 The application was encountering the error:
 ```
-Found top level layout element "Header" inside element "Column". 
+Found top level layout element "Header" inside element "Column".
 Top level layout elements can not be nested but must be direct children of the page content.
 ```
 
@@ -24,7 +24,7 @@ main_container = ui.column().classes('w-full')
 def show_login_interface():
     # Clear the main container first
     main_container.clear()
-    
+
     # Create login page inside the main container
     with main_container:
         create_login_page(...)
@@ -34,7 +34,7 @@ def show_login_interface():
 ```python
 def on_login_success(user_profile, session_id, jwt_token):
     auth_state.login(user_profile, session_id, jwt_token)
-    
+
     # Use a timer to escape the current UI context
     ui.timer(0.1, show_main_interface, once=True)
 ```
@@ -44,7 +44,7 @@ def on_login_success(user_profile, session_id, jwt_token):
 def show_main_interface():
     # Clear the main container before creating the simulation interface
     main_container.clear()
-    
+
     # Create the simulation interface (with header at top level)
     create_simulation_interface(ui_manager, auth_state, session_manager, logout)
 ```

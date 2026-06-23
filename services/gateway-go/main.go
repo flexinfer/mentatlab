@@ -15,6 +15,7 @@ import (
 
 	"github.com/flexinfer/mentatlab/services/gateway-go/hub"
 	"github.com/flexinfer/mentatlab/services/gateway-go/middleware"
+	"github.com/flexinfer/mentatlab/services/gateway-go/traces"
 	"github.com/flexinfer/mentatlab/services/gateway-go/tracing"
 
 	"github.com/gorilla/mux"
@@ -28,6 +29,7 @@ import (
 type Config struct {
 	Port                  string
 	OrchestratorURL       string
+	TempoQueryURL         string
 	RedisAddr             string
 	CFTeamDomain          string
 	CFPolicyAUD           string
@@ -38,6 +40,8 @@ type Config struct {
 	RateLimitRPS          float64
 	RateLimitBurst        int
 	ShutdownTimeout       time.Duration
+	WSPongWait            time.Duration
+	WSPingPeriod          time.Duration
 	TracingEnabled        bool
 	OTLPEndpoint          string
 }
@@ -47,6 +51,7 @@ func loadConfig() *Config {
 	cfg := &Config{
 		Port:                  getEnv("PORT", "8080"),
 		OrchestratorURL:       getEnv("ORCHESTRATOR_BASE_URL", "http://localhost:7070"),
+		TempoQueryURL:         getEnv("TEMPO_QUERY_URL", ""),
 		RedisAddr:             getEnv("REDIS_URL", "redis:6379"),
 		CFTeamDomain:          getEnv("CF_TEAM_DOMAIN", ""),
 		CFPolicyAUD:           getEnv("CF_POLICY_AUD", ""),
@@ -56,6 +61,8 @@ func loadConfig() *Config {
 		RateLimitRPS:          100,
 		RateLimitBurst:        200,
 		ShutdownTimeout:       10 * time.Second,
+		WSPongWait:            getEnvDuration("WS_PONG_WAIT", 60*time.Second),
+		WSPingPeriod:          getEnvDuration("WS_PING_PERIOD", 54*time.Second),
 		TracingEnabled:        getEnv("TRACING_ENABLED", "false") == "true",
 		OTLPEndpoint:          getEnv("OTLP_ENDPOINT", "localhost:4317"),
 	}
@@ -74,6 +81,18 @@ func getEnv(key, defaultVal string) string {
 		return val
 	}
 	return defaultVal
+}
+
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	val := os.Getenv(key)
+	if val == "" {
+		return defaultVal
+	}
+	parsed, err := time.ParseDuration(val)
+	if err != nil || parsed <= 0 {
+		return defaultVal
+	}
+	return parsed
 }
 
 func main() {
@@ -115,18 +134,19 @@ func main() {
 	}, logger)
 
 	// Initialize Hub with structured logging, origin validation, and auth
-	wsHub := hub.NewHubWithConfig(&hub.HubConfig{
-		RedisAddr:      cfg.RedisAddr,
-		Logger:         logger,
-		AllowedOrigins: cfg.AllowedOrigins,
-		AuthValidator: func(r *http.Request) (string, string, error) {
+	wsHub := hub.NewHubWithAddress(cfg.RedisAddr,
+		hub.WithLogger(logger),
+		hub.WithAllowedOrigins(cfg.AllowedOrigins),
+		hub.WithPongWait(cfg.WSPongWait),
+		hub.WithPingPeriod(cfg.WSPingPeriod),
+		hub.WithAuthValidator(func(r *http.Request) (string, string, error) {
 			userInfo, err := authMiddleware.ValidateWebSocketToken(r)
 			if err != nil {
 				return "", "", err
 			}
 			return userInfo.Email, userInfo.Type, nil
-		},
-	})
+		}),
+	)
 	go wsHub.Run()
 
 	// Log warning if no origins configured (allows all)
@@ -193,6 +213,10 @@ func main() {
 		// Check if Redis is healthy
 		if !wsHub.RedisHealthy(ctx) {
 			status["status"] = "degraded"
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(status)
+			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -216,6 +240,18 @@ func main() {
 		originalDirector(req)
 		// Inject Cloudflare Access service token for internal requests
 		authMiddleware.InjectServiceToken(req)
+		// Forward authenticated user identity to downstream services
+		if user := middleware.GetUserFromContext(req.Context()); user != nil {
+			req.Header.Set("X-User-Email", user.Email)
+			req.Header.Set("X-User-Type", user.Type)
+		}
+	}
+
+	// Trace query proxy (routes to Tempo, not orchestrator)
+	if cfg.TempoQueryURL != "" {
+		traceHandler := traces.NewHandler(cfg.TempoQueryURL, cfg.OrchestratorURL, logger)
+		traceHandler.RegisterRoutes(r)
+		logger.Info("trace query proxy enabled", slog.String("tempo_url", cfg.TempoQueryURL))
 	}
 
 	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

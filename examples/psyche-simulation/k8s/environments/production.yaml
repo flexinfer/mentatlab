@@ -14,7 +14,7 @@ data:
   LOG_LEVEL: "INFO"
   PORT: "8080"
   HOST: "0.0.0.0"
-  
+
   # Redis Configuration
   REDIS_HOST: "redis-service"
   REDIS_PORT: "6379"
@@ -22,7 +22,7 @@ data:
   REDIS_MAX_CONNECTIONS: "50"
   REDIS_SOCKET_TIMEOUT: "5"
   REDIS_RETRY_ON_TIMEOUT: "true"
-  
+
   # LLM Configuration
   LLM_API_URL: "http://litellm.flexinfer.ai/v1/chat/completions"
   LLM_MODEL: "deepseek-r1-abliterated"
@@ -34,34 +34,34 @@ data:
   LLM_RETRY_DELAY: "3.0"
   LLM_MAX_RETRY_DELAY: "60.0"
   LLM_MAX_CONCURRENT_REQUESTS: "1"
-  
+
   # Session Configuration
   SESSION_AUTO_SAVE_INTERVAL: "300"
   SESSION_MAX_CONVERSATION_HISTORY: "100"
   SESSION_THINKING_INTERVAL: "15"
-  
+
   # WebSocket Configuration
   WEBSOCKET_ENABLE_REDIS: "true"
   WEBSOCKET_REDIS_CHANNEL: "websocket_events"
-  
+
   # Health Check Configuration
   HEALTH_CHECK_INTERVAL: "30"
   HEALTH_CHECK_TIMEOUT: "10"
   HEALTH_CHECK_REDIS_TIMEOUT: "5"
-  
+
   # Performance Monitoring
   METRICS_ENABLED: "true"
   METRICS_PORT: "9090"
   METRICS_PATH: "/metrics"
-  
+
   # Security Configuration
   JWT_EXPIRATION_HOURS: "24"
   BCRYPT_ROUNDS: "12"
-  
+
   # Export Configuration
   EXPORT_FORMATS: "html,markdown,json,pdf"
   EXPORT_DEFAULT_FORMAT: "html"
-  
+
   # UI Configuration
   UI_TITLE: "Psyche Simulation - Jungian Archetype Explorer"
   UI_THEME: "dark"

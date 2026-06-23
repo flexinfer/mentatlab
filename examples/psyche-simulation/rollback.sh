@@ -108,25 +108,25 @@ done
 # Check prerequisites
 check_prerequisites() {
     log_info "Checking prerequisites..."
-    
+
     # Check kubectl
     if ! command -v kubectl >/dev/null 2>&1; then
         log_error "kubectl is not installed"
         exit 1
     fi
-    
+
     # Check Kubernetes connection
     if ! kubectl cluster-info >/dev/null 2>&1; then
         log_error "Cannot connect to Kubernetes cluster"
         exit 1
     fi
-    
+
     # Check if namespace exists
     if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
         log_error "Namespace '$NAMESPACE' does not exist"
         exit 1
     fi
-    
+
     log_success "Prerequisites check passed"
 }
 
@@ -134,13 +134,13 @@ check_prerequisites() {
 list_revisions() {
     log_info "Available revisions for deployment '$APP_NAME' in namespace '$NAMESPACE':"
     echo
-    
+
     # Get rollout history
     kubectl rollout history deployment/"$APP_NAME" -n "$NAMESPACE" || {
         log_error "Failed to get rollout history"
         exit 1
     }
-    
+
     echo
     log_info "Current revision details:"
     kubectl get deployment "$APP_NAME" -n "$NAMESPACE" -o wide
@@ -149,14 +149,14 @@ list_revisions() {
 # Get current deployment status
 get_deployment_status() {
     log_info "Current deployment status:"
-    
+
     # Get deployment info
     kubectl get deployment "$APP_NAME" -n "$NAMESPACE" -o wide
-    
+
     echo
     log_info "Pod status:"
     kubectl get pods -l app="$APP_NAME" -n "$NAMESPACE"
-    
+
     echo
     log_info "Current revision:"
     kubectl rollout status deployment/"$APP_NAME" -n "$NAMESPACE" --timeout=0s || true
@@ -165,25 +165,25 @@ get_deployment_status() {
 # Perform rollback
 perform_rollback() {
     local rollback_cmd="kubectl rollout undo deployment/$APP_NAME -n $NAMESPACE"
-    
+
     if [ -n "$REVISION" ]; then
         rollback_cmd="$rollback_cmd --to-revision=$REVISION"
         log_info "Rolling back to revision $REVISION..."
     else
         log_info "Rolling back to previous revision..."
     fi
-    
+
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY RUN] Would execute: $rollback_cmd"
         return 0
     fi
-    
+
     # Execute rollback
     $rollback_cmd || {
         log_error "Rollback command failed"
         exit 1
     }
-    
+
     log_success "Rollback command executed successfully"
 }
 
@@ -193,21 +193,21 @@ wait_for_rollback() {
         log_info "[DRY RUN] Would wait for rollback to complete"
         return 0
     fi
-    
+
     log_info "Waiting for rollback to complete..."
-    
+
     # Wait for rollout to finish
     if kubectl rollout status deployment/"$APP_NAME" -n "$NAMESPACE" --timeout=600s; then
         log_success "Rollback completed successfully"
     else
         log_error "Rollback timed out or failed"
-        
+
         # Show current status for debugging
         echo
         log_warning "Current deployment status:"
         kubectl get deployment "$APP_NAME" -n "$NAMESPACE" -o wide
         kubectl get pods -l app="$APP_NAME" -n "$NAMESPACE"
-        
+
         exit 1
     fi
 }
@@ -217,54 +217,54 @@ perform_health_check() {
     if [ "$CHECK_HEALTH" != true ]; then
         return 0
     fi
-    
+
     log_info "Performing health check after rollback..."
-    
+
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY RUN] Would perform health check"
         return 0
     fi
-    
+
     # Wait a bit for pods to be ready
     sleep 10
-    
+
     # Check if pods are ready
     local ready_pods
     ready_pods=$(kubectl get pods -l app="$APP_NAME" -n "$NAMESPACE" -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | tr ' ' '\n' | grep -c "True" || echo "0")
-    
+
     local total_pods
     total_pods=$(kubectl get pods -l app="$APP_NAME" -n "$NAMESPACE" --no-headers | wc -l)
-    
+
     if [ "$ready_pods" -eq "$total_pods" ] && [ "$total_pods" -gt 0 ]; then
         log_success "All pods are ready ($ready_pods/$total_pods)"
     else
         log_error "Not all pods are ready ($ready_pods/$total_pods)"
-        
+
         # Show pod status for debugging
         kubectl get pods -l app="$APP_NAME" -n "$NAMESPACE"
         exit 1
     fi
-    
+
     # Test health endpoint
     log_info "Testing health endpoint..."
-    
+
     # Use port-forward to test health endpoint
     kubectl port-forward service/"$APP_NAME"-service 18080:80 -n "$NAMESPACE" &
     local port_forward_pid=$!
-    
+
     sleep 5
-    
+
     if curl -f -s http://localhost:18080/health/live >/dev/null 2>&1; then
         log_success "Health check passed"
         kill $port_forward_pid 2>/dev/null || true
     else
         log_error "Health check failed"
         kill $port_forward_pid 2>/dev/null || true
-        
+
         # Show recent logs for debugging
         log_warning "Recent application logs:"
         kubectl logs --tail=50 -l app="$APP_NAME" -n "$NAMESPACE"
-        
+
         exit 1
     fi
 }
@@ -274,16 +274,16 @@ confirm_rollback() {
     if [ "$FORCE" = true ] || [ "$DRY_RUN" = true ]; then
         return 0
     fi
-    
+
     echo
     log_warning "You are about to rollback the deployment '$APP_NAME' in namespace '$NAMESPACE'"
-    
+
     if [ -n "$REVISION" ]; then
         log_warning "Target revision: $REVISION"
     else
         log_warning "Target revision: Previous revision"
     fi
-    
+
     echo
     read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
     echo
@@ -299,16 +299,16 @@ backup_current_state() {
         log_info "[DRY RUN] Would backup current deployment state"
         return 0
     fi
-    
+
     log_info "Backing up current deployment state..."
-    
+
     local backup_file="/tmp/psyche-simulation-backup-$(date +%Y%m%d-%H%M%S).yaml"
-    
+
     kubectl get deployment "$APP_NAME" -n "$NAMESPACE" -o yaml > "$backup_file" || {
         log_warning "Failed to backup deployment state"
         return 1
     }
-    
+
     log_success "Current deployment state backed up to: $backup_file"
 }
 
@@ -318,21 +318,21 @@ show_rollback_summary() {
     log_success "Rollback Summary:"
     echo "  Deployment: $APP_NAME"
     echo "  Namespace:  $NAMESPACE"
-    
+
     if [ -n "$REVISION" ]; then
         echo "  Rolled back to revision: $REVISION"
     else
         echo "  Rolled back to: Previous revision"
     fi
-    
+
     echo
     log_info "Current deployment status:"
     kubectl get deployment "$APP_NAME" -n "$NAMESPACE" -o wide
-    
+
     echo
     log_info "Pod status:"
     kubectl get pods -l app="$APP_NAME" -n "$NAMESPACE"
-    
+
     echo
     log_info "Useful commands:"
     echo "  kubectl logs -f deployment/$APP_NAME -n $NAMESPACE"
@@ -344,14 +344,14 @@ show_rollback_summary() {
 # Main rollback function
 main() {
     log_info "Starting Psyche Simulation rollback..."
-    
+
     check_prerequisites
-    
+
     if [ "$LIST_REVISIONS" = true ]; then
         list_revisions
         exit 0
     fi
-    
+
     get_deployment_status
     confirm_rollback
     backup_current_state
@@ -359,7 +359,7 @@ main() {
     wait_for_rollback
     perform_health_check
     show_rollback_summary
-    
+
     log_success "Rollback completed successfully!"
 }
 

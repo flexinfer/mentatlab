@@ -6,12 +6,23 @@ services/frontend/dist/
 services/gateway/.venv/
 # Node
 services/frontend/node_modules/
+sdk/typescript/dist/
+
+# Go compiled binaries
+services/orchestrator-go/orchestrator
+services/gateway-go/gateway-go
+services/gateway-go/main
 
 # Misc
 .env
 services/gateway/.pdm-python
 logs/
 compose-logs.txt
+
+# Coverage output
+coverage/
+**/coverage/
+*.out
 
 # Test/tooling outputs
 /bin/

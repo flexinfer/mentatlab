@@ -60,8 +60,6 @@ export {
   type StreamSession,
   type DataPoint,
   type ConsoleMessage,
-  type LegacyStream,
-  type LegacyStreamSession,
 } from './streaming';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,14 +117,13 @@ export {
 } from './sync';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Legacy Re-exports (for backwards compatibility during migration)
+// Media Store
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Re-export canvas store as the default 'useStore' for existing code
-export { useCanvasStore as default } from './canvas';
-
-// Alias for components still using 'useReactFlowStore'
-export { useCanvasStore as useReactFlowStore } from './canvas';
+export {
+  useMediaStore,
+  type MediaState,
+} from './media';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Store Utilities

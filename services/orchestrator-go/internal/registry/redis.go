@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -49,6 +50,59 @@ func NewRedisRegistry(cfg *RedisConfig) (*RedisRegistry, error) {
 // NewRedisRegistryFromClient creates a registry from an existing Redis client.
 func NewRedisRegistryFromClient(client *redis.Client) *RedisRegistry {
 	return &RedisRegistry{client: client}
+}
+
+// SeedDefaultAgents ensures the built-in agents exist in Redis.
+// Existing agents are only backfilled with missing runtime fields.
+func (r *RedisRegistry) SeedDefaultAgents(ctx context.Context) error {
+	for _, agent := range defaultAgents(time.Now().UTC()) {
+		if err := r.seedDefaultAgent(ctx, agent); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *RedisRegistry) seedDefaultAgent(ctx context.Context, seed *Agent) error {
+	existing, err := r.Get(ctx, seed.ID)
+	if err != nil {
+		if !errors.Is(err, ErrAgentNotFound) {
+			return err
+		}
+
+		_, err = r.Create(ctx, &CreateAgentRequest{
+			ID:           seed.ID,
+			Name:         seed.Name,
+			Version:      seed.Version,
+			Image:        seed.Image,
+			Command:      cloneStringSlice(seed.Command),
+			Capabilities: cloneStringSlice(seed.Capabilities),
+			Schema:       cloneRawMessage(seed.Schema),
+			Description:  seed.Description,
+			Author:       seed.Author,
+			Metadata:     cloneStringMap(seed.Metadata),
+		})
+		return err
+	}
+
+	if !mergeDefaultAgentFields(existing, seed) {
+		return nil
+	}
+
+	existing.UpdatedAt = time.Now().UTC()
+	data, err := json.Marshal(existing)
+	if err != nil {
+		return fmt.Errorf("marshal agent: %w", err)
+	}
+
+	pipe := r.client.TxPipeline()
+	pipe.Set(ctx, agentKey(existing.ID), data, 0)
+	pipe.SAdd(ctx, agentIndexKey, existing.ID)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("seed default agent: %w", err)
+	}
+
+	return nil
 }
 
 // agentKey returns the Redis key for an agent.

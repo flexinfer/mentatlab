@@ -1,5 +1,43 @@
 const env = import.meta.env as any;
 
+function stripTrailingSlash(value: string): string {
+  return String(value || '').replace(/\/+$/, '');
+}
+
+function toWsProtocolUrl(value: string): string {
+  const normalized = stripTrailingSlash(value);
+  try {
+    const url = new URL(normalized);
+    if (url.protocol === 'https:') {
+      url.protocol = 'wss:';
+    } else if (url.protocol === 'http:') {
+      url.protocol = 'ws:';
+    }
+    return stripTrailingSlash(url.toString());
+  } catch {
+    return stripTrailingSlash(
+      normalized.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:'),
+    );
+  }
+}
+
+function toHttpProtocolUrl(value: string): string {
+  const normalized = stripTrailingSlash(value);
+  try {
+    const url = new URL(normalized);
+    if (url.protocol === 'wss:') {
+      url.protocol = 'https:';
+    } else if (url.protocol === 'ws:') {
+      url.protocol = 'http:';
+    }
+    return stripTrailingSlash(url.toString());
+  } catch {
+    return stripTrailingSlash(
+      normalized.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:'),
+    );
+  }
+}
+
 /**
  * Return the orchestrator base URL used by the frontend.
  *
@@ -16,7 +54,7 @@ export function getOrchestratorBaseUrl(): string {
     (env?.VITE_API_URL as string) ||
     '';
   const base = (fromEnv || 'http://localhost:7070').toString();
-  return base.replace(/\/+$/, '');
+  return stripTrailingSlash(base);
 }
 
 export const ORCHESTRATOR_BASE_URL = getOrchestratorBaseUrl();
@@ -57,7 +95,7 @@ export function getGatewayBaseUrl(): string {
   };
 
   if (fromEnv) {
-    const norm = String(fromEnv).replace(/\/+$/, '');
+    const norm = stripTrailingSlash(String(fromEnv));
     // If build-time URL points at an internal host but we are in a browser
     // (public runtime), prefer the current origin so that /api and /ws resolve
     // via the Ingress/controller.
@@ -76,3 +114,51 @@ export function getGatewayBaseUrl(): string {
 }
 
 export const GATEWAY_BASE_URL = getGatewayBaseUrl();
+
+/**
+ * Return the API base URL used by frontend HTTP clients.
+ * Uses VITE_API_URL for compatibility, then falls back to Gateway base.
+ */
+export function getApiBaseUrl(): string {
+  const fromEnv = (env?.VITE_API_URL as string) || '';
+  if (fromEnv) {
+    return stripTrailingSlash(String(fromEnv));
+  }
+  return getGatewayBaseUrl();
+}
+
+/**
+ * Derive WebSocket hub URL.
+ * Priority:
+ * 1) VITE_WS_URL (accepts ws(s) or http(s), appends /ws if path omitted)
+ * 2) Gateway base URL converted to ws(s) + /ws
+ */
+export function getGatewayWsUrl(): string {
+  const explicitWsUrl = (env?.VITE_WS_URL as string) || '';
+  if (explicitWsUrl) {
+    const converted = toWsProtocolUrl(explicitWsUrl);
+    try {
+      const url = new URL(converted);
+      const pathname = stripTrailingSlash(url.pathname || '');
+      if (!pathname || pathname === '/') {
+        url.pathname = '/ws';
+      }
+      return stripTrailingSlash(url.toString());
+    } catch {
+      return converted.endsWith('/ws') ? converted : `${converted}/ws`;
+    }
+  }
+
+  const base = toWsProtocolUrl(getGatewayBaseUrl());
+  return `${base}/ws`;
+}
+
+/**
+ * Derive SSE URL from the resolved WebSocket hub URL.
+ * ws(s)://host:port/ws -> http(s)://host:port/ws/sse
+ */
+export function getGatewaySseUrl(): string {
+  const wsHubUrl = getGatewayWsUrl();
+  const httpHubUrl = toHttpProtocolUrl(wsHubUrl);
+  return `${httpHubUrl}/sse`;
+}

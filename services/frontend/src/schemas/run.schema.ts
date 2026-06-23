@@ -74,8 +74,25 @@ export const NodeSpecSchema = z.object({
   command: z.array(z.string()).optional(),
   image: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
+  capabilities: z.object({
+    actions: z.array(z.string()).optional(),
+    supports_progress: z.boolean().optional(),
+    supports_heartbeat: z.boolean().optional(),
+    gpu: z.boolean().optional(),
+    network: z.boolean().optional(),
+    storage: z.boolean().optional(),
+    secrets: z.boolean().optional(),
+  }).optional(),
+  resources: z.object({
+    cpu: z.string().optional(),
+    memory: z.string().optional(),
+    gpu: z.string().optional(),
+    timeout_seconds: z.number().int().optional(),
+    max_concurrent: z.number().int().optional(),
+  }).optional(),
   inputs: z.array(z.string()).optional(),
   timeout: z.number().optional(), // Duration in nanoseconds from Go
+  heartbeat_timeout: z.number().optional(), // Duration in nanoseconds from Go
   retries: z.number().int().optional(),
   // Control flow (only one should be set)
   conditional: ConditionalConfigSchema.optional(),

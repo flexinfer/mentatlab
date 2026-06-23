@@ -23,4 +23,3 @@ Out of Scope
 Validation
 - In dev: `npm run dev` for frontend, `uvicorn` gateway/orchestrator. Open CogPaks list; clicking UI should load remoteEntry.js and render.
 - In preview/prod: Frontend origin calls Gateway `/agents/...` which proxies to Orchestrator.
-

@@ -87,7 +87,7 @@ func TestExecuteConditional_IfTrue(t *testing.T) {
 	}
 
 	// Create run
-	runID, err := store.CreateRun(ctx, "test-if-true", plan)
+	runID, err := store.CreateRun(ctx, "test-if-true", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestExecuteConditional_IfFalse(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-if-false", plan)
+	runID, err := store.CreateRun(ctx, "test-if-false", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestExecuteConditional_Switch(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-switch", plan)
+	runID, err := store.CreateRun(ctx, "test-switch", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestExecuteConditional_SwitchDefault(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-switch-default", plan)
+	runID, err := store.CreateRun(ctx, "test-switch-default", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -388,7 +388,7 @@ func TestExecuteConditional_InvalidExpression(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-invalid-expr", plan)
+	runID, err := store.CreateRun(ctx, "test-invalid-expr", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestSkipBranch_Recursive(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-recursive-skip", plan)
+	runID, err := store.CreateRun(ctx, "test-recursive-skip", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -475,7 +475,7 @@ func TestBuildExprEnvironment(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-env-build", plan)
+	runID, err := store.CreateRun(ctx, "test-env-build", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -548,7 +548,7 @@ func TestExecuteConditional_SimpleCondition(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-simple", plan)
+	runID, err := store.CreateRun(ctx, "test-simple", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -593,7 +593,7 @@ func TestExecuteConditional_NoConfig(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-no-config", plan)
+	runID, err := store.CreateRun(ctx, "test-no-config", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}
@@ -646,7 +646,7 @@ func TestExecuteConditional_EmitEvents(t *testing.T) {
 		},
 	}
 
-	runID, err := store.CreateRun(ctx, "test-events", plan)
+	runID, err := store.CreateRun(ctx, "test-events", plan, "")
 	if err != nil {
 		t.Fatalf("Failed to create run: %v", err)
 	}

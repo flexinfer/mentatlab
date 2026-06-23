@@ -1,0 +1,812 @@
+package driver
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
+	batchv1 "k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
+)
+
+// --- K8sDriver.processLogLine tests ---
+
+func TestK8sDriver_ProcessLogLine_PlainStdout(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
+
+	d.processLogLine(context.Background(), "run1", "node1", "plain text output", false, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].EventType != "log" {
+		t.Errorf("event type: got %q, want %q", events[0].EventType, "log")
+	}
+	if events[0].Data["message"] != "plain text output" {
+		t.Errorf("message: got %v, want %q", events[0].Data["message"], "plain text output")
+	}
+	if events[0].Data["level"] != "info" {
+		t.Errorf("level: got %v, want %q", events[0].Data["level"], "info")
+	}
+}
+
+func TestK8sDriver_ProcessLogLine_PlainStderr(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
+
+	d.processLogLine(context.Background(), "run1", "node1", "error message", true, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Data["level"] != "error" {
+		t.Errorf("level: got %v, want %q", events[0].Data["level"], "error")
+	}
+}
+
+func TestK8sDriver_ProcessLogLine_ValidJSON(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
+
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"metric","value":42}`, false, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].EventType != "metric" {
+		t.Errorf("event type: got %q, want %q", events[0].EventType, "metric")
+	}
+}
+
+func TestK8sDriver_ProcessLogLine_JSONWithLevel(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
+
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","level":"warn","message":"low disk"}`, false, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Level != "warn" {
+		t.Errorf("level: got %q, want %q", events[0].Level, "warn")
+	}
+}
+
+func TestK8sDriver_ProcessLogLine_JSONInjectsRunNodeID(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
+
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"output","data":"test"}`, false, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Data["runId"] != "run1" {
+		t.Errorf("runId: got %v, want %q", events[0].Data["runId"], "run1")
+	}
+	if events[0].Data["nodeId"] != "node1" {
+		t.Errorf("nodeId: got %v, want %q", events[0].Data["nodeId"], "node1")
+	}
+}
+
+func TestK8sDriver_ProcessLogLine_JSONPreservesExistingIDs(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
+
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"log","runId":"orig-run","nodeId":"orig-node"}`, false, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	// Should preserve the original IDs from the JSON
+	if events[0].Data["runId"] != "orig-run" {
+		t.Errorf("runId: got %v, want %q", events[0].Data["runId"], "orig-run")
+	}
+	if events[0].Data["nodeId"] != "orig-node" {
+		t.Errorf("nodeId: got %v, want %q", events[0].Data["nodeId"], "orig-node")
+	}
+}
+
+func TestK8sDriver_ProcessLogLine_HeartbeatMarksState(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := &K8sDriver{emitter: emitter}
+	state := &driverEventState{}
+
+	d.processLogLine(context.Background(), "run1", "node1", `{"type":"heartbeat"}`, false, state)
+
+	if !state.hasHeartbeat() {
+		t.Fatal("expected heartbeat event to mark state")
+	}
+	if state.lastHeartbeat.Load() == 0 {
+		t.Fatal("expected heartbeat timestamp to be recorded")
+	}
+}
+
+type fakeJobWatcher struct {
+	watch func(ctx context.Context) error
+}
+
+func (f *fakeJobWatcher) Watch(ctx context.Context) error {
+	if f.watch != nil {
+		return f.watch(ctx)
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// --- K8sDriver.emitEvent nil safety ---
+
+func TestK8sDriver_EmitEvent_NilEmitter(t *testing.T) {
+	d := &K8sDriver{emitter: nil}
+	// Should not panic
+	d.emitEvent(context.Background(), "run1", "log", map[string]interface{}{"message": "test"}, "node1", "info")
+}
+
+// --- RunStoreEmitter tests ---
+
+func TestRunStoreEmitter_EmitEvent(t *testing.T) {
+	store := runstore.NewMemoryStore(nil)
+
+	// Create a run so AppendEvent has a target
+	runID, err := store.CreateRun(context.Background(), "test-run", &types.Plan{
+		Nodes: []types.NodeSpec{{ID: "n1"}},
+	}, "owner")
+	if err != nil {
+		t.Fatalf("CreateRun: %v", err)
+	}
+
+	emitter := NewRunStoreEmitter(store)
+
+	err = emitter.EmitEvent(context.Background(), runID, "log", map[string]interface{}{
+		"message": "hello world",
+	}, "n1", "info")
+	if err != nil {
+		t.Fatalf("EmitEvent: %v", err)
+	}
+
+	// Verify event was stored
+	events, err := store.GetEventsSince(context.Background(), runID, "")
+	if err != nil {
+		t.Fatalf("GetEventsSince: %v", err)
+	}
+	if len(events) == 0 {
+		t.Fatal("expected at least 1 event")
+	}
+
+	last := events[len(events)-1]
+	if string(last.Type) != "log" {
+		t.Errorf("event type: got %q, want %q", last.Type, "log")
+	}
+	if last.NodeID != "n1" {
+		t.Errorf("node_id: got %q, want %q", last.NodeID, "n1")
+	}
+}
+
+func TestRunStoreEmitter_EmitEvent_IncludesLevel(t *testing.T) {
+	store := runstore.NewMemoryStore(nil)
+	runID, _ := store.CreateRun(context.Background(), "test-run", &types.Plan{
+		Nodes: []types.NodeSpec{{ID: "n1"}},
+	}, "owner")
+
+	emitter := NewRunStoreEmitter(store)
+
+	data := map[string]interface{}{"message": "warning"}
+	err := emitter.EmitEvent(context.Background(), runID, "log", data, "n1", "warn")
+	if err != nil {
+		t.Fatalf("EmitEvent: %v", err)
+	}
+
+	// level should have been injected into data
+	if data["level"] != "warn" {
+		t.Errorf("data level: got %v, want %q", data["level"], "warn")
+	}
+}
+
+func TestRunStoreEmitter_EmitEvent_EmptyLevel(t *testing.T) {
+	store := runstore.NewMemoryStore(nil)
+	runID, _ := store.CreateRun(context.Background(), "test-run", &types.Plan{
+		Nodes: []types.NodeSpec{{ID: "n1"}},
+	}, "owner")
+
+	emitter := NewRunStoreEmitter(store)
+
+	data := map[string]interface{}{"message": "no level"}
+	err := emitter.EmitEvent(context.Background(), runID, "output", data, "n1", "")
+	if err != nil {
+		t.Fatalf("EmitEvent: %v", err)
+	}
+
+	// Empty level should not be set
+	if _, ok := data["level"]; ok {
+		t.Errorf("data should not have 'level' key when level is empty, got %v", data["level"])
+	}
+}
+
+func TestRunStoreEmitter_NilCheck(t *testing.T) {
+	// Compile-time check
+	var _ EventEmitter = (*RunStoreEmitter)(nil)
+}
+
+// --- Emitter error handling ---
+
+type errorEmitter struct{}
+
+func (e *errorEmitter) EmitEvent(_ context.Context, _, _ string, _ map[string]interface{}, _, _ string) error {
+	return fmt.Errorf("emit failed")
+}
+
+func TestSubprocessDriver_EmitEvent_Error(t *testing.T) {
+	d := NewLocalSubprocessDriver(&errorEmitter{}, nil)
+	// Should not panic, just log the error
+	d.emitEvent(context.Background(), "run1", "log", map[string]interface{}{"message": "test"}, "node1", "info")
+}
+
+func TestK8sDriver_EmitEvent_Error(t *testing.T) {
+	d := &K8sDriver{emitter: &errorEmitter{}}
+	// Should not panic, just log the error
+	d.emitEvent(context.Background(), "run1", "log", map[string]interface{}{"message": "test"}, "node1", "info")
+}
+
+// --- processStdoutLine edge cases ---
+
+func TestProcessStdoutLine_JSONNoType(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
+
+	// JSON without "type" field defaults to "log"
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"message":"hello"}`, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].EventType != "log" {
+		t.Errorf("event type: got %q, want %q", events[0].EventType, "log")
+	}
+}
+
+func TestProcessStdoutLine_JSONEmptyType(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
+
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"","value":1}`, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].EventType != "log" {
+		t.Errorf("event type: got %q, want %q (empty type should default to log)", events[0].EventType, "log")
+	}
+}
+
+func TestProcessStdoutLine_InvalidJSON(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
+
+	d.processStdoutLine(context.Background(), "run1", "node1", `{invalid json`, state)
+
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].EventType != "log" {
+		t.Errorf("event type: got %q, want %q", events[0].EventType, "log")
+	}
+	if events[0].Data["message"] != `{invalid json` {
+		t.Errorf("message: got %v, want %q", events[0].Data["message"], `{invalid json`)
+	}
+}
+
+func TestProcessStdoutLine_JSONWithLevel(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+	state := &driverEventState{}
+
+	d.processStdoutLine(context.Background(), "run1", "node1", `{"type":"log","level":"debug","message":"trace"}`, state)
+	events := emitter.getEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Level != "debug" {
+		t.Errorf("level: got %q, want %q", events[0].Level, "debug")
+	}
+}
+
+// --- SubprocessDriver additional tests ---
+
+func TestSubprocessDriver_StderrOutput(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", "echo error-message >&2"},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0", code)
+	}
+
+	events := emitter.getEvents()
+	foundStderr := false
+	for _, e := range events {
+		if e.EventType == "log" && e.Level == "error" {
+			if msg, ok := e.Data["message"].(string); ok && msg == "error-message" {
+				foundStderr = true
+				break
+			}
+		}
+	}
+	if !foundStderr {
+		t.Error("expected stderr to be captured as error-level log event")
+	}
+}
+
+func TestSubprocessDriver_MultipleNDJSONLines(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	script := `echo '{"type":"output","key":"a","value":1}'
+echo '{"type":"output","key":"b","value":2}'
+echo '{"type":"metric","name":"latency","value":42}'`
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"sh", "-c", script},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0", code)
+	}
+
+	events := emitter.getEvents()
+	outputCount := 0
+	metricCount := 0
+	for _, e := range events {
+		switch e.EventType {
+		case "output":
+			outputCount++
+		case "metric":
+			metricCount++
+		}
+	}
+	if outputCount != 2 {
+		t.Errorf("output events: got %d, want 2", outputCount)
+	}
+	if metricCount != 1 {
+		t.Errorf("metric events: got %d, want 1", metricCount)
+	}
+}
+
+func TestSubprocessDriver_WithCWD(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, &SubprocessConfig{
+		CWD: "/tmp",
+	})
+
+	code, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"pwd"},
+		nil, 0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0", code)
+	}
+}
+
+func TestSubprocessDriver_NonexistentCommand(t *testing.T) {
+	emitter := &mockEmitter{}
+	d := NewLocalSubprocessDriver(emitter, nil)
+
+	_, err := d.RunNode(context.Background(), "run1", "node1",
+		[]string{"nonexistent_command_abc123"},
+		nil, 0,
+	)
+	if err == nil {
+		t.Error("expected error for nonexistent command")
+	}
+}
+
+// --- K8sDriver tests with fake clientset ---
+
+func TestK8sDriver_HealthCheck_FakeClient(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	d := &K8sDriver{
+		client:  testClient,
+		emitter: &mockEmitter{},
+	}
+	if err := d.HealthCheck(context.Background()); err != nil {
+		t.Fatalf("HealthCheck: %v", err)
+	}
+}
+
+func TestK8sDriver_RunNode_NoCommandFailsBeforeScheduling(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	code, err := d.RunNode(context.Background(), "run-test-1234", "node1", nil, map[string]string{
+		"AGENT_IMAGE": "python:3.12-slim",
+	}, 0)
+	if err == nil {
+		t.Fatal("expected error for missing command")
+	}
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+	if !strings.Contains(err.Error(), "command resolution failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	jobs, listErr := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if listErr != nil {
+		t.Fatalf("list jobs: %v", listErr)
+	}
+	if len(jobs.Items) != 0 {
+		t.Fatalf("expected no jobs created, found %d", len(jobs.Items))
+	}
+}
+
+func TestK8sDriver_RunNode_NoImageFailsBeforeScheduling(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	code, err := d.RunNode(context.Background(), "run-test-1234", "node1", []string{"echo", "hello"}, nil, 0)
+	if err == nil {
+		t.Fatal("expected error for missing image")
+	}
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+	if !strings.Contains(err.Error(), "image resolution failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	jobs, listErr := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if listErr != nil {
+		t.Fatalf("list jobs: %v", listErr)
+	}
+	if len(jobs.Items) != 0 {
+		t.Fatalf("expected no jobs created, found %d", len(jobs.Items))
+	}
+}
+
+func TestK8sDriver_RunNode_CreateJobFailed(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	fakeCS.PrependReactor("create", "jobs", func(action ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("simulated create failure")
+	})
+
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	code, err := d.RunNode(context.Background(), "run-test-1234", "node1",
+		[]string{"echo", "hello"},
+		map[string]string{"AGENT_IMAGE": "python:3.12-slim"},
+		0,
+	)
+	if err == nil {
+		t.Fatal("expected error for create job failure")
+	}
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+
+	events := emitter.getEvents()
+	foundFailed := false
+	for _, e := range events {
+		if e.EventType == "node_status" {
+			if status, ok := e.Data["status"].(string); ok && status == "failed" {
+				if reason, ok := e.Data["reason"].(string); ok && reason == "create_job_failed" {
+					foundFailed = true
+				}
+			}
+		}
+	}
+	if !foundFailed {
+		t.Error("expected failed status event with reason create_job_failed")
+	}
+}
+
+func TestK8sDriver_RunNode_ContextTimeout(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	code, err := d.RunNode(ctx, "run-test-1234", "node1",
+		[]string{"echo", "hello"},
+		map[string]string{"AGENT_IMAGE": "python:3.12-slim"},
+		0,
+	)
+	if code != 130 {
+		t.Errorf("exit code: got %d, want 130", code)
+	}
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+
+	events := emitter.getEvents()
+	foundCancelled := false
+	for _, e := range events {
+		if e.EventType == "node_status" {
+			if status, ok := e.Data["status"].(string); ok && status == "failed" {
+				if reason, ok := e.Data["reason"].(string); ok && reason == "cancelled" {
+					foundCancelled = true
+				}
+			}
+		}
+	}
+	if !foundCancelled {
+		t.Error("expected failed status event with reason cancelled")
+	}
+}
+
+func TestK8sDriver_NewK8sDriver_BadKubeconfig(t *testing.T) {
+	_, err := NewK8sDriver(&mockEmitter{}, &K8sDriverConfig{
+		K8sConfig: &k8s.Config{
+			InCluster:  false,
+			Kubeconfig: "/nonexistent/path/kubeconfig",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for nonexistent kubeconfig")
+	}
+}
+
+func TestK8sDriver_RunNode_JobSucceeds(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	var code int
+	var runErr error
+	done := make(chan struct{})
+	go func() {
+		code, runErr = d.RunNode(context.Background(), "run-test-1234", "node1",
+			[]string{"echo", "hello"},
+			map[string]string{"AGENT_IMAGE": "python:3.12-slim"},
+			0,
+		)
+		close(done)
+	}()
+
+	// Wait for the Job to be created, then mark it as succeeded
+	time.Sleep(100 * time.Millisecond)
+	jobs, err := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(jobs.Items) == 0 {
+		t.Fatalf("Job not created: %v (items=%d)", err, len(jobs.Items))
+	}
+	job := jobs.Items[0].DeepCopy()
+	job.Status.Succeeded = 1
+	job.Status.Conditions = append(job.Status.Conditions, batchv1.JobCondition{
+		Type:   batchv1.JobComplete,
+		Status: "True",
+	})
+	_, err = fakeCS.BatchV1().Jobs("test-ns").UpdateStatus(context.Background(), job, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunNode timed out")
+	}
+
+	if code != 0 {
+		t.Errorf("exit code: got %d, want 0", code)
+	}
+	if runErr != nil {
+		t.Errorf("unexpected error: %v", runErr)
+	}
+
+	events := emitter.getEvents()
+	foundSucceeded := false
+	for _, e := range events {
+		if e.EventType == "node_status" {
+			if status, ok := e.Data["status"].(string); ok && status == "succeeded" {
+				foundSucceeded = true
+			}
+		}
+	}
+	if !foundSucceeded {
+		t.Error("expected succeeded status event")
+	}
+}
+
+func TestK8sDriver_RunNode_JobFails(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+	}
+
+	var code int
+	done := make(chan struct{})
+	go func() {
+		code, _ = d.RunNode(context.Background(), "run-test-5678", "node2",
+			[]string{"exit", "1"},
+			map[string]string{"AGENT_IMAGE": "python:3.12-slim"},
+			0,
+		)
+		close(done)
+	}()
+
+	// Wait for the Job to be created, then mark it as failed
+	time.Sleep(100 * time.Millisecond)
+	jobs, err := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(jobs.Items) == 0 {
+		t.Fatalf("Job not created: %v (items=%d)", err, len(jobs.Items))
+	}
+	job := jobs.Items[0].DeepCopy()
+	job.Status.Failed = 1
+	job.Status.Conditions = append(job.Status.Conditions, batchv1.JobCondition{
+		Type:   batchv1.JobFailed,
+		Status: "True",
+	})
+	_, err = fakeCS.BatchV1().Jobs("test-ns").UpdateStatus(context.Background(), job, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("UpdateStatus: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunNode timed out")
+	}
+
+	if code != 1 {
+		t.Errorf("exit code: got %d, want 1", code)
+	}
+
+	events := emitter.getEvents()
+	foundFailed := false
+	for _, e := range events {
+		if e.EventType == "node_status" {
+			if status, ok := e.Data["status"].(string); ok && status == "failed" {
+				if exitCode, ok := e.Data["exitCode"]; ok && exitCode == 1 {
+					foundFailed = true
+				}
+			}
+		}
+	}
+	if !foundFailed {
+		t.Error("expected failed status event with exitCode 1")
+	}
+}
+
+func TestK8sDriver_RunNode_HeartbeatTimeout(t *testing.T) {
+	fakeCS := fake.NewSimpleClientset()
+	testClient := k8s.NewClientForTesting(fakeCS, "test-ns")
+	jobCfg := k8s.DefaultJobConfig()
+	jobCfg.Namespace = "test-ns"
+	emitter := &mockEmitter{}
+	d := &K8sDriver{
+		client:     testClient,
+		jobBuilder: k8s.NewJobBuilder(jobCfg),
+		emitter:    emitter,
+		newWatcher: func(_ *k8s.Client, _ string, runID, nodeID string, cfg *k8s.WatchConfig) jobWatcher {
+			return &fakeJobWatcher{
+				watch: func(ctx context.Context) error {
+					cfg.OnLog(`{"type":"heartbeat","runId":"`+runID+`","nodeId":"`+nodeID+`"}`, false)
+					<-ctx.Done()
+					return nil
+				},
+			}
+		},
+	}
+
+	code, err := d.RunNode(context.Background(), "run-heartbeat", "node1",
+		[]string{"echo", "hello"},
+		map[string]string{
+			"AGENT_IMAGE":          "python:3.12-slim",
+			heartbeatTimeoutEnvVar: "100ms",
+		},
+		0,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 124 {
+		t.Fatalf("exit code: got %d, want 124", code)
+	}
+
+	jobs, listErr := fakeCS.BatchV1().Jobs("test-ns").List(context.Background(), metav1.ListOptions{})
+	if listErr != nil {
+		t.Fatalf("list jobs: %v", listErr)
+	}
+	if len(jobs.Items) != 0 {
+		t.Fatalf("expected job to be deleted after heartbeat timeout, found %d", len(jobs.Items))
+	}
+
+	events := emitter.getEvents()
+	foundTimeout := false
+	for _, e := range events {
+		if e.EventType != "node_status" {
+			continue
+		}
+		if e.Data["status"] == "failed" && e.Data["reason"] == "heartbeat_timeout" {
+			foundTimeout = true
+			break
+		}
+	}
+	if !foundTimeout {
+		t.Fatal("expected failed node_status event with heartbeat_timeout reason")
+	}
+}

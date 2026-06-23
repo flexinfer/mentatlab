@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1
 # CTM-Cogpack Cog-Pak Dockerfile
-FROM python:3.12-slim
+ARG BASE_REGISTRY=registry.harbor.lan/dockerhub-cache/library
+FROM ${BASE_REGISTRY}/python:3.12-slim
 
 # Accept cache proxy for pip packages
 ARG PIP_INDEX_URL=https://pypi.org/simple

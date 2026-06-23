@@ -13,17 +13,17 @@ logger = logging.getLogger(__name__)
 
 class SimpleAuditLogger:
     """Simple audit logger that safely handles enum and string values."""
-    
+
     def __init__(self, redis_manager=None):
         self.redis_manager = redis_manager
-    
+
     async def log_event(self, event_type, status=None, **kwargs):
         """
         Log a security event with safe enum handling.
-        
+
         Args:
             event_type: Event type (string or enum)
-            status: Event status (string or enum) 
+            status: Event status (string or enum)
             **kwargs: Additional event data
         """
         try:
@@ -32,7 +32,7 @@ class SimpleAuditLogger:
                 event_type_str = event_type.value
             else:
                 event_type_str = str(event_type)
-            
+
             # Safely convert status to string
             if status is not None:
                 if hasattr(status, 'value'):
@@ -41,7 +41,7 @@ class SimpleAuditLogger:
                     status_str = str(status)
             else:
                 status_str = "success"
-            
+
             # Create event data
             event_data = {
                 'timestamp': datetime.utcnow().isoformat(),
@@ -49,17 +49,17 @@ class SimpleAuditLogger:
                 'status': status_str,
                 **kwargs
             }
-            
+
             # Log the event
             logger.info(f"Security Event: {event_type_str} - {status_str}")
-            
+
             # Store in Redis if available
             if self.redis_manager:
                 key = f"psyche:audit:{int(datetime.utcnow().timestamp())}"
                 self.redis_manager.store_agent_state(key, event_data, ttl=86400 * 30)  # 30 days
-            
+
             return event_data
-            
+
         except Exception as e:
             logger.error(f"Error storing audit event: {e}")
             return None

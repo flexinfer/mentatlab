@@ -13,7 +13,7 @@ Each NDJSON line MUST be a single JSON object with the following structure:
 
 ```json
 {
-  "type": "log" | "checkpoint" | "metric" | "node_status" | "custom_type",
+  "type": "log" | "checkpoint" | "metric" | "node_status" | "progress" | "heartbeat" | "custom_type",
   "level": "debug" | "info" | "warn" | "error",   // optional; for log events
   "message": "Human readable message",            // optional; for log events
   "data": { "any": "arbitrary JSON payload" },    // optional but recommended
@@ -36,6 +36,14 @@ Notes:
   ```json
   {"type":"checkpoint","data":{"stage":"start","progress":0.0}}
   ```
+- Progress:
+  ```json
+  {"type":"progress","level":"info","message":"Processing batch 4/10","data":{"percent":40,"message":"Processing batch 4/10","eta_seconds":18}}
+  ```
+- Heartbeat:
+  ```json
+  {"type":"heartbeat"}
+  ```
 
 ## Python Helper
 
@@ -45,14 +53,18 @@ A dependency-free helper is provided to standardize emission. Use:
 - `log_info(message, data)`
 - `log_error(message, data)`
 - `checkpoint(stage, progress, extra)`
+- `emit_progress(percent=..., message=..., eta_seconds=...)`
+- `emit_heartbeat()`
 
 Example usage:
 ```python
-from agents.common.emit import log_info, log_error, checkpoint, emit_event, set_correlation_id
+from agents.common.emit import checkpoint, emit_event, emit_heartbeat, emit_progress, log_info, set_correlation_id
 
 set_correlation_id("run-1234")
 checkpoint("start", 0.0, {"foo": "bar"})
 log_info("agent: working", {"step": 1})
+emit_progress(percent=50, message="Halfway done", eta_seconds=8)
+emit_heartbeat()
 emit_event(type="metric", data={"tokens": {"in": 10, "out": 20}})
 checkpoint("end", 1.0)
 ```
@@ -117,6 +129,8 @@ No changes to orchestrator/gateway/frontend are required. The LocalSubprocessDri
 - Emit at least:
   - One `checkpoint` at start (`progress: 0.0`)
   - Per-key-phase checkpoints (e.g., per round or significant step)
+  - `progress` events for user-visible long-running work
+  - `heartbeat` events during long-running work when a node heartbeat timeout is configured
   - One `checkpoint` at end (`progress: 1.0`)
   - Informational `log` lines that help operators trace execution
 - Keep payloads small and structured; prefer `data` for details instead of stuffing strings in `message`.

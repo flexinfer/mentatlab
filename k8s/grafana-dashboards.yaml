@@ -1,0 +1,192 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mentatlab-orchestrator-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: mentatlab
+data:
+  mentatlab-orchestrator.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "links": [],
+      "panels": [
+        {
+          "title": "Active Runs",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+          "targets": [{"expr": "mentatlab_orchestrator_runs_active", "legendFormat": "active"}],
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 5}, {"color": "red", "value": 10}]}}}
+        },
+        {
+          "title": "Run Throughput (5m rate)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 10, "x": 4, "y": 0},
+          "targets": [
+            {"expr": "rate(mentatlab_orchestrator_runs_total[5m])", "legendFormat": "{{status}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}}
+        },
+        {
+          "title": "Total Runs",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 0, "y": 4},
+          "targets": [
+            {"expr": "sum(mentatlab_orchestrator_runs_total)", "legendFormat": "total"}
+          ]
+        },
+        {
+          "title": "Node Success Rate",
+          "type": "gauge",
+          "gridPos": {"h": 4, "w": 4, "x": 14, "y": 0},
+          "targets": [
+            {"expr": "sum(mentatlab_orchestrator_nodes_total{status=\"succeeded\"}) / sum(mentatlab_orchestrator_nodes_total) * 100", "legendFormat": "success %"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "percent", "min": 0, "max": 100, "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 80}, {"color": "green", "value": 95}]}}}
+        },
+        {
+          "title": "Node Execution Duration (P99)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 10, "x": 0, "y": 8},
+          "targets": [
+            {"expr": "histogram_quantile(0.99, rate(mentatlab_orchestrator_node_duration_seconds_bucket[5m]))", "legendFormat": "p99 {{status}}"},
+            {"expr": "histogram_quantile(0.50, rate(mentatlab_orchestrator_node_duration_seconds_bucket[5m]))", "legendFormat": "p50 {{status}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}}
+        },
+        {
+          "title": "SSE Active Connections",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 4, "x": 18, "y": 0},
+          "targets": [{"expr": "mentatlab_orchestrator_sse_active_connections", "legendFormat": "connections"}],
+          "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}]}}}
+        },
+        {
+          "title": "Event Throughput (5m rate)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 10, "x": 10, "y": 8},
+          "targets": [
+            {"expr": "rate(mentatlab_orchestrator_events_total[5m])", "legendFormat": "{{type}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}}
+        },
+        {
+          "title": "Node Retries",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 10, "x": 0, "y": 16},
+          "targets": [
+            {"expr": "rate(mentatlab_orchestrator_node_retries_sum[5m])", "legendFormat": "retries/s {{final_status}}"}
+          ]
+        },
+        {
+          "title": "Scheduler Queue Depth",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 10, "x": 10, "y": 16},
+          "targets": [
+            {"expr": "mentatlab_orchestrator_scheduler_queue_depth", "legendFormat": "pending nodes"}
+          ]
+        },
+        {
+          "title": "K8s Jobs",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 10, "x": 0, "y": 24},
+          "targets": [
+            {"expr": "rate(mentatlab_orchestrator_k8s_jobs_total[5m])", "legendFormat": "{{status}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}}
+        },
+        {
+          "title": "RunStore Operations",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 10, "x": 10, "y": 24},
+          "targets": [
+            {"expr": "rate(mentatlab_orchestrator_runstore_operations_total[5m])", "legendFormat": "{{operation}} {{result}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "ops"}}
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["mentatlab", "orchestrator"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "MentatLab Orchestrator",
+      "uid": "mentatlab-orchestrator"
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mentatlab-gateway-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: mentatlab
+data:
+  mentatlab-gateway.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "links": [],
+      "panels": [
+        {
+          "title": "Request Rate (5m)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "targets": [
+            {"expr": "sum(rate(mentatlab_orchestrator_http_requests_total[5m])) by (method)", "legendFormat": "{{method}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "reqps"}}
+        },
+        {
+          "title": "Error Rate (5m)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "targets": [
+            {"expr": "sum(rate(mentatlab_orchestrator_http_requests_total{status=~\"5..\"}[5m])) by (path)", "legendFormat": "5xx {{path}}"},
+            {"expr": "sum(rate(mentatlab_orchestrator_http_requests_total{status=~\"4..\"}[5m])) by (path)", "legendFormat": "4xx {{path}}"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "reqps"}}
+        },
+        {
+          "title": "Request Latency Percentiles",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {"expr": "histogram_quantile(0.99, rate(mentatlab_orchestrator_http_request_duration_seconds_bucket[5m]))", "legendFormat": "p99"},
+            {"expr": "histogram_quantile(0.95, rate(mentatlab_orchestrator_http_request_duration_seconds_bucket[5m]))", "legendFormat": "p95"},
+            {"expr": "histogram_quantile(0.50, rate(mentatlab_orchestrator_http_request_duration_seconds_bucket[5m]))", "legendFormat": "p50"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}}
+        },
+        {
+          "title": "SSE Connection Duration",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [
+            {"expr": "histogram_quantile(0.99, rate(mentatlab_orchestrator_sse_connection_duration_seconds_bucket[5m]))", "legendFormat": "p99"},
+            {"expr": "histogram_quantile(0.50, rate(mentatlab_orchestrator_sse_connection_duration_seconds_bucket[5m]))", "legendFormat": "p50"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "s"}}
+        },
+        {
+          "title": "Requests by Path",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+          "targets": [
+            {"expr": "sum by (method, path) (increase(mentatlab_orchestrator_http_requests_total[1h]))", "format": "table", "instant": true}
+          ]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["mentatlab", "gateway"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "MentatLab Gateway",
+      "uid": "mentatlab-gateway"
+    }

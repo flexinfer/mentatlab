@@ -9,7 +9,7 @@
  *
  * Usage:
  *   const manager = new ConnectionManager({
- *     wsUrl: 'ws://localhost:8080/ws',
+ *     wsUrl: 'ws://localhost:8080/ws/streams/{runId}',
  *     sseUrl: 'http://localhost:7070/runs/{runId}/events',
  *     onMessage: (msg) => pipeline.push(msg),
  *     onStateChange: (state) => store.setConnectionStatus(state),
@@ -22,7 +22,7 @@
 
 import { StreamConnectionState } from '@/types/streaming';
 import { OrchestratorSSE, type OrchestratorSSEHandlers } from '@/services/api/streaming/orchestratorSSE';
-import { getOrchestratorBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
+import { getApiBaseUrl, getGatewayBaseUrl } from '@/config/orchestrator';
 import { isSimFallbackEnabled } from '@/config/features';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,10 +49,14 @@ export interface ConnectionManagerConfig {
   timeout?: number;
   /** Enable auto-reconnect (default: true) */
   autoReconnect?: boolean;
-  /** Max reconnect attempts (default: 5) */
+  /** Max reconnect attempts before giving up (default: 10, 0 = unlimited) */
   maxReconnectAttempts?: number;
-  /** Reconnect delay sequence in ms */
-  reconnectDelays?: number[];
+  /** Initial backoff delay in ms for exponential backoff (default: 1000) */
+  initialBackoffMs?: number;
+  /** Maximum backoff delay in ms (default: 30000) */
+  maxBackoffMs?: number;
+  /** WebSocket heartbeat interval in ms (default: 20000, 0 disables) */
+  heartbeatIntervalMs?: number;
   /** Callback for incoming messages */
   onMessage: (message: TransportEvent) => void;
   /** Callback for connection state changes */
@@ -93,6 +97,7 @@ export class ConnectionManager {
   private ws: WebSocket | null = null;
   private sse: OrchestratorSSE | null = null;
   private simIntervalId: ReturnType<typeof setInterval> | null = null;
+  private wsHeartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
 
   // Reconnection
   private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -100,12 +105,14 @@ export class ConnectionManager {
 
   constructor(config: ConnectionManagerConfig) {
     this.config = {
-      wsUrl: config.wsUrl ?? `${getGatewayBaseUrl().replace(/^http/, 'ws')}/ws`,
-      sseUrl: config.sseUrl ?? getOrchestratorBaseUrl(),
+      wsUrl: config.wsUrl ?? `${getGatewayBaseUrl().replace(/^http/, 'ws')}/ws/streams/{runId}`,
+      sseUrl: config.sseUrl ?? getApiBaseUrl(),
       timeout: config.timeout ?? 5000,
       autoReconnect: config.autoReconnect ?? true,
-      maxReconnectAttempts: config.maxReconnectAttempts ?? 5,
-      reconnectDelays: config.reconnectDelays ?? [1000, 2000, 5000, 10000, 30000],
+      maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
+      initialBackoffMs: config.initialBackoffMs ?? 1000,
+      maxBackoffMs: config.maxBackoffMs ?? 30000,
+      heartbeatIntervalMs: config.heartbeatIntervalMs ?? 20_000,
       onMessage: config.onMessage,
       onStateChange: config.onStateChange,
       onError: config.onError,
@@ -116,7 +123,7 @@ export class ConnectionManager {
   /**
    * Connect to a run's event stream
    */
-  async connect(runId: string): Promise<void> {
+  async connect(runId: string, options: { isReconnect?: boolean } = {}): Promise<void> {
     if (this.state.status === StreamConnectionState.CONNECTED && this.state.runId === runId) {
       this.log('Already connected to this run');
       return;
@@ -126,7 +133,10 @@ export class ConnectionManager {
     this.disconnect();
 
     this.state.runId = runId;
-    this.state.reconnectAttempts = 0;
+    // Preserve attempt count across automatic reconnect loops.
+    if (!options.isReconnect) {
+      this.state.reconnectAttempts = 0;
+    }
     this.isManualDisconnect = false;
 
     this.setStatus(StreamConnectionState.CONNECTING, 'none');
@@ -156,6 +166,9 @@ export class ConnectionManager {
     this.setStatus(StreamConnectionState.ERROR, 'none');
     this.state.lastError = new Error('All transports failed');
     this.config.onError?.(this.state.lastError, 'none');
+    if (!this.isManualDisconnect && this.config.autoReconnect) {
+      this.scheduleReconnect('none');
+    }
   }
 
   /**
@@ -190,6 +203,7 @@ export class ConnectionManager {
       clearInterval(this.simIntervalId);
       this.simIntervalId = null;
     }
+    this.clearWsHeartbeat();
 
     this.setStatus(StreamConnectionState.DISCONNECTED, 'none');
     this.state.runId = null;
@@ -241,7 +255,7 @@ export class ConnectionManager {
 
   private tryWebSocket(runId: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const url = this.config.wsUrl.replace('{runId}', runId);
+      const url = this.resolveWsUrl(runId);
       this.log('Connecting WebSocket:', url);
 
       const timeoutId = setTimeout(() => {
@@ -256,8 +270,10 @@ export class ConnectionManager {
 
         this.ws.onopen = () => {
           clearTimeout(timeoutId);
+          this.state.reconnectAttempts = 0;
           this.setStatus(StreamConnectionState.CONNECTED, 'websocket');
           this.state.connectedAt = Date.now();
+          this.startWsHeartbeat();
           this.log('WebSocket connected');
 
           // Send initial heartbeat/subscription message
@@ -291,13 +307,14 @@ export class ConnectionManager {
 
         this.ws.onclose = (event) => {
           clearTimeout(timeoutId);
+          this.clearWsHeartbeat();
           this.log('WebSocket closed:', event.code, event.reason);
 
           if (this.state.transport === 'websocket') {
             this.setStatus(StreamConnectionState.DISCONNECTED, 'none');
 
-            if (!this.isManualDisconnect && this.config.autoReconnect) {
-              this.scheduleReconnect();
+            if (this.shouldReconnectAfterWebSocketClose(event)) {
+              this.scheduleReconnect('websocket');
             }
           }
         };
@@ -306,6 +323,61 @@ export class ConnectionManager {
         reject(error);
       }
     });
+  }
+
+  private shouldReconnectAfterWebSocketClose(event: CloseEvent): boolean {
+    if (this.isManualDisconnect || !this.config.autoReconnect) {
+      return false;
+    }
+
+    // Avoid reconnect loops after graceful shutdowns (normal close / going away).
+    if (event.code === 1000 || event.code === 1001) {
+      this.log('Skipping reconnect after clean close', event.code, event.reason);
+      return false;
+    }
+
+    return true;
+  }
+
+  private startWsHeartbeat(): void {
+    this.clearWsHeartbeat();
+
+    if (this.config.heartbeatIntervalMs <= 0) {
+      return;
+    }
+
+    this.wsHeartbeatIntervalId = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      const heartbeat: TransportEvent = {
+        id: crypto.randomUUID(),
+        type: 'heartbeat',
+        timestamp: new Date().toISOString(),
+        agent_id: 'webui',
+      };
+      this.send(heartbeat);
+    }, this.config.heartbeatIntervalMs);
+  }
+
+  private clearWsHeartbeat(): void {
+    if (this.wsHeartbeatIntervalId) {
+      clearInterval(this.wsHeartbeatIntervalId);
+      this.wsHeartbeatIntervalId = null;
+    }
+  }
+
+  private resolveWsUrl(runId: string): string {
+    const raw = this.config.wsUrl;
+    const resolved = raw.includes('{runId}') ? raw.replace('{runId}', runId) : raw;
+    if (/\/ws\/streams\//.test(resolved)) {
+      return resolved;
+    }
+    if (/\/ws\/?$/.test(resolved)) {
+      return `${resolved.replace(/\/+$/, '')}/streams/${runId}`;
+    }
+    return `${resolved.replace(/\/+$/, '')}/streams/${runId}`;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -328,6 +400,7 @@ export class ConnectionManager {
       const handlers: OrchestratorSSEHandlers = {
         onOpen: () => {
           clearTimeout(timeoutId);
+          this.state.reconnectAttempts = 0;
           this.setStatus(StreamConnectionState.CONNECTED, 'sse');
           this.state.connectedAt = Date.now();
           this.log('SSE connected');
@@ -354,7 +427,7 @@ export class ConnectionManager {
             this.setStatus(StreamConnectionState.ERROR, 'sse');
 
             if (!this.isManualDisconnect && this.config.autoReconnect) {
-              this.scheduleReconnect();
+              this.scheduleReconnect('sse');
             }
           }
 
@@ -419,24 +492,33 @@ export class ConnectionManager {
   // Private: Reconnection
   // ─────────────────────────────────────────────────────────────────────────
 
-  private scheduleReconnect(): void {
-    if (this.state.reconnectAttempts >= this.config.maxReconnectAttempts) {
+  private scheduleReconnect(transport: TransportType = this.state.transport): void {
+    if (this.reconnectTimeoutId) {
+      this.log('Reconnect already scheduled');
+      return;
+    }
+
+    if (this.config.maxReconnectAttempts > 0 &&
+        this.state.reconnectAttempts >= this.config.maxReconnectAttempts) {
       this.log('Max reconnect attempts reached');
       this.setStatus(StreamConnectionState.ERROR, 'none');
       return;
     }
 
-    const delay = this.config.reconnectDelays[
-      Math.min(this.state.reconnectAttempts, this.config.reconnectDelays.length - 1)
-    ] ?? 30000;
+    // Exponential backoff: base * 2^attempt, capped at maxBackoffMs, with ±25% jitter
+    const base = this.config.initialBackoffMs * Math.pow(2, this.state.reconnectAttempts);
+    const capped = Math.min(base, this.config.maxBackoffMs);
+    const jitter = capped * (0.75 + Math.random() * 0.5);
+    const delay = Math.round(jitter);
 
     this.log(`Scheduling reconnect in ${delay}ms (attempt ${this.state.reconnectAttempts + 1})`);
-    this.setStatus(StreamConnectionState.RECONNECTING, this.state.transport);
+    this.setStatus(StreamConnectionState.RECONNECTING, transport);
 
     this.reconnectTimeoutId = setTimeout(() => {
       this.state.reconnectAttempts++;
+      this.reconnectTimeoutId = null;
       if (this.state.runId) {
-        this.connect(this.state.runId);
+        this.connect(this.state.runId, { isReconnect: true });
       }
     }, delay);
   }

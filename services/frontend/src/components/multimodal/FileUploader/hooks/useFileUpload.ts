@@ -20,7 +20,7 @@ import { getMediaService } from '../../../../services/api/mediaService';
 import { httpClient } from '../../../../services/api/httpClient';
 import { websocketClient } from '../../../../services/api/websocketClient';
 import { UploadOptions, UploadProgress, FileUploadState } from '../FileUploader.types';
-import useMediaStore from '../../../../store';
+import { useMediaStore } from '@/stores';
 
 const MB = 1024 * 1024;
 
@@ -81,7 +81,7 @@ export default function useFileUpload() {
           ? p.percentage
           : Math.round(((p?.loaded || 0) / (p?.total || item.file.size)) * 100);
       (store as any).setUploadProgress?.(id, percentage);
- 
+
       // store derived metrics locally if desired
       const meta = progressMetaRef.current.get(id) || {};
       progressMetaRef.current.set(id, meta);

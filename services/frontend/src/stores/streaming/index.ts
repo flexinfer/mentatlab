@@ -77,6 +77,7 @@ export interface StreamingState {
 
   // Global connection status
   connectionStatus: StreamConnectionState;
+  transportType: string;
 
   // Event batching
   eventBuffer: StreamingMessage[];
@@ -104,7 +105,7 @@ export interface StreamingState {
   addConsoleMessage: (message: ConsoleMessage) => void;
 
   // Connection management
-  setConnectionStatus: (status: StreamConnectionState) => void;
+  setConnectionStatus: (status: StreamConnectionState, transportType?: string) => void;
 
   // Event batching
   pushEvent: (event: StreamingMessage) => void;
@@ -143,6 +144,7 @@ export const useStreamingStore = create<StreamingState>()(
       activeStreamId: null,
       activeStreams: new Map(), // Legacy alias for sessions
       connectionStatus: 'disconnected' as StreamConnectionState,
+      transportType: 'none',
       eventBuffer: [],
       flushScheduled: false,
 
@@ -423,8 +425,12 @@ export const useStreamingStore = create<StreamingState>()(
       // Connection management
       // ─────────────────────────────────────────────────────────────────────
 
-      setConnectionStatus: (status: StreamConnectionState) => {
-        set({ connectionStatus: status });
+      setConnectionStatus: (status: StreamConnectionState, transportType?: string) => {
+        const update: Partial<StreamingState> = { connectionStatus: status };
+        if (transportType !== undefined) {
+          update.transportType = transportType;
+        }
+        set(update);
       },
 
       // ─────────────────────────────────────────────────────────────────────

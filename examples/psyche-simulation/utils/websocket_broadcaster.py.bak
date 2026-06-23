@@ -31,17 +31,17 @@ logger = logging.getLogger(__name__)
 
 class WebSocketEventBroadcaster:
     """WebSocket event broadcaster with NiceGUI client integration."""
-    
+
     def __init__(self):
         """Initialize the broadcaster."""
         self.event_manager = get_event_manager()
         self._clients = {}  # Track clients by user_id
-        
-    async def broadcast_agent_message(self, agent_id: str, message: str, 
+
+    async def broadcast_agent_message(self, agent_id: str, message: str,
                                     recipient: Optional[str] = None,
                                     metadata: Optional[Dict[str, Any]] = None):
         """Broadcast agent message to all connected clients.
-        
+
         Args:
             agent_id: ID of the agent sending the message
             message: The message content
@@ -57,7 +57,7 @@ class WebSocketEventBroadcaster:
                 sentiment_data=metadata.get('sentiment') if metadata else None,
                 metadata=metadata
             )
-            
+
             # Also broadcast via NiceGUI UI updates
             await self._update_ui_clients('agent_message', {
                 'agent_id': agent_id,
@@ -66,14 +66,14 @@ class WebSocketEventBroadcaster:
                 'metadata': metadata,
                 'sentiment': metadata.get('sentiment') if metadata else {'score': 0.0, 'label': 'neutral'}
             })
-            
+
         except Exception as e:
             logger.error(f"Error broadcasting agent message: {e}")
-    
-    async def broadcast_network_update(self, connections: List[Dict[str, Any]], 
+
+    async def broadcast_network_update(self, connections: List[Dict[str, Any]],
                                      metrics: Optional[Dict[str, Any]] = None):
         """Broadcast network update to all connected clients.
-        
+
         Args:
             connections: List of network connections
             metrics: Optional network metrics
@@ -84,19 +84,19 @@ class WebSocketEventBroadcaster:
                 connections=connections,
                 communication_stats=metrics
             )
-            
+
             # Also broadcast via NiceGUI UI updates
             await self._update_ui_clients('network_update', {
                 'connections': connections,
                 'metrics': metrics
             })
-            
+
         except Exception as e:
             logger.error(f"Error broadcasting network update: {e}")
-    
+
     async def broadcast_system_event(self, event_type: str, data: Dict[str, Any]):
         """Broadcast system event to all connected clients.
-        
+
         Args:
             event_type: Type of system event
             data: Event data
@@ -109,16 +109,16 @@ class WebSocketEventBroadcaster:
                     performance_data=data.get('performance_data'),
                     active_agents=data.get('active_agents')
                 )
-            
+
             # Broadcast via NiceGUI UI updates
             await self._update_ui_clients(event_type, data)
-            
+
         except Exception as e:
             logger.error(f"Error broadcasting system event: {e}")
-    
+
     async def emit_to_user(self, user_id: str, event_type: str, data: Dict[str, Any]):
         """Emit event to a specific user.
-        
+
         Args:
             user_id: Target user ID
             event_type: Type of event
@@ -127,13 +127,13 @@ class WebSocketEventBroadcaster:
         try:
             # Find client for user and send update
             await self._update_specific_user(user_id, event_type, data)
-            
+
         except Exception as e:
             logger.error(f"Error emitting to user {user_id}: {e}")
-    
+
     async def _update_ui_clients(self, event_type: str, data: Dict[str, Any]):
         """Update all connected UI clients.
-        
+
         Args:
             event_type: Type of event
             data: Event data
@@ -148,17 +148,17 @@ class WebSocketEventBroadcaster:
                 }});
             }}
             """
-            
+
             # Fire and forget - don't await on auto-index page
             # Simply execute without awaiting
             ui.run_javascript(js_code)
-            
+
         except Exception as e:
             logger.error(f"Error updating UI clients: {e}")
-    
+
     async def _update_specific_user(self, user_id: str, event_type: str, data: Dict[str, Any]):
         """Update a specific user's UI.
-        
+
         Args:
             user_id: Target user ID
             event_type: Type of event
@@ -175,18 +175,18 @@ class WebSocketEventBroadcaster:
                 }});
             }}
             """
-            
+
             # Fire and forget - don't await on auto-index page
             ui.run_javascript(js_code)
-            
+
         except Exception as e:
             logger.error(f"Error updating specific user {user_id}: {e}")
-    
+
     async def _broadcast_to_users(self, event_type: str, data: Dict[str, Any], user_ids: Optional[List[str]] = None):
         """Broadcast event to specific users or all users.
-        
+
         This method is provided for compatibility but uses the UI update methods internally.
-        
+
         Args:
             event_type: Type of event
             data: Event data
@@ -200,15 +200,15 @@ class WebSocketEventBroadcaster:
                 # Broadcast to specific users
                 for user_id in user_ids:
                     await self._update_specific_user(user_id, event_type, data)
-                    
+
         except Exception as e:
             logger.error(f"Error in broadcast: {e}")
-    
+
     async def _send_to_client(self, client: Any, event_type: str, data: Dict[str, Any]):
         """Send event to a specific client.
-        
+
         This method is provided for compatibility.
-        
+
         Args:
             client: Client object (not used in this implementation)
             event_type: Type of event
@@ -220,10 +220,10 @@ class WebSocketEventBroadcaster:
 
 class RealtimeUIUpdater:
     """Manages real-time UI updates based on WebSocket events."""
-    
+
     def __init__(self, broadcaster: Optional['WebSocketBroadcaster'] = None):
         """Initialize the UI updater.
-        
+
         Args:
             broadcaster: Optional WebSocket broadcaster instance
         """
@@ -242,29 +242,29 @@ class RealtimeUIUpdater:
         self._active_animations = {}
         self._message_counter = 0
         self._first_message_received = False
-        
+
         # Subscribe to WebSocket events
         self._subscribe_to_events()
-        
+
     def register_element(self, element_id: str, element: Any):
         """Register a UI element for updates.
-        
+
         Args:
             element_id: Unique identifier for the element
             element: The NiceGUI element to update
         """
         self.ui_elements[element_id] = element
         logger.debug(f"Registered UI element: {element_id}")
-        
-    
+
+
     def handle_agent_message(self, event: WebSocketEvent):
         """Handle agent message events with visual updates."""
         data = event.data
         self._message_counter += 1
-        
+
         # Parse thinking content
         parsed = self._parse_thinking_content(data.get('content', ''))
-        
+
         # Update conversation display using JavaScript only
         agent_id = data['agent_id']
         content = parsed['main_content'].replace("'", "\'").replace('"', '\"').replace('
@@ -273,7 +273,7 @@ class RealtimeUIUpdater:
         sentiment_color = self._get_sentiment_color(sentiment.get('score', 0))
         agent_color = self._get_agent_color(agent_id)
         timestamp = datetime.now().strftime('%H:%M:%S')
-        
+
         # Build thinking sections HTML if present
         thinking_html = ""
         if parsed['has_thinking']:
@@ -293,7 +293,7 @@ class RealtimeUIUpdater:
                     </div>
                 """)
             thinking_html = ''.join(thinking_parts)
-        
+
         # Clear welcome message on first real message
         clear_welcome = ""
         if not self._first_message_received:
@@ -305,17 +305,17 @@ class RealtimeUIUpdater:
                 }
             """
             logger.info("Cleared initial welcome message")
-        
+
         ui.run_javascript(f"""
             {clear_welcome}
-            
+
             // Find conversation display
             const convDisplay = document.querySelector('.conversation-container');
             if (convDisplay) {{
                 // Create message card
                 const card = document.createElement('div');
                 card.className = 'bg-white rounded-lg shadow-md p-4 mb-4 agent-message-card opacity-0 transition-opacity duration-500';
-                
+
                 // Add content
                 card.innerHTML = `
                     <div class="flex items-center justify-between mb-2">
@@ -332,39 +332,39 @@ class RealtimeUIUpdater:
                         <span class="text-sm text-gray-400">{sentiment.get('label', 'neutral')} ({sentiment.get('score', 0):.2f})</span>
                     </div>
                 `;
-                
+
                 // Append to conversation
                 convDisplay.appendChild(card);
-                
+
                 // Animate appearance
                 setTimeout(() => {{
                     card.classList.remove('opacity-0');
                     card.classList.add('opacity-100');
                 }}, 100);
-                
+
                 // Auto-scroll
                 convDisplay.scrollTop = convDisplay.scrollHeight;
             }}
         """)
-        
+
         # Update message counter
         if 'message_counter' in self.ui_elements:
             try:
                 self.ui_elements['message_counter'].set_text(f'Messages: {self._message_counter}')
             except:
                 pass
-            
+
         # Flash notification
         if 'notification_area' in self.ui_elements:
             self._flash_notification(f"New message from {data['agent_id']}")
-    
+
     def handle_agent_processing_started(self, event: WebSocketEvent):
         """Handle agent processing started events."""
         data = event.data
-        
+
         # Show loading indicator using JavaScript only
         agent_id = data['agent_id']
-        
+
         ui.run_javascript(f"""
             // Find conversation display
             const convDisplay = document.querySelector('.conversation-container');
@@ -373,7 +373,7 @@ class RealtimeUIUpdater:
                 const card = document.createElement('div');
                 card.id = 'processing-{agent_id}';
                 card.className = 'bg-white rounded-lg shadow-md p-4 mb-4 bg-blue-50';
-                
+
                 // Add content
                 card.innerHTML = `
                     <div class="flex items-center gap-2">
@@ -382,44 +382,44 @@ class RealtimeUIUpdater:
                     </div>
                     <div id="streaming-{agent_id}" class="text-sm mt-2 streaming-content"></div>
                 `;
-                
+
                 // Append to conversation
                 convDisplay.appendChild(card);
-                
+
                 // Auto-scroll
                 convDisplay.scrollTop = convDisplay.scrollHeight;
             }}
         """)
-        
+
         # Update status
         if 'agent_status' in self.ui_elements:
             try:
                 self.ui_elements['agent_status'].set_text(f"{data['agent_id']}: Processing...")
             except:
                 pass
-    
+
     def handle_agent_processing_update(self, event: WebSocketEvent):
         """Handle streaming updates during agent processing."""
         data = event.data
-        
+
         # Get progress value in Python
         progress_value = data.get("progress", 0) * 100
         partial_content = data.get("partial_content", "").replace("'", "\'").replace('"', '\"').replace('
 ', '\n')
-        
+
         # Update streaming content using JavaScript only
         ui.run_javascript(f"""
             const streamingEl = document.getElementById('streaming-{data["agent_id"]}');
             if (streamingEl) {{
                 streamingEl.textContent += '{partial_content}';
-                
+
                 // Auto-scroll
                 const container = document.querySelector('.conversation-container');
                 if (container) {{
                     container.scrollTop = container.scrollHeight;
                 }}
             }}
-            
+
             // Update progress if available
             const progress = {progress_value};
             const card = document.getElementById('processing-{data["agent_id"]}');
@@ -427,23 +427,23 @@ class RealtimeUIUpdater:
                 card.style.background = `linear-gradient(to right, #dbeafe ${{progress}}%, #eff6ff ${{progress}}%)`;
             }}
         """)
-    
+
     def handle_network_update(self, event: WebSocketEvent):
         """Handle network updates with visual changes."""
         data = event.data
-        
+
         # Update network metrics with animation
         if 'network_metrics' in self.ui_elements:
             try:
                 connections = len(data.get('connections', []))
                 metrics = data.get('metrics', {})
                 health = metrics.get('health', 1.0) if isinstance(metrics, dict) else 1.0
-                
+
                 metrics_text = f'Connections: {connections} | Health: {health:.2f}'
                 self.ui_elements['network_metrics'].set_text(metrics_text)
             except:
                 pass
-            
+
         # Pulse animation for network activity
         ui.run_javascript("""
             const metrics = document.querySelector('.network-metrics');
@@ -452,24 +452,24 @@ class RealtimeUIUpdater:
                 setTimeout(() => metrics.classList.remove('animate-pulse'), 1000);
             }
         """)
-    
+
     def handle_system_status(self, event: WebSocketEvent):
         """Handle system status updates with visual indicators."""
         data = event.data
-        
+
         # Update status indicator with color change
         if 'status_indicator' in self.ui_elements:
             try:
                 is_running = data.get('is_running', False)
                 status = 'RUNNING' if is_running else 'STOPPED'
                 color = 'green' if is_running else 'red'
-                
+
                 self.ui_elements['status_indicator'].set_text(f'System: {status}')
-                self.ui_elements['status_indicator'].classes(f'text-{color}-400', 
+                self.ui_elements['status_indicator'].classes(f'text-{color}-400',
                     remove='text-green-400 text-red-400 text-yellow-400')
             except:
                 pass
-            
+
         # Add spinning animation when running
         is_running = data.get('is_running', False)
         if is_running:
@@ -479,7 +479,7 @@ class RealtimeUIUpdater:
                     indicator.innerHTML = '<i class="material-icons animate-spin">refresh</i> System: RUNNING';
                 }
             """)
-        
+
         # Update resource display
         if 'resource_display' in self.ui_elements and 'performance_data' in data:
             try:
@@ -487,33 +487,33 @@ class RealtimeUIUpdater:
                 cpu = perf.get('cpu_percent', 0)
                 memory = perf.get('memory_percent', 0)
                 threads = perf.get('thread_count', 0)
-                
+
                 self.ui_elements['resource_display'].set_text(
                     f'CPU: {cpu:.1f}% | Memory: {memory:.1f}% | Threads: {threads}'
                 )
             except:
                 pass
-    
+
     def handle_health_update(self, event: WebSocketEvent):
         """Handle health metric updates with visual indicators."""
         data = event.data
-        
+
         # Update health indicators with color coding
         for metric, value in data.items():
             if metric in self.ui_elements:
                 try:
                     element = self.ui_elements[metric]
-                    
+
                     # Update progress bar
                     if hasattr(element, 'set_value'):
                         element.set_value(value)
-                        
+
                     # Color coding based on thresholds
                     color = self._get_health_color(metric, value)
                     element.classes(f'bg-{color}-500', remove='bg-red-500 bg-yellow-500 bg-green-500')
                 except:
                     pass
-                
+
                 # Add warning animation for critical values
                 color = self._get_health_color(metric, value)
                 if color == 'red':
@@ -526,21 +526,21 @@ class RealtimeUIUpdater:
     def handle_network_update(self, event: WebSocketEvent):
         """Handle network updates with visual changes."""
         data = event.data
-        
+
         # Update network visualization
         if 'network_chart' in self.ui_elements:
             # This will be handled by the existing plotly update
             pass
-            
+
         # Update network metrics with animation
         if 'network_metrics' in self.ui_elements:
             connections = len(data.get('connections', []))
             metrics = data.get('metrics', {})
             health = metrics.get('health', 1.0) if isinstance(metrics, dict) else 1.0
-            
+
             metrics_text = f'Connections: {connections} | Health: {health:.2f}'
             self.ui_elements['network_metrics'].set_text(metrics_text)
-            
+
             # Pulse animation for network activity
             ui.run_javascript("""
                 const metrics = document.querySelector('.network-metrics');
@@ -549,21 +549,21 @@ class RealtimeUIUpdater:
                     setTimeout(() => metrics.classList.remove('animate-pulse'), 1000);
                 }
             """)
-    
+
     def handle_system_status(self, event: WebSocketEvent):
         """Handle system status updates with visual indicators."""
         data = event.data
-        
+
         # Update status indicator with color change
         if 'status_indicator' in self.ui_elements:
             is_running = data.get('is_running', False)
             status = 'RUNNING' if is_running else 'STOPPED'
             color = 'green' if is_running else 'red'
-            
+
             self.ui_elements['status_indicator'].set_text(f'System: {status}')
-            self.ui_elements['status_indicator'].classes(f'text-{color}-400', 
+            self.ui_elements['status_indicator'].classes(f'text-{color}-400',
                 remove='text-green-400 text-red-400 text-yellow-400')
-            
+
             # Add spinning animation when running
             if is_running:
                 ui.run_javascript("""
@@ -572,35 +572,35 @@ class RealtimeUIUpdater:
                         indicator.innerHTML = '<i class="material-icons animate-spin">refresh</i> System: RUNNING';
                     }
                 """)
-        
+
         # Update resource display
         if 'resource_display' in self.ui_elements and 'performance_data' in data:
             perf = data['performance_data']
             cpu = perf.get('cpu_percent', 0)
             memory = perf.get('memory_percent', 0)
             threads = perf.get('thread_count', 0)
-            
+
             self.ui_elements['resource_display'].set_text(
                 f'CPU: {cpu:.1f}% | Memory: {memory:.1f}% | Threads: {threads}'
             )
-    
+
     def handle_health_update(self, event: WebSocketEvent):
         """Handle health metric updates with visual indicators."""
         data = event.data
-        
+
         # Update health indicators with color coding
         for metric, value in data.items():
             if metric in self.ui_elements:
                 element = self.ui_elements[metric]
-                
+
                 # Update progress bar
                 if hasattr(element, 'set_value'):
                     element.set_value(value)
-                    
+
                 # Color coding based on thresholds
                 color = self._get_health_color(metric, value)
                 element.classes(f'bg-{color}-500', remove='bg-red-500 bg-yellow-500 bg-green-500')
-                
+
                 # Add warning animation for critical values
                 if color == 'red':
                     ui.run_javascript(f"""
@@ -609,22 +609,22 @@ class RealtimeUIUpdater:
                             element.classList.add('animate-pulse');
                         }}
                     """)
-    
+
     def handle_emergency_status(self, event: WebSocketEvent):
         """Handle emergency status updates with alerts."""
         data = event.data
-        
+
         if 'emergency_status' in self.ui_elements:
             is_emergency = data.get('emergency_mode', False)
-            
+
             if is_emergency:
                 # Show emergency alert with animation
                 self.ui_elements['emergency_status'].set_text('🚨 EMERGENCY MODE ACTIVE')
                 self.ui_elements['emergency_status'].classes('text-red-500 animate-pulse font-bold')
-                
+
                 # Show notification
                 ui.notify('Emergency communication mode activated!', type='negative', position='top')
-                
+
                 # Add flashing border to conversation area
                 ui.run_javascript("""
                     const convArea = document.querySelector('.conversation-container');
@@ -637,53 +637,53 @@ class RealtimeUIUpdater:
                 self.ui_elements['emergency_status'].set_text('✅ Normal Operation')
                 self.ui_elements['emergency_status'].classes('text-green-400',
                     remove='text-red-500 animate-pulse font-bold')
-    
+
     def handle_agent_processing_started(self, event: WebSocketEvent):
         """Handle agent processing started events."""
         data = event.data
-        
+
         # Show loading indicator
         if 'conversation_display' in self.ui_elements:
             conv_display = self.ui_elements['conversation_display']
-            
+
             with conv_display:
                 # Add processing indicator card
                 with ui.card().classes('w-full mb-4 agent-processing-card bg-blue-50') as card:
                     with card:
                         ui.html("").props(f'id="processing-{data["agent_id"]}"')
-                    
+
                     with ui.row().classes('items-center gap-2'):
                         # Animated spinner
                         ui.icon('refresh').classes('animate-spin text-blue-500')
                         ui.label(f"{data['agent_id']} is thinking...").classes('font-semibold')
-                    
+
                     # Container for streaming text
                     ui.markdown("").classes("streaming-content text-sm mt-2").props(f'id="streaming-{data["agent_id"]}"')
-        
+
         # Update status
         if 'agent_status' in self.ui_elements:
             self.ui_elements['agent_status'].set_text(f"{data['agent_id']}: Processing...")
-    
+
     def handle_agent_processing_update(self, event: WebSocketEvent):
         """Handle streaming updates during agent processing."""
         data = event.data
-        
+
         # Get progress value in Python
         progress_value = data.get("progress", 0) * 100
-        
+
         # Update streaming content
         ui.run_javascript(f"""
             const streamingEl = document.getElementById('streaming-{data["agent_id"]}');
             if (streamingEl) {{
                 streamingEl.textContent += '{data["partial_content"]}';
-                
+
                 // Auto-scroll
                 const container = document.querySelector('.conversation-container');
                 if (container) {{
                     container.scrollTop = container.scrollHeight;
                 }}
             }}
-            
+
             // Update progress if available
             const progress = {progress_value};
             const card = document.getElementById('processing-{data["agent_id"]}');
@@ -691,11 +691,11 @@ class RealtimeUIUpdater:
                 card.style.background = `linear-gradient(to right, #dbeafe ${{progress}}%, #eff6ff ${{progress}}%)`;
             }}
         """)
-    
+
     def handle_agent_processing_complete(self, event: WebSocketEvent):
         """Handle agent processing complete events."""
         data = event.data
-        
+
         # Remove processing card and add final message
         if 'conversation_display' in self.ui_elements:
             # Remove processing indicator
@@ -705,7 +705,7 @@ class RealtimeUIUpdater:
                     processingCard.remove();
                 }}
             """)
-            
+
             # Add final message using existing handler
             # Convert to agent_message format
             message_event = WebSocketEvent(
@@ -718,17 +718,17 @@ class RealtimeUIUpdater:
                 }
             )
             self.handle_agent_message(message_event)
-    
+
     def _flash_notification(self, message: str):
         """Show a temporary notification flash."""
         if 'notification_area' in self.ui_elements:
             area = self.ui_elements['notification_area']
-            
+
             # Create notification
             with area:
                 with ui.card().classes('notification-flash opacity-0 transition-opacity duration-300 bg-blue-600 text-white p-2 rounded') as notif:
                     ui.label(message).classes('text-sm')
-            
+
             # Animate in
             ui.run_javascript("""
                 const notif = document.querySelector('.notification-flash:last-child');
@@ -740,7 +740,7 @@ class RealtimeUIUpdater:
                     }, 3000);
                 }
             """)
-    
+
     def _get_agent_color(self, agent_id: str) -> str:
         """Get color for agent based on ID."""
         colors = {
@@ -751,12 +751,12 @@ class RealtimeUIUpdater:
             'Ego': 'green-600'
         }
         return colors.get(agent_id, 'gray-400')
-    
+
 
     def _parse_thinking_content(self, text: str) -> dict:
         """Parse AI thinking tags and structure content for display."""
         import re
-        
+
         # Patterns for different thinking tags
         patterns = {
             'think': r'<think>(.*?)</think>',
@@ -766,10 +766,10 @@ class RealtimeUIUpdater:
             'analysis': r'<analysis>(.*?)</analysis>',
             'thought': r'<thought>(.*?)</thought>',
         }
-        
+
         thinking_sections = []
         main_content = text
-        
+
         # Extract all thinking sections
         for tag_type, pattern in patterns.items():
             matches = re.finditer(pattern, text, re.DOTALL | re.IGNORECASE)
@@ -780,19 +780,19 @@ class RealtimeUIUpdater:
                     summary = thinking_content.split('.')[0].strip()
                     if len(summary) > 100:
                         summary = summary[:97] + '...'
-                    
+
                     thinking_sections.append({
                         'type': tag_type,
                         'content': thinking_content,
                         'summary': summary
                     })
-                
+
                 # Remove from main content
                 main_content = main_content.replace(match.group(0), '')
-        
+
         # Clean up extra whitespace in main content
         main_content = re.sub(r'\s+', ' ', main_content).strip()
-        
+
         return {
             'main_content': main_content,
             'thinking_sections': thinking_sections,
@@ -807,7 +807,7 @@ class RealtimeUIUpdater:
             return 'yellow-400'
         else:
             return 'red-400'
-    
+
     def _get_health_color(self, metric: str, value: float) -> str:
         """Get color for health metric based on value."""
         if metric in ['stagnation', 'repetition']:
@@ -831,12 +831,12 @@ class RealtimeUIUpdater:
                 return 'yellow'
             else:
                 return 'green'
-    
+
     def _subscribe_to_events(self):
         """Subscribe to WebSocket events from the event manager."""
         from .websocket_events import get_event_manager, EventType
         event_manager = get_event_manager()
-        
+
         # Subscribe to all event types we handle
         event_types_map = {
             EventType.AGENT_MESSAGE: self.handle_agent_message,
@@ -846,7 +846,7 @@ class RealtimeUIUpdater:
             EventType.NETWORK_UPDATE: self.handle_network_update,
             EventType.SYSTEM_STATUS: self.handle_system_status,
         }
-        
+
         for event_type, handler in event_types_map.items():
             event_manager.subscribe(event_type, handler)
             logger.info(f"RealtimeUIUpdater subscribed to {event_type.value}")
@@ -862,13 +862,13 @@ _broadcaster: Optional[WebSocketEventBroadcaster] = None
 
 def get_broadcaster() -> WebSocketEventBroadcaster:
     """Get or create the global broadcaster instance.
-    
+
     Returns:
         The global WebSocketEventBroadcaster instance
     """
     global _broadcaster
-    
+
     if _broadcaster is None:
         _broadcaster = WebSocketEventBroadcaster()
-    
+
     return _broadcaster

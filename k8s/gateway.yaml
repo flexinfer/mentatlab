@@ -41,7 +41,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: gateway
-          image: registry.harbor.lan/library/mentatlab-gateway-go:latest
+          image: registry.harbor.lan/library/mentatlab-gateway-go:v0.0.0-placeholder
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -60,7 +60,10 @@ spec:
             - name: REDIS_URL
               value: "redis:6379"
             - name: CORS_ORIGINS
-              value: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"
+              valueFrom:
+                configMapKeyRef:
+                  name: mentatlab-urls
+                  key: CORS_ORIGINS
             # Cloudflare Access configuration
             - name: CF_TEAM_DOMAIN
               valueFrom:
@@ -88,6 +91,13 @@ spec:
                   optional: true
             - name: AUTH_ENABLED
               value: "false"
+            # Tracing
+            - name: TRACING_ENABLED
+              value: "true"
+            - name: OTLP_ENDPOINT
+              value: "tempo.monitoring.svc:4317"
+            - name: TEMPO_QUERY_URL
+              value: "http://tempo.monitoring.svc:3200"
           livenessProbe:
             httpGet:
               path: /health
@@ -111,14 +121,3 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
----
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: gateway
-  namespace: mentatlab
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app: gateway

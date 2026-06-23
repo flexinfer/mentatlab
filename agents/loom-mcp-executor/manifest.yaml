@@ -1,0 +1,40 @@
+id: loom-mcp-executor
+version: "0.2.0"
+image: registry.harbor.lan/library/mentatlab-loom-mcp-executor:v0.2.0-dev
+runtime: python3.12
+description: >
+  Universal adapter agent for executing external Model Context Protocol (MCP) tools via the loom gateway.
+longRunning: false
+
+env:
+  - name: LOOM_BIN
+    value: loom
+
+inputs:
+  - name: spec
+    type: json
+    description: >
+      Action specification with tool_name, mcp_server, and tool_args.
+  - name: context
+    type: json
+    description: Session and execution context.
+
+outputs:
+  - name: result
+    type: json
+    description: Output from the MCP tool execution or Flexinfer model.
+  - name: error
+    type: json
+    description: Structured error with code and message.
+
+capabilities:
+  supports_progress: false
+  supports_heartbeat: false
+
+ui:
+  title: MCP Executor
+  description: Universal executor for Model Context Protocol tools
+  icon: "🧰"
+  catalog:
+    visible: false
+    category: Integration

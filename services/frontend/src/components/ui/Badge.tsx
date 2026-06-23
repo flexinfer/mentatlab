@@ -6,15 +6,15 @@ export function Badge({ variant = 'default', children, title }: { variant?: Badg
   const cls = (() => {
     switch (variant) {
       case 'info':
-        return 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]';
+        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
       case 'success':
-        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]';
+        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
       case 'warning':
-        return 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)]';
+        return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
       case 'danger':
-        return 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]';
+        return 'bg-red-500/10 text-red-400 border-red-500/20';
       default:
-        return 'bg-white/5 text-gray-300 border-white/10';
+        return 'bg-muted/50 text-muted-foreground border-border';
     }
   })();
 

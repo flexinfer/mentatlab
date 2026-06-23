@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -14,23 +15,28 @@ import (
 
 // memoryRun holds all state for a single run in memory.
 type memoryRun struct {
-	mu          sync.RWMutex
-	id          string
-	name        string
-	plan        *types.Plan
-	status      types.RunStatus
-	startedAt   *time.Time
-	finishedAt  *time.Time
-	error       string
-	nodes       map[string]*types.NodeState
-	outputs     map[string]map[string]interface{} // nodeID -> outputs
-	events      []*types.Event
-	nextSeq     int64
-	maxEvents   int64
-	cancelled   bool
-	subscribers map[chan *types.Event]struct{}
-	createdAt   time.Time
-	updatedAt   time.Time
+	mu            sync.RWMutex
+	id            string
+	name          string
+	owner         string
+	traceID       string
+	webhookURL    string
+	webhookSecret string
+	plan          *types.Plan
+	status        types.RunStatus
+	startedAt     *time.Time
+	finishedAt    *time.Time
+	error         string
+	nodes         map[string]*types.NodeState
+	outputs       map[string]map[string]interface{} // nodeID -> outputs
+	checkpoints   map[string]*NodeCheckpointState   // nodeID -> latest resumable checkpoint
+	events        []*types.Event
+	nextSeq       int64
+	maxEvents     int64
+	cancelled     bool
+	subscribers   map[chan *types.Event]struct{}
+	createdAt     time.Time
+	updatedAt     time.Time
 }
 
 // MemoryStore is an in-memory implementation of RunStore.
@@ -58,7 +64,7 @@ func generateRunID() string {
 	return hex.EncodeToString(b)
 }
 
-func (s *MemoryStore) CreateRun(ctx context.Context, name string, plan *types.Plan) (string, error) {
+func (s *MemoryStore) CreateRun(ctx context.Context, name string, plan *types.Plan, owner string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -79,10 +85,12 @@ func (s *MemoryStore) CreateRun(ctx context.Context, name string, plan *types.Pl
 	s.runs[runID] = &memoryRun{
 		id:          runID,
 		name:        name,
+		owner:       owner,
 		plan:        plan,
 		status:      types.RunStatusQueued,
 		nodes:       nodes,
 		outputs:     make(map[string]map[string]interface{}),
+		checkpoints: make(map[string]*NodeCheckpointState),
 		events:      make([]*types.Event, 0),
 		nextSeq:     1,
 		maxEvents:   s.config.EventMaxLen,
@@ -109,6 +117,8 @@ func (s *MemoryStore) GetRunMeta(ctx context.Context, runID string) (*types.RunM
 	return &types.RunMeta{
 		ID:         run.id,
 		Name:       run.name,
+		Owner:      run.owner,
+		TraceID:    run.traceID,
 		Status:     run.status,
 		StartedAt:  run.startedAt,
 		FinishedAt: run.finishedAt,
@@ -131,15 +141,19 @@ func (s *MemoryStore) GetRun(ctx context.Context, runID string) (*types.Run, err
 	defer run.mu.RUnlock()
 
 	return &types.Run{
-		ID:         run.id,
-		Name:       run.name,
-		Status:     run.status,
-		Plan:       run.plan,
-		StartedAt:  run.startedAt,
-		FinishedAt: run.finishedAt,
-		Error:      run.error,
-		CreatedAt:  run.createdAt,
-		UpdatedAt:  run.updatedAt,
+		ID:            run.id,
+		Name:          run.name,
+		Owner:         run.owner,
+		TraceID:       run.traceID,
+		WebhookURL:    run.webhookURL,
+		WebhookSecret: run.webhookSecret,
+		Status:        run.status,
+		Plan:          run.plan,
+		StartedAt:     run.startedAt,
+		FinishedAt:    run.finishedAt,
+		Error:         run.error,
+		CreatedAt:     run.createdAt,
+		UpdatedAt:     run.updatedAt,
 	}, nil
 }
 
@@ -152,6 +166,142 @@ func (s *MemoryStore) ListRuns(ctx context.Context) ([]string, error) {
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+func (s *MemoryStore) ListRunsWithOptions(ctx context.Context, opts *ListRunsOptions) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	ids := make([]string, 0, len(s.runs))
+	for id, run := range s.runs {
+		if opts != nil && opts.Owner != "" {
+			run.mu.RLock()
+			owner := run.owner
+			run.mu.RUnlock()
+			if owner != opts.Owner {
+				continue
+			}
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (s *MemoryStore) SetRunWebhook(ctx context.Context, runID, webhookURL, webhookSecret string) error {
+	s.mu.RLock()
+	run, ok := s.runs[runID]
+	s.mu.RUnlock()
+
+	if !ok {
+		return ErrRunNotFound
+	}
+
+	run.mu.Lock()
+	run.webhookURL = webhookURL
+	run.webhookSecret = webhookSecret
+	run.mu.Unlock()
+	return nil
+}
+
+func (s *MemoryStore) SetRunTraceID(ctx context.Context, runID, traceID string) error {
+	s.mu.RLock()
+	run, ok := s.runs[runID]
+	s.mu.RUnlock()
+
+	if !ok {
+		return ErrRunNotFound
+	}
+
+	run.mu.Lock()
+	run.traceID = traceID
+	run.mu.Unlock()
+	return nil
+}
+
+func (s *MemoryStore) ListRunsPaged(ctx context.Context, opts *PageOptions) (*PagedResult, error) {
+	if opts == nil {
+		opts = &PageOptions{}
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Collect matching runs with metadata
+	type entry struct {
+		meta      *types.RunMeta
+		createdAt time.Time
+	}
+	var entries []entry
+	for _, run := range s.runs {
+		run.mu.RLock()
+		if opts.Owner != "" && run.owner != opts.Owner {
+			run.mu.RUnlock()
+			continue
+		}
+		e := entry{
+			meta: &types.RunMeta{
+				ID:         run.id,
+				Name:       run.name,
+				Owner:      run.owner,
+				Status:     run.status,
+				StartedAt:  run.startedAt,
+				FinishedAt: run.finishedAt,
+			},
+			createdAt: run.createdAt,
+		}
+		run.mu.RUnlock()
+		entries = append(entries, e)
+	}
+
+	// Sort by createdAt descending (newest first)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].createdAt.After(entries[j].createdAt)
+	})
+
+	// Apply cursor: skip entries until we find one older than the cursor timestamp
+	startIdx := 0
+	if opts.Cursor != "" {
+		cursorTime, cursorID, err := decodeCursor(opts.Cursor)
+		if err == nil {
+			for i, e := range entries {
+				if e.createdAt.Before(cursorTime) || (e.createdAt.Equal(cursorTime) && e.meta.ID <= cursorID) {
+					startIdx = i
+					break
+				}
+			}
+		}
+	}
+
+	// Slice the page
+	total := len(entries)
+	end := startIdx + limit
+	if end > total {
+		end = total
+	}
+	page := entries[startIdx:end]
+
+	result := &PagedResult{
+		Runs:  make([]*types.RunMeta, len(page)),
+		Total: total,
+	}
+	for i, e := range page {
+		result.Runs[i] = e.meta
+	}
+
+	// Set next cursor if there are more results
+	if end < total {
+		last := entries[end-1]
+		result.NextCursor = encodeCursor(last.createdAt, last.meta.ID)
+	}
+
+	return result, nil
 }
 
 func (s *MemoryStore) UpdateRunStatus(ctx context.Context, runID string, status types.RunStatus, startedAt, finishedAt *string) error {
@@ -289,6 +439,32 @@ func (s *MemoryStore) GetNodeOutputs(ctx context.Context, runID, nodeID string) 
 	return outputs, nil
 }
 
+func (s *MemoryStore) GetLatestNodeCheckpointState(ctx context.Context, runID, nodeID string) (*NodeCheckpointState, error) {
+	s.mu.RLock()
+	run, ok := s.runs[runID]
+	s.mu.RUnlock()
+
+	if !ok {
+		return nil, ErrRunNotFound
+	}
+
+	run.mu.RLock()
+	defer run.mu.RUnlock()
+
+	checkpoint, ok := run.checkpoints[nodeID]
+	if !ok {
+		return nil, nil
+	}
+
+	return &NodeCheckpointState{
+		RunID:     checkpoint.RunID,
+		NodeID:    checkpoint.NodeID,
+		EventID:   checkpoint.EventID,
+		Timestamp: checkpoint.Timestamp,
+		State:     cloneRawMessage(checkpoint.State),
+	}, nil
+}
+
 func (s *MemoryStore) AppendEvent(ctx context.Context, runID string, input *types.EventInput) (*types.Event, error) {
 	s.mu.RLock()
 	run, ok := s.runs[runID]
@@ -310,13 +486,36 @@ func (s *MemoryStore) AppendEvent(ctx context.Context, runID string, input *type
 		return nil, fmt.Errorf("failed to marshal event data: %w", err)
 	}
 
+	var checkpoint *NodeCheckpointState
+	if input.Type == types.EventTypeCheckpoint && input.NodeID != "" {
+		state, ok, err := checkpointStateFromEventData(dataJSON)
+		if err != nil {
+			run.mu.Unlock()
+			return nil, err
+		}
+		if ok {
+			checkpoint = &NodeCheckpointState{
+				RunID:     runID,
+				NodeID:    input.NodeID,
+				EventID:   eventID,
+				Timestamp: time.Now().UTC(),
+				State:     state,
+			}
+		}
+	}
+
+	now := time.Now().UTC()
 	event := &types.Event{
 		ID:        eventID,
 		RunID:     runID,
 		Type:      input.Type,
 		NodeID:    input.NodeID,
-		Timestamp: time.Now().UTC(),
+		Timestamp: now,
 		Data:      dataJSON,
+	}
+	if checkpoint != nil {
+		checkpoint.Timestamp = now
+		run.checkpoints[input.NodeID] = checkpoint
 	}
 
 	// Append to ring buffer

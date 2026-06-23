@@ -1118,14 +1118,28 @@ components:
 
     ProgressEventData:
       type: object
-      required: [current, total]
+      required: [percent]
       properties:
-        current:
-          type: integer
-        total:
-          type: integer
+        percent:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Completion percentage from 0 to 100.
         message:
           type: string
+          description: Human-readable progress status.
+        eta_seconds:
+          type: number
+          format: float
+          minimum: 0
+          description: Estimated seconds remaining.
+        current:
+          type: integer
+          description: Optional current step for legacy/current-total progress emitters.
+        total:
+          type: integer
+          description: Optional total steps for legacy/current-total progress emitters.
 
     # Agent types
     Agent:

@@ -156,7 +156,7 @@ export function useStreamingTransport(
         if (debug) {
           console.debug(`[useStreamingTransport] State change: ${state} (${transport})`);
         }
-        setConnectionStatus(state);
+        setConnectionStatus(state, transport);
       },
       onError: (error: Error, transport: TransportType) => {
         console.error(`[useStreamingTransport] Error (${transport}):`, error);

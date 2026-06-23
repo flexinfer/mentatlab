@@ -2,200 +2,168 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MediaService } from '../mediaService';
 
-type OnProgress = (p: any) => void;
-type OnStatus = (s: any) => void;
+/**
+ * Unit tests for MediaService.
+ *
+ * The current implementation uses:
+ *   constructor(http: HttpClient, ws: WebSocketClient | null)
+ *   uploadFile(file, { onProgress?, metadata? }) -> Promise<MediaReference>
+ *
+ * Internally it calls:
+ *   getPresignedUrl(params) -> { uploadUrl, reference }
+ *   chunkFile(file) -> Blob[]
+ *   uploadChunks(fileId, chunks, uploadUrl, onProgress?, abortSignal?) -> void
+ *
+ * uploadChunks uses XMLHttpRequest internally. We mock the private methods
+ * getPresignedUrl and the XHR layer to exercise the public API.
+ */
 
 function makeFile(size: number, name = 'test.bin') {
-  // Create a Blob with the requested size (filled with zeros)
   const chunk = new Uint8Array(size);
   return new File([chunk], name, { type: 'application/octet-stream' });
 }
 
-describe('MediaService - chunked upload (unit)', () => {
-  let svc: any;
+// Minimal HttpClient stub satisfying BaseService constructor
+function makeMockHttp(): any {
+  return {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+    patch: vi.fn(),
+    defaults: {
+      baseURL: '',
+      headers: { common: {} },
+    },
+  };
+}
+
+describe('MediaService - upload (unit)', () => {
+  let svc: MediaService;
+  let mockHttp: any;
 
   beforeEach(() => {
-    // Construct with any to avoid strict constructor typing in tests
-    svc = new (MediaService as any)('https://api.example.com');
+    mockHttp = makeMockHttp();
+    svc = new MediaService(mockHttp, null);
   });
 
-  it('uploads multipart file and reports progress -> completes', async () => {
-    const file = makeFile(10 * 1024); // 10KB
-    const chunkSize = 4 * 1024; // 4KB -> 3 parts
-    const partsCount = Math.ceil(file.size / chunkSize);
+  it('uploads file via getPresignedUrl + uploadChunks and returns reference', async () => {
+    const file = makeFile(1024); // 1KB - well under chunk size, so one chunk
 
-    // Stub requestPresignedUpload to return a multipart presign response
-    vi.spyOn(svc as any, 'requestPresignedUpload').mockResolvedValue({
-      strategy: 'multipart',
-      uploadId: 'upload-123',
-      parts: Array.from({ length: partsCount }).map((_, i) => ({
-        partNumber: i + 1,
-        url: `https://storage.example.com/upload/part/${i + 1}`,
-      })),
-      reference: {
-        refId: 'ref-1',
-        type: 'file',
-        url: 'https://storage.example.com/ref-1',
-        metadata: { size: file.size, createdAt: new Date().toISOString() },
-      },
-    } as any);
+    const fakeReference = {
+      refId: 'ref-1',
+      type: 'file' as const,
+      url: 'https://storage.example.com/ref-1',
+      metadata: { size: file.size, createdAt: new Date().toISOString() },
+    };
 
-    // Spy on putChunkXHR to simulate progress and success for each chunk
-    const putSpy = vi.spyOn(svc as any, 'putChunkXHR').mockImplementation(async (...args: any[]) => {
-      const chunk: Blob = args[1];
-      const onChunkProgress: (bytes: number) => void = args[4];
-      // Simulate chunk upload progress in two steps
-      const size = (chunk as Blob).size;
-      onChunkProgress(Math.floor(size / 2));
-      // small delay simulation
-      await new Promise((r) => setTimeout(r, 1));
-      onChunkProgress(size - Math.floor(size / 2));
-      return Promise.resolve();
+    // Stub the private getPresignedUrl method
+    vi.spyOn(svc as any, 'getPresignedUrl').mockResolvedValue({
+      uploadUrl: 'https://storage.example.com/upload',
+      reference: fakeReference,
     });
+
+    // Stub uploadChunks to simulate a successful upload
+    const uploadChunksSpy = vi.spyOn(svc as any, 'uploadChunks').mockResolvedValue(undefined);
 
     const progressEvents: any[] = [];
-    const statusEvents: any[] = [];
-
-    const options = {
-      chunkSize,
-      parallel: 2,
-      maxRetries: 2,
-      backoffBaseMs: 10,
-      backoffMaxMs: 50,
-      onProgress: (p: any) => progressEvents.push(p),
-      onStatus: (s: any) => statusEvents.push(s),
-    };
-
-    const result: any = await (svc as any).uploadFile(file, options);
-
-    // Expect putChunkXHR called partsCount times
-    expect(putSpy).toHaveBeenCalledTimes(partsCount);
-
-    // bytesUploaded equals total file size
-    expect(result.bytesUploaded).toBe(file.size);
-
-    // status events include uploading and completed (or processing then completed)
-    const statuses = statusEvents.map((s) => s.status);
-    expect(statuses).toContain('uploading');
-    expect(statuses).toContain('completed');
-
-    // final progress reached 100 in at least one progress event
-    const finalProgress = progressEvents[progressEvents.length - 1];
-    expect(finalProgress.progress).toBeGreaterThanOrEqual(100);
-  });
-
-  it('retries failed chunk and succeeds', async () => {
-    const file = makeFile(6 * 1024); // 6KB
-    const chunkSize = 4 * 1024; // 4KB -> 2 parts
-    const partsCount = Math.ceil(file.size / chunkSize);
-
-    vi.spyOn(svc as any, 'requestPresignedUpload').mockResolvedValue({
-      strategy: 'multipart',
-      uploadId: 'upload-456',
-      parts: Array.from({ length: partsCount }).map((_, i) => ({
-        partNumber: i + 1,
-        url: `https://storage.example.com/upload/part/${i + 1}`,
-      })),
-      reference: {
-        refId: 'ref-2',
-        type: 'file',
-        url: 'https://storage.example.com/ref-2',
-        metadata: { size: file.size, createdAt: new Date().toISOString() },
-      },
-    } as any);
-
-    // For the first chunk call fail once then succeed
-    let callCount = 0;
-    vi.spyOn(svc as any, 'putChunkXHR').mockImplementation(async (...args: any[]) => {
-      callCount++;
-      const chunk: Blob = args[1];
-      const onChunkProgress: (bytes: number) => void = args[4];
-      const size = (chunk as Blob).size;
-      onChunkProgress(size); // report progress for simplicity
-
-      if (callCount === 1) {
-        // fail first time
-        const err: any = new Error('Simulated network error');
-        err.status = 500;
-        throw err;
-      }
-      // succeed
-      return Promise.resolve();
+    const result = await svc.uploadFile(file, {
+      onProgress: (p) => progressEvents.push(p),
     });
 
-    const options = {
-      chunkSize,
-      parallel: 1,
-      maxRetries: 2,
-      backoffBaseMs: 1,
-      backoffMaxMs: 10,
-      onProgress: () => {},
-      onStatus: () => {},
-    };
+    // getPresignedUrl should have been called with the file metadata
+    expect((svc as any).getPresignedUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filename: 'test.bin',
+        mimeType: 'application/octet-stream',
+        size: 1024,
+      })
+    );
 
-    const result: any = await (svc as any).uploadFile(file, options);
+    // uploadChunks should have been called
+    expect(uploadChunksSpy).toHaveBeenCalled();
 
-    // Expect putChunkXHR called at least partsCount + 1 times (one retry)
-    expect(callCount).toBeGreaterThanOrEqual(partsCount + 1);
-    expect(result.bytesUploaded).toBe(file.size);
+    // Return value should be the MediaReference from getPresignedUrl
+    expect(result).toEqual(fakeReference);
+    expect(result.refId).toBe('ref-1');
   });
 
-  it('aborts upload when signal is aborted', async () => {
-    const file = makeFile(8 * 1024);
-    const chunkSize = 4 * 1024;
-    const partsCount = Math.ceil(file.size / chunkSize);
+  it('propagates errors from getPresignedUrl', async () => {
+    const file = makeFile(512);
 
-    vi.spyOn(svc as any, 'requestPresignedUpload').mockResolvedValue({
-      strategy: 'multipart',
-      uploadId: 'upload-abort',
-      parts: Array.from({ length: partsCount }).map((_, i) => ({
-        partNumber: i + 1,
-        url: `https://storage.example.com/upload/part/${i + 1}`,
-      })),
-      reference: {
-        refId: 'ref-abort',
-        type: 'file',
-        url: 'https://storage.example.com/ref-abort',
-        metadata: { size: file.size, createdAt: new Date().toISOString() },
-      },
-    } as any);
+    vi.spyOn(svc as any, 'getPresignedUrl').mockRejectedValue(
+      new Error('Presign failed')
+    );
 
-    // putChunkXHR will wait until signal aborted to reject
-    vi.spyOn(svc as any, 'putChunkXHR').mockImplementation(async (...args: any[]) => {
-      const signal: AbortSignal = args[3];
-      return new Promise((resolve, reject) => {
-        if (signal.aborted) {
-          const err: any = new Error('aborted');
-          err.code = 'ABORT_ERR';
-          return reject(err);
-        }
-        signal.addEventListener('abort', () => {
-          const err: any = new Error('aborted');
-          err.code = 'ABORT_ERR';
-          reject(err);
+    await expect(svc.uploadFile(file)).rejects.toThrow('Presign failed');
+  });
+
+  it('propagates errors from uploadChunks', async () => {
+    const file = makeFile(512);
+
+    vi.spyOn(svc as any, 'getPresignedUrl').mockResolvedValue({
+      uploadUrl: 'https://storage.example.com/upload',
+      reference: { refId: 'ref-err', type: 'file' },
+    });
+
+    vi.spyOn(svc as any, 'uploadChunks').mockRejectedValue(
+      new Error('Chunk upload failed')
+    );
+
+    await expect(svc.uploadFile(file)).rejects.toThrow('Chunk upload failed');
+  });
+
+  it('cancelUpload aborts an in-progress upload', async () => {
+    const file = makeFile(512);
+
+    vi.spyOn(svc as any, 'getPresignedUrl').mockResolvedValue({
+      uploadUrl: 'https://storage.example.com/upload',
+      reference: { refId: 'ref-cancel', type: 'file' },
+    });
+
+    // Make uploadChunks hang until abort
+    let capturedSignal: AbortSignal | undefined;
+    vi.spyOn(svc as any, 'uploadChunks').mockImplementation(
+      async (_fileId: string, _chunks: Blob[], _url: string, _onProgress: any, signal?: AbortSignal) => {
+        capturedSignal = signal;
+        return new Promise((_resolve, reject) => {
+          if (signal?.aborted) {
+            return reject(new Error('Upload cancelled'));
+          }
+          signal?.addEventListener('abort', () => {
+            reject(new Error('Upload cancelled'));
+          });
         });
-        // otherwise hang (we won't let it resolve)
-      });
-    });
+      }
+    );
 
-    const controller = new AbortController();
+    // Start upload (don't await yet)
+    const uploadPromise = svc.uploadFile(file);
 
-    const options = {
-      chunkSize,
-      parallel: 2,
-      maxRetries: 1,
-      backoffBaseMs: 1,
-      backoffMaxMs: 5,
-      onProgress: () => {},
-      onStatus: () => {},
-      signal: controller.signal,
-    };
+    // Wait a tick for the internal fileId to be set
+    await new Promise((r) => setTimeout(r, 0));
 
-    const uploadPromise = (svc as any).uploadFile(file, options);
+    // The uploadAbortControllers map should have one entry; cancel it
+    // We need to get the fileId from the map. Since it's a UUID, iterate.
+    const controllers = (svc as any).uploadAbortControllers as Map<string, AbortController>;
+    expect(controllers.size).toBe(1);
 
-    // abort shortly after
-    setTimeout(() => controller.abort(), 5);
+    const fileId = [...controllers.keys()][0];
+    svc.cancelUpload(fileId);
 
-    await expect(uploadPromise).rejects.toMatchObject({ code: 'ABORT_ERR' });
+    await expect(uploadPromise).rejects.toThrow('Upload cancelled');
+  });
+
+  it('chunkFile splits large files into CHUNK_SIZE pieces', () => {
+    // CHUNK_SIZE is 5MB (5 * 1024 * 1024)
+    const chunkSize = 5 * 1024 * 1024;
+    const fileSize = chunkSize * 2 + 100; // 2 full chunks + partial
+    const file = makeFile(fileSize);
+
+    const chunks = (svc as any).chunkFile(file) as Blob[];
+    expect(chunks.length).toBe(3);
+    expect(chunks[0].size).toBe(chunkSize);
+    expect(chunks[1].size).toBe(chunkSize);
+    expect(chunks[2].size).toBe(100);
   });
 });

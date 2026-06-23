@@ -1,6 +1,8 @@
 // Package types provides shared types for the orchestrator service.
 package types
 
+import "time"
+
 // ConditionalConfig defines branching behavior for conditional nodes.
 // Supports both "if" (boolean) and "switch" (multi-way) branching patterns.
 type ConditionalConfig struct {
@@ -64,18 +66,37 @@ type SubflowConfig struct {
 	OutputMapping map[string]string `json:"output_mapping,omitempty"`
 }
 
+// GateConfig defines an approval gate that pauses execution until external signal.
+type GateConfig struct {
+	// Description is a human-readable explanation of what approval is needed.
+	Description string `json:"description,omitempty"`
+
+	// Timeout is the maximum time to wait for approval before auto-rejecting.
+	// Zero means wait indefinitely.
+	Timeout time.Duration `json:"timeout,omitempty"`
+
+	// AutoReject determines whether the gate auto-rejects (true) or auto-approves (false)
+	// when the timeout expires. Only relevant when Timeout > 0.
+	AutoReject bool `json:"auto_reject,omitempty"`
+}
+
 // NodeType constants for control flow nodes.
 const (
+	// MaxForEachParallelSafetyCap bounds for_each runtime concurrency to avoid
+	// unbounded goroutine/memory growth from misconfigured plans.
+	MaxForEachParallelSafetyCap = 32
+
 	NodeTypeAgent       = "agent"
 	NodeTypeConditional = "conditional"
 	NodeTypeForEach     = "for_each"
 	NodeTypeSubflow     = "subflow"
+	NodeTypeGate        = "gate"
 )
 
 // IsControlFlowNode returns true if the node type is a control flow type.
 func IsControlFlowNode(nodeType string) bool {
 	switch nodeType {
-	case NodeTypeConditional, NodeTypeForEach, NodeTypeSubflow:
+	case NodeTypeConditional, NodeTypeForEach, NodeTypeSubflow, NodeTypeGate:
 		return true
 	default:
 		return false

@@ -1,3 +1,8 @@
+# Echo agent image reference for Kustomize tag management.
+# The echo agent is a stdin/stdout batch process, not an HTTP service.
+# It runs as ephemeral K8s Jobs created by the orchestrator scheduler
+# (ORCH_DRIVER=k8s), not as a long-running Deployment.
+# Replicas set to 0 — this Deployment exists only for image tag tracking.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,7 +13,7 @@ metadata:
     component: agent
     mentatlab.io/component: agent
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: echoagent
@@ -26,11 +31,8 @@ spec:
         fsGroup: 1000
       containers:
         - name: echoagent
-          image: registry.harbor.lan/library/mentatlab-echoagent:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8082
-              name: http
+          image: registry.harbor.lan/library/mentatlab-echoagent:v0.0.0-placeholder
+          imagePullPolicy: Always
           resources:
             requests:
               cpu: 50m
@@ -44,23 +46,6 @@ spec:
             capabilities:
               drop:
                 - ALL
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
-            successThreshold: 1
-            failureThreshold: 3
           volumeMounts:
             - name: tmp
               mountPath: /tmp

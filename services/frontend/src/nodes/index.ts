@@ -15,6 +15,9 @@ export type { ConditionalNodeData, ConditionalBranch } from './ConditionalNode';
 export { default as ForEachNode } from './ForEachNode';
 export type { ForEachNodeData } from './ForEachNode';
 
+export { default as GateNode } from './GateNode';
+export type { GateNodeData } from './GateNode';
+
 // Re-export node status type (shared across control flow nodes)
 export type { NodeStatus } from './ConditionalNode';
 
@@ -26,6 +29,7 @@ export const NODE_TYPES = {
   PYTHON_CODE: 'pythonCode',
   CONDITIONAL: 'conditional',
   FOR_EACH: 'forEach',
+  GATE: 'gate',
 } as const;
 
 export type NodeTypeName = typeof NODE_TYPES[keyof typeof NODE_TYPES];

@@ -30,6 +30,8 @@ spec:
       app: orchestrator
   template:
     metadata:
+      annotations:
+        mentatlab.io/restart-trigger: "m5.1-k8s-job-fix-2026-02-19"
       labels:
         app: orchestrator
         component: backend
@@ -42,7 +44,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: orchestrator
-          image: registry.harbor.lan/library/mentatlab-orchestrator-go:latest
+          image: registry.harbor.lan/library/mentatlab-orchestrator-go:v0.0.0-placeholder
           imagePullPolicy: Always
           ports:
             - containerPort: 7070
@@ -57,7 +59,10 @@ spec:
             - name: PORT
               value: "7070"
             - name: REDIS_URL
-              value: "redis:6379"
+              value: "redis://redis:6379"
+            # RunStore backend (redis persists runs across pod restarts)
+            - name: ORCH_RUNSTORE
+              value: "redis"
             - name: MENTATLAB_NAMESPACE
               value: "mentatlab"
             - name: GATEWAY_BASE_URL
@@ -65,7 +70,10 @@ spec:
             - name: VLLM_BASE_URL
               value: "http://vllm-optimized-lb.ai.svc.cluster.local:8000"
             - name: FRONTEND_URL
-              value: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"
+              valueFrom:
+                configMapKeyRef:
+                  name: mentatlab-urls
+                  key: FRONTEND_URLS
             # Agent registry backend (redis or memory)
             - name: REGISTRY_TYPE
               value: "redis"
@@ -90,6 +98,52 @@ spec:
                   name: minio-credentials
                   key: MINIO_SECRET_KEY
                   optional: true
+            # Driver — use K8s Jobs for agent execution
+            - name: ORCH_DRIVER
+              value: "k8s"
+            - name: K8S_IN_CLUSTER
+              value: "true"
+            - name: K8S_NAMESPACE
+              value: "mentatlab"
+            - name: K8S_IMAGE_PULL_SECRETS
+              value: "harbor-creds"
+            # Scheduler
+            - name: ORCH_DEFAULT_RUN_TIMEOUT
+              value: "30m"
+            # Agent Context (loom integration)
+            - name: ORCH_AGENT_CONTEXT_ENABLED
+              value: "true"
+            - name: ORCH_AGENT_CONTEXT_AGENT_ID
+              value: "mentatlab-orchestrator"
+            - name: ORCH_AGENT_CONTEXT_NAMESPACE
+              value: "mentatlab/runs"
+            - name: LOOM_BIN
+              value: "/usr/local/bin/loom"
+            - name: MCP_HUB_URL
+              value: "wss://mcp.flexinfer.ai/ws"
+            - name: MCP_HUB_CATALOG_URL
+              value: "https://mcp.flexinfer.ai/openapi.json"
+            - name: MCP_HUB_PROFILE
+              value: "codex"
+            - name: MCP_HUB_SERVERS
+              value: "agent_context,docker,flux,github,gitlab,jobsearch,loki,prometheus,time"
+            - name: CF_ACCESS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-access
+                  key: CF_ACCESS_CLIENT_ID
+                  optional: true
+            - name: CF_ACCESS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-access
+                  key: CF_ACCESS_CLIENT_SECRET
+                  optional: true
+            # Tracing
+            - name: TRACING_ENABLED
+              value: "true"
+            - name: OTLP_ENDPOINT
+              value: "tempo.monitoring.svc:4317"
           livenessProbe:
             httpGet:
               path: /healthz
@@ -100,7 +154,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /ready
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
@@ -113,14 +167,3 @@ spec:
             limits:
               cpu: 1000m
               memory: 1Gi
----
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: orchestrator
-  namespace: mentatlab
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      app: orchestrator

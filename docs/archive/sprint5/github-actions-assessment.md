@@ -44,7 +44,7 @@ The current test approach may need adjustments to better align with the microser
 1. **Service-Level Testing**
    - Tests should run within each service's isolated environment
    - Dependencies should be installed per service, not globally
-   
+
 2. **Import Path Considerations**
    - Absolute imports work well for monorepo testing
    - Service-level imports may need adjustment when services run in containers

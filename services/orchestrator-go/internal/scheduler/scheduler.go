@@ -5,14 +5,21 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/driver"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/mcpclient"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/metrics"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
+
+var tracer = otel.Tracer("mentatlab/scheduler")
 
 // CommandResolver resolves a NodeSpec to a command line to execute.
 type CommandResolver func(node *types.NodeSpec) []string
@@ -21,11 +28,17 @@ type CommandResolver func(node *types.NodeSpec) []string
 type runContext struct {
 	runID          string
 	name           string
+	planTimeout    time.Duration
 	nodeSpecs      map[string]*types.NodeSpec
 	dependents     map[string]map[string]bool // node_id -> set of downstream ids
 	remainingPreds map[string]int             // node_id -> count of predecessors not yet succeeded
 	tasks          map[string]context.CancelFunc
 	tasksMu        sync.Mutex
+	gates          map[string]chan string // node_id -> channel receiving "approve" or "reject"
+	gatesMu        sync.Mutex
+	sessionMu      sync.Mutex
+	sessionID      string
+	sessionClosed  bool
 	done           chan struct{}
 	cancelled      bool
 	cancelledMu    sync.Mutex
@@ -41,8 +54,17 @@ type Scheduler struct {
 	sem                chan struct{} // Parallelism limiter
 	defaultMaxRetries  int
 	defaultBackoffSecs int
+	defaultRunTimeout  time.Duration
 	logger             *slog.Logger
 	exprEval           *ExprEvaluator // Expression evaluator for control flow
+	executors          map[string]nodeExecutor
+	runSessionManager  RunSessionManager
+	mcpClient          *mcpclient.Client
+}
+
+// nodeExecutor defines the strategy for executing a specific type of node.
+type nodeExecutor interface {
+	Execute(ctx context.Context, s *Scheduler, rctx *runContext, nodeID string, spec *types.NodeSpec) (int, error)
 }
 
 // Config holds scheduler configuration.
@@ -55,6 +77,9 @@ type Config struct {
 
 	// DefaultBackoffSecs is the initial backoff duration in seconds
 	DefaultBackoffSecs int
+
+	// DefaultRunTimeout is the default timeout for runs (0 = no timeout)
+	DefaultRunTimeout time.Duration
 }
 
 // DefaultConfig returns sensible defaults.
@@ -63,34 +88,112 @@ func DefaultConfig() *Config {
 		MaxParallelism:     0,
 		DefaultMaxRetries:  0,
 		DefaultBackoffSecs: 2,
+		DefaultRunTimeout:  0,
 	}
 }
 
-// New creates a new scheduler.
-func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, cfg *Config, logger *slog.Logger) *Scheduler {
-	if cfg == nil {
-		cfg = DefaultConfig()
-	}
-	if logger == nil {
-		logger = slog.Default()
-	}
+// Option is a functional option for configuring the Scheduler.
+type Option func(*Scheduler)
 
-	var sem chan struct{}
-	if cfg.MaxParallelism > 0 {
-		sem = make(chan struct{}, cfg.MaxParallelism)
+// WithMaxParallelism sets the maximum number of concurrent node executions.
+func WithMaxParallelism(n int) Option {
+	return func(s *Scheduler) {
+		if n > 0 {
+			s.sem = make(chan struct{}, n)
+		} else {
+			s.sem = nil
+		}
 	}
+}
 
-	return &Scheduler{
+// WithDefaultMaxRetries sets the default maximum retry count for nodes.
+func WithDefaultMaxRetries(n int) Option {
+	return func(s *Scheduler) {
+		s.defaultMaxRetries = n
+	}
+}
+
+// WithDefaultBackoffSecs sets the initial backoff duration in seconds.
+func WithDefaultBackoffSecs(n int) Option {
+	return func(s *Scheduler) {
+		s.defaultBackoffSecs = n
+	}
+}
+
+// WithDefaultRunTimeout sets the default timeout for runs.
+func WithDefaultRunTimeout(d time.Duration) Option {
+	return func(s *Scheduler) {
+		s.defaultRunTimeout = d
+	}
+}
+
+// WithLogger sets the logger for the scheduler.
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *Scheduler) {
+		if logger != nil {
+			s.logger = logger
+		}
+	}
+}
+
+// WithRunSessionManager sets a run session lifecycle manager integration.
+func WithRunSessionManager(manager RunSessionManager) Option {
+	return func(s *Scheduler) {
+		s.runSessionManager = manager
+	}
+}
+
+// WithMCPClient configures a native MCP execution client for tool nodes.
+func WithMCPClient(client *mcpclient.Client) Option {
+	return func(s *Scheduler) {
+		s.mcpClient = client
+	}
+}
+
+// NewScheduler creates a new scheduler with the provided options.
+func NewScheduler(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, opts ...Option) *Scheduler {
+	s := &Scheduler{
 		store:              store,
 		driver:             drv,
 		resolveCmd:         resolveCmd,
 		runs:               make(map[string]*runContext),
-		sem:                sem,
-		defaultMaxRetries:  cfg.DefaultMaxRetries,
-		defaultBackoffSecs: cfg.DefaultBackoffSecs,
-		logger:             logger,
+		defaultMaxRetries:  0,
+		defaultBackoffSecs: 2,
+		defaultRunTimeout:  0,
+		logger:             slog.Default(),
 		exprEval:           NewExprEvaluator(),
 	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	// Initialize default executors
+	s.executors = map[string]nodeExecutor{
+		"gate":        &gateExecutor{},
+		"conditional": &conditionalExecutor{},
+		"foreach":     &forEachExecutor{},
+		"agent":       &agentExecutor{},
+	}
+
+	return s
+}
+
+// New creates a new scheduler using the legacy Config struct.
+// Deprecated: Use NewScheduler with Options instead.
+func New(store runstore.RunStore, drv driver.Driver, resolveCmd CommandResolver, cfg *Config, logger *slog.Logger) *Scheduler {
+	var opts []Option
+	if cfg != nil {
+		opts = append(opts, WithMaxParallelism(cfg.MaxParallelism))
+		opts = append(opts, WithDefaultMaxRetries(cfg.DefaultMaxRetries))
+		opts = append(opts, WithDefaultBackoffSecs(cfg.DefaultBackoffSecs))
+		opts = append(opts, WithDefaultRunTimeout(cfg.DefaultRunTimeout))
+	}
+	if logger != nil {
+		opts = append(opts, WithLogger(logger))
+	}
+
+	return NewScheduler(store, drv, resolveCmd, opts...)
 }
 
 // EnqueueRun registers a run with the scheduler. The run must already exist in the RunStore.
@@ -145,10 +248,12 @@ func (s *Scheduler) EnqueueRun(ctx context.Context, runID, name string, plan *ty
 	rctx := &runContext{
 		runID:          runID,
 		name:           name,
+		planTimeout:    plan.Timeout,
 		nodeSpecs:      nodeSpecs,
 		dependents:     dependents,
 		remainingPreds: remainingPreds,
 		tasks:          make(map[string]context.CancelFunc),
+		gates:          make(map[string]chan string),
 		done:           make(chan struct{}),
 	}
 	s.runs[runID] = rctx
@@ -166,6 +271,18 @@ func (s *Scheduler) EnqueueRun(ctx context.Context, runID, name string, plan *ty
 
 // StartRun transitions the run to running and begins execution.
 func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
+	ctx, span := tracer.Start(ctx, "scheduler.StartRun",
+		trace.WithAttributes(attribute.String("run_id", runID)),
+	)
+	defer span.End()
+
+	// Capture OTel trace ID and store on the run for correlation
+	if traceID := span.SpanContext().TraceID(); traceID.IsValid() {
+		if err := s.store.SetRunTraceID(ctx, runID, traceID.String()); err != nil {
+			s.logger.Warn("failed to set trace ID on run", slog.String("run_id", runID), slog.Any("error", err))
+		}
+	}
+
 	s.runsMu.Lock()
 	rctx, exists := s.runs[runID]
 	s.runsMu.Unlock()
@@ -173,6 +290,8 @@ func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
 	if !exists {
 		return fmt.Errorf("run %s not enqueued", runID)
 	}
+
+	metrics.RunsActive.Inc()
 
 	// Mark run as running
 	startedAt := utcISO()
@@ -183,9 +302,32 @@ func (s *Scheduler) StartRun(ctx context.Context, runID string) error {
 	// Emit hello and status events
 	s.emitEvent(ctx, runID, "hello", map[string]interface{}{"runId": runID}, "", "")
 	s.emitRunStatus(ctx, runID, "running")
+	s.startRunSession(ctx, rctx)
+
+	// Determine run timeout: plan-level overrides default
+	runTimeout := s.defaultRunTimeout
+	if rctx.planTimeout > 0 {
+		runTimeout = rctx.planTimeout
+	}
+
+	// Detach from the caller (HTTP request) context so the run survives
+	// after the response is sent.  Propagate the OTel span for tracing.
+	detached := context.WithoutCancel(ctx)
+
+	// Create timeout context if configured
+	runCtx := detached
+	var cancelTimeout context.CancelFunc
+	if runTimeout > 0 {
+		runCtx, cancelTimeout = context.WithTimeout(detached, runTimeout)
+	}
 
 	// Start the run loop in a goroutine
-	go s.runLoop(ctx, rctx)
+	go func() {
+		if cancelTimeout != nil {
+			defer cancelTimeout()
+		}
+		s.runLoop(runCtx, rctx)
+	}()
 
 	return nil
 }
@@ -220,6 +362,12 @@ func (s *Scheduler) CancelRun(ctx context.Context, runID string) error {
 		s.logger.Error("failed to update run status", slog.String("run_id", runID), slog.Any("error", err))
 	}
 	s.emitRunStatus(ctx, runID, "failed")
+	if exists {
+		s.finalizeRunSession(ctx, rctx, types.RunStatusFailed, "cancelled")
+	}
+
+	metrics.RunsActive.Dec()
+	metrics.RunsTotal.WithLabelValues("cancelled").Inc()
 
 	return nil
 }
@@ -232,7 +380,13 @@ func (s *Scheduler) runLoop(ctx context.Context, rctx *runContext) {
 	s.maybeScheduleReady(ctx, rctx)
 
 	for {
-		// Check cancellation
+		// Check context timeout/cancellation
+		if err := ctx.Err(); err != nil {
+			s.handleRunTimeout(ctx, rctx, err)
+			return
+		}
+
+		// Check explicit cancellation
 		rctx.cancelledMu.Lock()
 		cancelled := rctx.cancelled
 		rctx.cancelledMu.Unlock()
@@ -254,7 +408,12 @@ func (s *Scheduler) runLoop(ctx context.Context, rctx *runContext) {
 					break
 				}
 				// Wait a bit before retrying
-				time.Sleep(50 * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					s.handleRunTimeout(ctx, rctx, ctx.Err())
+					return
+				case <-time.After(50 * time.Millisecond):
+				}
 				continue
 			}
 		}
@@ -262,6 +421,7 @@ func (s *Scheduler) runLoop(ctx context.Context, rctx *runContext) {
 		// Wait for task completion or timeout
 		select {
 		case <-ctx.Done():
+			s.handleRunTimeout(ctx, rctx, ctx.Err())
 			return
 		case <-time.After(250 * time.Millisecond):
 			// Periodic check for retry windows and scheduling
@@ -316,282 +476,6 @@ func (s *Scheduler) maybeScheduleReady(ctx context.Context, rctx *runContext) bo
 	}
 
 	return scheduled
-}
-
-// scheduleNode starts execution of a single node.
-func (s *Scheduler) scheduleNode(ctx context.Context, rctx *runContext, nodeID string, spec *types.NodeSpec, attempts int, startTime time.Time) {
-	// Create cancellable context for this node
-	nodeCtx, cancel := context.WithCancel(ctx)
-
-	rctx.tasksMu.Lock()
-	rctx.tasks[nodeID] = cancel
-	rctx.tasksMu.Unlock()
-
-	// Update node state to running
-	startedAt := startTime
-	state := &types.NodeState{
-		NodeID:    nodeID,
-		Status:    types.NodeStatusRunning,
-		StartedAt: &startedAt,
-		Retries:   attempts,
-	}
-	if err := s.store.UpdateNodeState(ctx, rctx.runID, nodeID, state); err != nil {
-		s.logger.Error("failed to update node state", slog.String("run_id", rctx.runID), slog.String("node_id", nodeID), slog.Any("error", err))
-	}
-
-	// Execute in goroutine
-	go func() {
-		defer func() {
-			rctx.tasksMu.Lock()
-			delete(rctx.tasks, nodeID)
-			rctx.tasksMu.Unlock()
-		}()
-
-		// Acquire semaphore if parallelism limited
-		if s.sem != nil {
-			select {
-			case s.sem <- struct{}{}:
-				defer func() { <-s.sem }()
-			case <-nodeCtx.Done():
-				return
-			}
-		}
-
-		// Dispatch based on node type
-		if spec.IsControlFlow() {
-			var err error
-			switch {
-			case spec.Conditional != nil:
-				err = s.executeConditional(ctx, rctx, spec)
-			case spec.ForEach != nil:
-				err = s.executeForEach(ctx, rctx, spec)
-			// Subflow not yet implemented
-			default:
-				err = fmt.Errorf("unknown control flow type for node %s", nodeID)
-			}
-
-			exitCode := 0
-			if err != nil {
-				s.logger.Error("control flow execution failed",
-					slog.String("run_id", rctx.runID),
-					slog.String("node_id", nodeID),
-					slog.Any("error", err))
-				exitCode = 1
-			}
-			s.onNodeFinished(ctx, rctx, nodeID, exitCode)
-			return
-		}
-
-		// Regular agent node - resolve command
-		cmd := s.resolveCmd(spec)
-		if len(cmd) == 0 {
-			// No command - skip this node
-			s.onNodeFinished(ctx, rctx, nodeID, 0)
-			return
-		}
-
-		// Build env
-		env := make(map[string]string)
-		for k, v := range spec.Env {
-			env[k] = v
-		}
-		env["ATTEMPT"] = fmt.Sprintf("%d", attempts+1)
-
-		// Calculate timeout
-		timeout := 0.0
-		if spec.Timeout > 0 {
-			timeout = spec.Timeout.Seconds()
-		}
-
-		// Run via driver
-		exitCode, err := s.driver.RunNode(nodeCtx, rctx.runID, nodeID, cmd, env, timeout)
-		if err != nil {
-			s.logger.Error("driver execution failed", slog.String("run_id", rctx.runID), slog.String("node_id", nodeID), slog.Any("error", err))
-			exitCode = 1
-		}
-
-		s.onNodeFinished(ctx, rctx, nodeID, exitCode)
-	}()
-}
-
-// onNodeFinished handles node completion - success, failure, or retry.
-func (s *Scheduler) onNodeFinished(ctx context.Context, rctx *runContext, nodeID string, exitCode int) {
-	spec := rctx.nodeSpecs[nodeID]
-	finishedAt := time.Now().UTC()
-
-	// Get current state for attempt count
-	state, _ := s.store.GetNodeState(ctx, rctx.runID, nodeID)
-	attempts := 0
-	if state != nil {
-		attempts = state.Retries
-	}
-
-	if exitCode == 0 {
-		// Success - update state and unlock downstream
-		newState := &types.NodeState{
-			NodeID:     nodeID,
-			Status:     types.NodeStatusSucceeded,
-			FinishedAt: &finishedAt,
-			ExitCode:   &exitCode,
-			Retries:    attempts,
-		}
-		if state != nil && state.StartedAt != nil {
-			newState.StartedAt = state.StartedAt
-		}
-		s.store.UpdateNodeState(ctx, rctx.runID, nodeID, newState)
-
-		// Unlock downstream nodes
-		for downstream := range rctx.dependents[nodeID] {
-			rctx.remainingPreds[downstream]--
-		}
-	} else {
-		// Failure - check if we should retry
-		maxRetries := spec.Retries
-		if attempts < maxRetries {
-			// Schedule retry with exponential backoff
-			backoff := float64(s.defaultBackoffSecs) * math.Pow(2, float64(attempts))
-			if backoff > 60 {
-				backoff = 60 // Cap at 60 seconds
-			}
-
-			// Update state back to pending for retry
-			newState := &types.NodeState{
-				NodeID:     nodeID,
-				Status:     types.NodeStatusPending,
-				FinishedAt: &finishedAt,
-				ExitCode:   &exitCode,
-				Retries:    attempts + 1,
-				Error:      fmt.Sprintf("exit_code=%d, retry in %.0fs", exitCode, backoff),
-			}
-			s.store.UpdateNodeState(ctx, rctx.runID, nodeID, newState)
-
-			// Emit queued status with retry info
-			s.emitNodeStatus(ctx, rctx.runID, nodeID, "queued", map[string]interface{}{
-				"attempts": attempts + 1,
-				"retryIn":  backoff,
-			})
-
-			// Schedule retry after backoff
-			go func() {
-				time.Sleep(time.Duration(backoff) * time.Second)
-				// Re-check if still should retry
-				rctx.cancelledMu.Lock()
-				cancelled := rctx.cancelled
-				rctx.cancelledMu.Unlock()
-				if !cancelled {
-					s.maybeScheduleReady(ctx, rctx)
-				}
-			}()
-		} else {
-			// Permanent failure
-			newState := &types.NodeState{
-				NodeID:     nodeID,
-				Status:     types.NodeStatusFailed,
-				FinishedAt: &finishedAt,
-				ExitCode:   &exitCode,
-				Retries:    attempts,
-				Error:      fmt.Sprintf("exit_code=%d", exitCode),
-			}
-			if state != nil && state.StartedAt != nil {
-				newState.StartedAt = state.StartedAt
-			}
-			s.store.UpdateNodeState(ctx, rctx.runID, nodeID, newState)
-		}
-	}
-}
-
-// checkRunCompletion determines if the run is complete and emits final status.
-func (s *Scheduler) checkRunCompletion(ctx context.Context, rctx *runContext) bool {
-	// Check cancelled
-	rctx.cancelledMu.Lock()
-	cancelled := rctx.cancelled
-	rctx.cancelledMu.Unlock()
-
-	rctx.tasksMu.Lock()
-	activeTasks := len(rctx.tasks)
-	rctx.tasksMu.Unlock()
-
-	if cancelled && activeTasks == 0 {
-		finishedAt := utcISO()
-		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
-		s.emitRunStatus(ctx, rctx.runID, "failed")
-		return true
-	}
-
-	// Check all node states
-	var running, pending, failed, succeeded int
-	for nodeID := range rctx.nodeSpecs {
-		state, err := s.store.GetNodeState(ctx, rctx.runID, nodeID)
-		if err != nil {
-			pending++
-			continue
-		}
-		switch state.Status {
-		case types.NodeStatusRunning:
-			running++
-		case types.NodeStatusPending, "queued":
-			pending++
-		case types.NodeStatusFailed:
-			failed++
-		case types.NodeStatusSucceeded:
-			succeeded++
-		}
-	}
-
-	total := len(rctx.nodeSpecs)
-
-	// All succeeded
-	if succeeded == total {
-		finishedAt := utcISO()
-		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusSucceeded, nil, &finishedAt)
-		s.emitRunStatus(ctx, rctx.runID, "succeeded")
-		return true
-	}
-
-	// Failed with no hope of completion
-	if failed > 0 && running == 0 && pending == 0 {
-		finishedAt := utcISO()
-		s.store.UpdateRunStatus(ctx, rctx.runID, types.RunStatusFailed, nil, &finishedAt)
-		s.emitRunStatus(ctx, rctx.runID, "failed")
-		return true
-	}
-
-	return false
-}
-
-// Event emission helpers
-func (s *Scheduler) emitEvent(ctx context.Context, runID, eventType string, data map[string]interface{}, nodeID, level string) {
-	// Include level in data if provided
-	if level != "" {
-		data["level"] = level
-	}
-	input := &types.EventInput{
-		Type:   types.EventType(eventType),
-		NodeID: nodeID,
-		Data:   data,
-	}
-	if _, err := s.store.AppendEvent(ctx, runID, input); err != nil {
-		s.logger.Error("failed to emit event", slog.String("run_id", runID), slog.String("event_type", eventType), slog.Any("error", err))
-	}
-}
-
-func (s *Scheduler) emitRunStatus(ctx context.Context, runID, status string) {
-	s.emitEvent(ctx, runID, "status", map[string]interface{}{
-		"runId":  runID,
-		"status": status,
-	}, "", "")
-}
-
-func (s *Scheduler) emitNodeStatus(ctx context.Context, runID, nodeID, status string, extra map[string]interface{}) {
-	data := map[string]interface{}{
-		"runId":  runID,
-		"nodeId": nodeID,
-		"status": status,
-	}
-	for k, v := range extra {
-		data[k] = v
-	}
-	s.emitEvent(ctx, runID, "node_status", data, nodeID, "")
 }
 
 func utcISO() string {

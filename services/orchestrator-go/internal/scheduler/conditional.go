@@ -6,16 +6,29 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/pkg/types"
 )
 
 // executeConditional evaluates the condition and marks appropriate branches.
 // It does not execute child nodes directly - they execute via normal dependency resolution.
 func (s *Scheduler) executeConditional(ctx context.Context, rctx *runContext, node *types.NodeSpec) error {
+	ctx, span := tracer.Start(ctx, "scheduler.executeConditional",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+			attribute.String("node_id", node.ID),
+		),
+	)
+	defer span.End()
+
 	config := node.Conditional
 	if config == nil {
 		return fmt.Errorf("node %s has no conditional config", node.ID)
 	}
+
+	span.SetAttributes(attribute.String("expression", config.Expression))
 
 	// Build evaluation environment from predecessor outputs
 	env := s.buildExprEnvironment(ctx, rctx, node)
@@ -54,6 +67,8 @@ func (s *Scheduler) executeConditional(ctx context.Context, rctx *runContext, no
 	default:
 		return fmt.Errorf("unknown conditional type: %s", config.Type)
 	}
+
+	span.SetAttributes(attribute.String("selected_branch", selectedBranch))
 
 	// Emit branch_selected event
 	s.emitEvent(ctx, rctx.runID, string(types.EventTypeBranchSelected), map[string]interface{}{
@@ -139,6 +154,14 @@ func (s *Scheduler) skipBranch(ctx context.Context, rctx *runContext, condNodeID
 
 // buildExprEnvironment creates an evaluation environment from node outputs.
 func (s *Scheduler) buildExprEnvironment(ctx context.Context, rctx *runContext, node *types.NodeSpec) map[string]interface{} {
+	_, span := tracer.Start(ctx, "scheduler.buildExprEnvironment",
+		trace.WithAttributes(
+			attribute.String("run_id", rctx.runID),
+			attribute.String("node_id", node.ID),
+		),
+	)
+	defer span.End()
+
 	// Gather outputs from predecessor nodes
 	nodeOutputs := make(map[string]map[string]interface{})
 
@@ -155,6 +178,8 @@ func (s *Scheduler) buildExprEnvironment(ctx context.Context, rctx *runContext, 
 		}
 	}
 
+	span.SetAttributes(attribute.Int("predecessor_count", len(predecessorIDs)))
+
 	// Fetch outputs for each predecessor
 	for predID := range predecessorIDs {
 		outputs, err := s.store.GetNodeOutputs(ctx, rctx.runID, predID)
@@ -170,16 +195,4 @@ func (s *Scheduler) buildExprEnvironment(ctx context.Context, rctx *runContext, 
 	}
 
 	return BuildEnvironment(nodeOutputs, contextVars)
-}
-
-// onConditionalFinished is called when a conditional node completes.
-// It unlocks the selected branch targets for execution.
-func (s *Scheduler) onConditionalFinished(ctx context.Context, rctx *runContext, nodeID string) {
-	// The conditional node succeeded - its targets will be unlocked
-	// via the normal dependency resolution in onNodeFinished.
-	// No special handling needed here since skipBranch already
-	// decremented the remainingPreds for skipped paths.
-
-	// Emit node status succeeded
-	s.emitNodeStatus(ctx, rctx.runID, nodeID, "succeeded", nil)
 }

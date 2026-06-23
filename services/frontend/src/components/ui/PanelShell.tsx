@@ -12,13 +12,13 @@ export const PanelShell: React.FC<PanelShellProps> = ({ title, toolbar, classNam
   return (
     <div
       className={cn(
-        'flex flex-col rounded-md border bg-white/50 dark:bg-zinc-900/50 backdrop-blur',
+        'mc-shell flex flex-col rounded-md',
         className
       )}
       {...props}
     >
       {(title || toolbar) && (
-        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b">
+        <div className="mc-shell-header flex items-center justify-between gap-2 border-b px-3 py-2">
           <div className="flex items-center gap-2">
             {title}
           </div>
@@ -28,7 +28,7 @@ export const PanelShell: React.FC<PanelShellProps> = ({ title, toolbar, classNam
         </div>
       )}
 
-      <div className="relative min-h-[200px]">
+      <div className="relative flex-1 min-h-0 min-w-0">
         {children}
       </div>
     </div>

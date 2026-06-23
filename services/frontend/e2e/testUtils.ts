@@ -1,9 +1,24 @@
 // Minimal Playwright E2E helpers for Gateway + Mission Control UI
 
-export const GATEWAY_BASE =
+function normalizeBaseUrl(value: string | undefined, fallback: string): string {
+  const raw = String(value || fallback).trim();
+  return raw.replace(/\/+$/, '');
+}
+
+export const GATEWAY_BASE = normalizeBaseUrl(
   process.env.PLAYWRIGHT_GATEWAY_URL ||
-  process.env.GATEWAY_URL ||
-  'http://localhost:8080';
+    process.env.GATEWAY_URL ||
+    process.env.VITE_GATEWAY_BASE_URL,
+  'http://localhost:8080',
+);
+
+export const ORCHESTRATOR_BASE = normalizeBaseUrl(
+  process.env.PLAYWRIGHT_ORCHESTRATOR_URL ||
+    process.env.ORCHESTRATOR_URL ||
+    process.env.VITE_ORCHESTRATOR_URL ||
+    process.env.VITE_API_URL,
+  'http://localhost:7070',
+);
 
 /**
  * createRunViaGateway

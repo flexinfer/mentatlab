@@ -4,24 +4,35 @@ import OrchestratorSSE from '../orchestratorSSE';
 
 // Mock base URL helper
 vi.mock('../../../../config/orchestrator', () => ({
-  getOrchestratorBaseUrl: () => 'http://orch.test'
+  getOrchestratorBaseUrl: () => 'http://orch.test',
+  getApiBaseUrl: () => 'http://orch.test',
 }));
 
 // Simple EventSource mock that allows tests to simulate open/error/message/named events.
 // Instances are recorded on globalThis.__EventSourceInstances for inspection.
+// Auto-fires 'open' on next microtask so connect() promises resolve.
 class MockEventSource {
   url: string;
   readyState: number = 0;
+  withCredentials: boolean;
   onopen: (() => void) | null = null;
   onmessage: ((ev: any) => void) | null = null;
   onerror: ((ev: any) => void) | null = null;
   private listeners: Record<string, ((ev: any) => void)[]> = {};
 
-  constructor(url: string) {
+  constructor(url: string, opts?: { withCredentials?: boolean }) {
     this.url = url;
     this.readyState = 0;
+    this.withCredentials = opts?.withCredentials ?? false;
     (globalThis as any).__EventSourceInstances = (globalThis as any).__EventSourceInstances || [];
     (globalThis as any).__EventSourceInstances.push(this);
+
+    // Auto-fire open on next microtask so connect() resolves without manual simulateOpen()
+    Promise.resolve().then(() => {
+      if (this.readyState === 0) {
+        this.simulateOpen();
+      }
+    });
   }
 
   addEventListener(type: string, handler: (ev: any) => void) {
@@ -65,6 +76,11 @@ class MockEventSource {
   }
 }
 
+/** Helper: get all MockEventSource instances created so far */
+function getInstances(): MockEventSource[] {
+  return (globalThis as any).__EventSourceInstances || [];
+}
+
 describe('OrchestratorSSE (unit)', () => {
   beforeEach(() => {
     // Replace global EventSource with our mock and reset instances
@@ -93,22 +109,20 @@ describe('OrchestratorSSE (unit)', () => {
     };
 
     const client = new OrchestratorSSE({ debug: false });
-    const connectPromise = client.connect('run-xyz', handlers);
+
+    // connect() returns a promise; the MockEventSource auto-fires open on microtask
+    await client.connect('run-xyz', handlers);
 
     // There should be one EventSource created
-    const instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
+    const instances = getInstances();
     expect(instances.length).toBe(1);
     const inst = instances[0];
 
-    // URL should start with base and include replay (default configured by class is 10)
-    expect(inst.url.startsWith('http://orch.test')).toBeTruthy();
-    expect(inst.url).toContain('/runs/run-xyz/events');
+    // URL should include /api/v1 prefix and replay param
+    expect(inst.url).toContain('http://orch.test');
+    expect(inst.url).toContain('/api/v1/runs/run-xyz/events');
     // default replay is 10
     expect(inst.url).toContain('replay=10');
-
-    // Simulate open to resolve connect()
-    inst.simulateOpen();
-    await connectPromise;
 
     expect(handlers.onOpen).toHaveBeenCalled();
   });
@@ -126,9 +140,10 @@ describe('OrchestratorSSE (unit)', () => {
     const client = new OrchestratorSSE({ debug: false });
     const cp = { id: 'cp1', runId: 'run-1', ts: new Date().toISOString(), type: 'progress', data: { n: 1 } };
 
+    // Auto-open fires via microtask
     await client.connect('run-1', handlers);
 
-    const instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
+    const instances = getInstances();
     const inst = instances[0];
 
     // Simulate named events
@@ -153,7 +168,7 @@ describe('OrchestratorSSE (unit)', () => {
     const client = new OrchestratorSSE({ debug: false });
 
     await client.connect('run-reconnect', handlers);
-    let instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
+    let instances = getInstances();
     expect(instances.length).toBe(1);
     const inst1 = instances[0];
 
@@ -164,19 +179,21 @@ describe('OrchestratorSSE (unit)', () => {
     // Advance timers to trigger reconnect.
     vi.advanceTimersByTime(1000);
 
-    // A new EventSource should have been created
-    instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
-    expect(instances.length).toBeGreaterThanOrEqual(2);
-    const inst2 = instances[instances.length - 1];
+    // The reconnect timer fires and calls connect() which creates a new EventSource.
+    // But the new EventSource's auto-open fires via Promise.resolve().then(),
+    // which needs a microtask flush. Use advanceTimersByTime(0) won't help,
+    // we need to await a microtask.
+    await vi.advanceTimersByTimeAsync(0);
 
-    // Simulate open on the new instance
-    inst2.simulateOpen();
+    // A new EventSource should have been created
+    instances = getInstances();
+    expect(instances.length).toBeGreaterThanOrEqual(2);
 
     // onOpen handler should have been called again (second connection)
-    expect(handlers.onOpen).toHaveBeenCalled();
+    expect(handlers.onOpen).toHaveBeenCalledTimes(2);
   });
 
-  it('heartbeat stall triggers reconnect after 45s (HEARTBEAT_TIMEOUT_MS) and only schedules one reconnect', async () => {
+  it('heartbeat stall triggers reconnect after 45s and only schedules one reconnect', async () => {
     const handlers = {
       onOpen: vi.fn()
     };
@@ -184,27 +201,28 @@ describe('OrchestratorSSE (unit)', () => {
     const client = new OrchestratorSSE({ debug: false });
 
     await client.connect('run-stall', handlers);
-    let instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
+    let instances = getInstances();
     expect(instances.length).toBe(1);
-    const inst1 = instances[0];
 
-    // The onopen sets lastEventAt. If we advance time beyond HEARTBEAT_TIMEOUT_MS (45s),
-    // the watchdog should schedule a reconnect.
-    // Advance timers by slightly more than 45s to allow the interval check to run.
+    // Advance time beyond HEARTBEAT_TIMEOUT_MS (45s) to trigger the watchdog.
+    // The watchdog checks every 5s, so at 45s+ it fires scheduleReconnect.
     vi.advanceTimersByTime(46_000);
 
-    // After watchdog triggers, a reconnect is scheduled -> new EventSource created after backoff.
-    // Advance by first backoff (1000ms)
+    // After watchdog triggers, reconnect is scheduled with first backoff (1000ms)
     vi.advanceTimersByTime(1_000);
 
-    instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
+    // Flush microtask for auto-open of new EventSource
+    await vi.advanceTimersByTimeAsync(0);
+
+    instances = getInstances();
     expect(instances.length).toBeGreaterThanOrEqual(2);
 
-    // Ensure only one reconnect timer was scheduled (idempotency): simulate a second heartbeat callback
-    // by advancing another 5s and ensure instances do not explode (should not create duplicates immediately)
+    // Ensure only one reconnect timer was scheduled (idempotency):
+    // advancing more should not create duplicate instances
     const before = instances.length;
     vi.advanceTimersByTime(5_000);
-    instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
+    await vi.advanceTimersByTimeAsync(0);
+    instances = getInstances();
     expect(instances.length).toBe(before);
   });
 
@@ -216,15 +234,16 @@ describe('OrchestratorSSE (unit)', () => {
     const client = new OrchestratorSSE({ debug: false });
 
     await client.connect('run-close', handlers);
-    let instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
+    let instances = getInstances();
     expect(instances.length).toBe(1);
 
     client.close();
 
     // advance a long time to ensure any pending timers would fire if present
     vi.advanceTimersByTime(120_000);
+    await vi.advanceTimersByTimeAsync(0);
 
-    instances = (globalThis as any).__EventSourceInstances as MockEventSource[];
+    instances = getInstances();
     // No new instances should be created after close
     expect(instances.length).toBe(1);
   });

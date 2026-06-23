@@ -1,24 +1,20 @@
-# syntax=docker/dockerfile:1
-# Frontend (Vite) - production-like image serving with vite preview
-FROM node:20-alpine
+# Frontend - multi-stage build with nginx for production serving
 
-# Accept cache proxy for npm packages
+ARG BASE_REGISTRY=registry.harbor.lan/dockerhub-cache/library
+
+# Stage 1: Build
+FROM ${BASE_REGISTRY}/node:20-alpine AS builder
+
 ARG npm_config_registry=https://registry.npmjs.org
 ENV npm_config_registry=${npm_config_registry}
 
 WORKDIR /app
 
-# Ensure curl is available for healthchecks (alpine base already has wget busybox, but we use curl)
-RUN apk add --no-cache curl
-
-# Copy dependency manifests first for better layer caching
 COPY package.json package-lock.json ./
 
-# Install dependencies with cache mount for faster builds
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
-# Copy application source
 COPY . .
 
 # Accept build-time configuration for Vite envs (embedded at build)
@@ -28,18 +24,35 @@ ARG VITE_ORCHESTRATOR_BASE_URL
 ARG VITE_API_URL
 ARG VITE_DEBUG_BUILD
 
-# Expose as environment so `vite build` can read them via import.meta.env
 ENV VITE_GATEWAY_BASE_URL=${VITE_GATEWAY_BASE_URL} \
     VITE_ORCHESTRATOR_URL=${VITE_ORCHESTRATOR_URL} \
     VITE_ORCHESTRATOR_BASE_URL=${VITE_ORCHESTRATOR_BASE_URL} \
     VITE_API_URL=${VITE_API_URL} \
-    VITE_DEBUG_BUILD=${VITE_DEBUG_BUILD} \
-    PORT=5173
+    VITE_DEBUG_BUILD=${VITE_DEBUG_BUILD}
 
-# Build the app (use vite directly; package.json build is a placeholder)
 RUN npx vite build
+
+# Stage 2: Serve with nginx
+FROM ${BASE_REGISTRY}/nginx:alpine
+
+RUN apk add --no-cache curl
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# SPA fallback: route all paths to index.html
+RUN printf 'server {\n\
+    listen 5173;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / {\n\
+        try_files $uri $uri/ /index.html;\n\
+    }\n\
+    location /healthz {\n\
+        return 200 "ok";\n\
+        add_header Content-Type text/plain;\n\
+    }\n\
+}\n' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 5173
 
-# Serve built assets with vite preview, listen on all interfaces
-CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "5173"]
+CMD ["nginx", "-g", "daemon off;"]

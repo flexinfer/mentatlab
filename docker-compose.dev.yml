@@ -1,78 +1,181 @@
-version: '3.8'
-
 services:
-  gateway:
-    platform: linux/amd64
-    build:
-      context: .
-      dockerfile: services/gateway/Dockerfile
+  redis:
+    image: redis:7-alpine
     ports:
-      - "8080:8080"
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    networks:
+      - mentat-network
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "3200:3200"   # Tempo HTTP API
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3200/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    networks:
+      - mentat-network
+
+  grafana:
+    image: grafana/grafana:11.4.0
     environment:
-      # Match FastAPI app setting in services/gateway/app/main.py
-      - ORCHESTRATOR_BASE_URL=http://orchestrator:8081
-      - TRUSTED_HOSTS=gateway,orchestrator,localhost,127.0.0.1
-      - UVICORN_HOST=0.0.0.0
-      - UVICORN_PORT=8080
-      - UVICORN_RELOAD=true
-    # Avoid live-mounting to keep module layout intact inside container
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     depends_on:
-      - orchestrator
+      tempo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
     networks:
       - mentat-network
 
   orchestrator:
-    platform: linux/amd64
     build:
-      context: .
-      dockerfile: services/orchestrator/Dockerfile
+      context: services/orchestrator-go
+      dockerfile: Dockerfile
     ports:
-      - "8081:8081"
+      - "7070:7070"
     environment:
-      - UVICORN_HOST=0.0.0.0
-      - UVICORN_PORT=8081
-      - UVICORN_RELOAD=true
-      - GATEWAY_BASE_URL=http://gateway:8080
-    # Avoid live-mounting to keep module layout intact inside container
+      - ORCH_RUNSTORE=${ORCH_RUNSTORE:-memory}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=tempo:4317
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:7070/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      redis:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    networks:
+      - mentat-network
+
+  gateway:
+    build:
+      context: services/gateway-go
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - ORCHESTRATOR_BASE_URL=http://orchestrator:7070
+      - PORT=8080
+      - TRACING_ENABLED=true
+      - OTLP_ENDPOINT=tempo:4317
+      - TEMPO_QUERY_URL=http://tempo:3200
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
     networks:
       - mentat-network
 
   frontend:
-    platform: linux/amd64
     build:
       context: ./services/frontend
       dockerfile: Dockerfile.dev
     ports:
       - "5173:5173"
     environment:
-      # Provide browser-consumed URLs for dev; the browser will call host:ports
       - VITE_GATEWAY_URL=http://localhost:8080
       - VITE_GATEWAY_BASE_URL=http://localhost:8080
-      - VITE_ORCHESTRATOR_URL=http://localhost:8081
-      - VITE_API_URL=http://localhost:8081
+      - VITE_ORCHESTRATOR_URL=http://localhost:7070
+      - VITE_API_URL=http://localhost:7070
       - VITE_WS_URL=ws://localhost:8080
       - VITE_CONNECT_WS=true
     volumes:
       - ./services/frontend:/app
       - /app/node_modules
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5173 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
-      - gateway
+      gateway:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
     networks:
       - mentat-network
 
   echo-agent:
-    platform: linux/amd64
     build:
       context: ./services/agents/echo
       dockerfile: Dockerfile
-    ports:
-      - "8082:8082"
-    environment:
-      - PORT=8082
-    # No live-mount needed for basic testing
+    # Echo agent uses stdin/stdout NDJSON contract (no HTTP server).
+    # No healthcheck — the container exits after processing input.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
     networks:
       - mentat-network
 
 networks:
   mentat-network:
     driver: bridge
+
+volumes:
+  tempo-data:
+  grafana-data:

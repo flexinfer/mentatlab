@@ -12,9 +12,14 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { FeatureFlags } from '@/config/features';
-import { useLayoutStore } from '@/stores';
+import { useLayoutStore, useStreamingStore } from '@/stores';
+import { useCanvasStore } from '@/stores/canvas';
 import { flightRecorder } from '@/services/mission-control/services';
 import { orchestratorService } from '@/services/api/orchestratorService';
+import { useFlowLoader } from '@/hooks/useFlowLoader';
+import { useStreamingTransport } from '@/hooks/useStreamingTransport';
+import type { PlanNode, PlanEdge, RunPlan } from '@/types/orchestrator';
+import { StreamConnectionState } from '@/types/streaming';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -31,9 +36,11 @@ export interface WorkspaceContextValue {
   // Run management
   activeRunId: string | null;
   setActiveRunId: (id: string | null) => void;
+  isLiveConnected: boolean;
   startDemoRun: () => void;
   startOrchestratorRun: () => Promise<void>;
-  startLiveConnection: () => Promise<void>;
+  startLiveConnection: (runId?: string | null) => Promise<void>;
+  stopLiveConnection: () => void;
 
   // CogPak UI
   cogpakUi: CogpakUi | null;
@@ -88,10 +95,22 @@ export interface WorkspaceProviderProps {
 
 export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   // ─────────────────────────────────────────────────────────────────────────
+  // Flow persistence — load flows from backend on mount
+  // ─────────────────────────────────────────────────────────────────────────
+
+  useFlowLoader();
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Run management
   // ─────────────────────────────────────────────────────────────────────────
 
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const connectionStatus = useStreamingStore((state) => state.connectionStatus);
+  const isLiveConnected =
+    connectionStatus === StreamConnectionState.CONNECTED ||
+    connectionStatus === StreamConnectionState.CONNECTING ||
+    connectionStatus === StreamConnectionState.RECONNECTING;
+  const { connect: connectLiveTransport, disconnect: disconnectLiveTransport } = useStreamingTransport();
 
   const startDemoRun = useCallback(() => {
     const id = `demo-${Date.now()}`;
@@ -105,21 +124,162 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
 
   const startOrchestratorRun = useCallback(async () => {
     try {
-      const { runId } = await orchestratorService.startDemoRunAndStream(undefined);
-      setActiveRunId(runId);
+      const { nodes, edges } = useCanvasStore.getState();
+
+      // Convert canvas state to RunPlan
+      const planNodes: PlanNode[] = nodes.map((n) => {
+        const base: PlanNode = {
+          id: n.id,
+          type: n.type || 'agent',
+          label: n.data?.label,
+          inputs: edges.filter((e) => e.target === n.id).map((e) => e.source),
+        };
+
+        // Control flow nodes store config flat in node.data — nest into PlanNode fields
+        if (n.type === 'conditional') {
+          return {
+            ...base,
+            type: 'conditional',
+            conditional: {
+              type: n.data?.type || 'if',
+              expression: n.data?.expression || '',
+              branches: n.data?.branches || {},
+              default: n.data?.default,
+            },
+          };
+        }
+
+        if (n.type === 'forEach') {
+          return {
+            ...base,
+            type: 'for_each',
+            for_each: {
+              collection: n.data?.collection || '',
+              item_var: n.data?.itemVar || 'item',
+              index_var: n.data?.indexVar,
+              max_parallel: n.data?.maxParallel,
+              body: n.data?.body || [],
+            },
+          };
+        }
+
+        if (n.type === 'gate') {
+          return {
+            ...base,
+            type: 'gate',
+            gate: {
+              description: n.data?.description || '',
+              timeout: n.data?.timeout,
+              auto_reject: n.data?.autoReject ?? true,
+            },
+          };
+        }
+
+        // Regular task/agent node — include retry policy and timeout if configured
+        const env: Record<string, string> = {};
+        if (n.data?.env && typeof n.data.env === 'object') {
+          for (const [key, value] of Object.entries(n.data.env as Record<string, unknown>)) {
+            if (value === undefined || value === null) continue;
+            if (typeof value === 'string') {
+              env[key] = value;
+              continue;
+            }
+            env[key] = JSON.stringify(value);
+          }
+        }
+
+        // Preserve MCP drag metadata in direct-run path by serializing INPUT_SPEC.
+        let inputSpec: Record<string, unknown> = {};
+        if (env.INPUT_SPEC) {
+          try {
+            const parsed = JSON.parse(env.INPUT_SPEC);
+            if (parsed && typeof parsed === 'object') {
+              inputSpec = parsed as Record<string, unknown>;
+            }
+          } catch {
+            // Ignore malformed INPUT_SPEC and rebuild from node metadata.
+          }
+        }
+
+        const toolName = typeof n.data?.tool_name === 'string' ? n.data.tool_name.trim() : '';
+        if (toolName) {
+          inputSpec.tool_name = toolName;
+        }
+        const mcpServer = typeof n.data?.mcp_server === 'string' ? n.data.mcp_server.trim() : '';
+        if (mcpServer) {
+          inputSpec.mcp_server = mcpServer;
+        }
+        const toolArgs =
+          n.data?.tool_args && typeof n.data.tool_args === 'object' && !Array.isArray(n.data.tool_args)
+            ? (n.data.tool_args as Record<string, unknown>)
+            : undefined;
+        if (toolArgs !== undefined) {
+          inputSpec.tool_args = toolArgs;
+        }
+        if (n.data?.runtime_contract !== undefined) {
+          inputSpec.runtime_contract = n.data.runtime_contract;
+        }
+        if (Object.keys(inputSpec).length > 0) {
+          env.INPUT_SPEC = JSON.stringify(inputSpec);
+        }
+
+        const node: PlanNode = {
+          ...base,
+          agent_id: n.data?.agent_id || n.data?.agentId,
+          command: n.data?.command,
+          image: n.data?.image,
+          env: Object.keys(env).length > 0 ? env : undefined,
+        };
+        if (toolName) {
+          node.mcp = {
+            tool_name: toolName,
+            server: mcpServer || undefined,
+            tool_args: toolArgs,
+          };
+        }
+        if (n.data?.retry_policy) {
+          node.retry_policy = n.data.retry_policy;
+        }
+        if (n.data?.timeout) {
+          node.timeout = n.data.timeout;
+        }
+        return node;
+      });
+
+      const planEdges: PlanEdge[] = edges.map((e) => ({
+        from: e.sourceHandle ? `${e.source}.${e.sourceHandle}` : e.source,
+        to: e.targetHandle ? `${e.target}.${e.targetHandle}` : e.target,
+      }));
+
+      const plan: RunPlan = { nodes: planNodes, edges: planEdges };
+
+      // Create and auto-start the run
+      const response = await orchestratorService.createRun({ plan, auto_start: true });
+      const runId = response.runId || response.run_id || response.id;
+      if (runId) {
+        setActiveRunId(runId);
+      }
     } catch (e) {
       console.error('[Workspace] Start Orchestrator Run failed', e);
     }
   }, []);
 
-  const startLiveConnection = useCallback(async () => {
+  const startLiveConnection = useCallback(async (runId?: string | null) => {
     try {
-      const mod = await import('@/services/api/streamingService');
-      await mod.default.connect();
+      const targetRunId = runId || activeRunId || 'default-stream-id';
+      await connectLiveTransport(targetRunId);
     } catch (e) {
       console.error('[Workspace] Live connect failed', e);
     }
-  }, []);
+  }, [activeRunId, connectLiveTransport]);
+
+  const stopLiveConnection = useCallback(() => {
+    try {
+      disconnectLiveTransport();
+    } catch (e) {
+      console.error('[Workspace] Live disconnect failed', e);
+    }
+  }, [disconnectLiveTransport]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // CogPak UI
@@ -193,6 +353,19 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   }, [isEnabled]);
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Auto-connect on mount when AUTO_CONNECT is enabled
+  // ─────────────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!isEnabled('AUTO_CONNECT') || !isEnabled('CONNECT_WS')) return;
+    (async () => {
+      try { await startLiveConnection(); } catch { /* connection errors are logged in startLiveConnection */ }
+    })();
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Auto-select latest run
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -228,9 +401,11 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     () => ({
       activeRunId,
       setActiveRunId,
+      isLiveConnected,
       startDemoRun,
       startOrchestratorRun,
       startLiveConnection,
+      stopLiveConnection,
       cogpakUi,
       setCogpakUi,
       isEnabled,
@@ -250,9 +425,11 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
     }),
     [
       activeRunId,
+      isLiveConnected,
       startDemoRun,
       startOrchestratorRun,
       startLiveConnection,
+      stopLiveConnection,
       cogpakUi,
       isEnabled,
       setFeatureOverride,

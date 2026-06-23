@@ -1,30 +1,47 @@
-# MentatLab Docs Index
+# MentatLab Documentation
 
-Canonical Docs (source of truth)
-- Overview: [overview.md](docs/overview.md:1)
-- Architecture: [architecture.md](docs/architecture.md:1)
-- MVP Roadmap: [mvp-roadmap.md](docs/mvp-roadmap.md:1)
+## Public Docs (Site-Ready)
 
-Planning
-- PR-D1 Plan: [pr-d1-plan.md](docs/pr-d1-plan.md:1)
+These docs are curated for rendering in `services/flexinfer-site` under `/docs/mentatlab`.
 
-History and Archived Materials
-- History Index: [references/history/README.md](docs/references/history/README.md:1)
-- Archived (tagged at top of file):
-  - [beta_milestone_architecture.md](docs/beta_milestone_architecture.md:1)
-  - [webui_rearchitecture_plan.md](docs/webui_rearchitecture_plan.md:1)
+- [docs/site/README.md](site/README.md)
+- [docs/site/getting-started.md](site/getting-started.md)
+- [docs/site/architecture.md](site/architecture.md)
+- [docs/site/api-reference.md](site/api-reference.md)
+- [docs/site/deployment.md](site/deployment.md)
 
-Authoring Guidelines
-- Keep canonical docs current: update [overview.md](docs/overview.md:1), [architecture.md](docs/architecture.md:1), and [mvp-roadmap.md](docs/mvp-roadmap.md:1) as features land.
-- For legacy/obsolete docs, either:
-  1) Move into [references/history/](docs/references/history/README.md:1), or
-  2) Add an ARCHIVED banner at the top with links back to this index and the canonical docs (as done for the files above).
-- When linking to code, use clickable anchors to filenames with line numbers where appropriate:
-  - Mission Control layout: [MissionControlLayout.tsx](services/frontend/src/components/mission-control/layout/MissionControlLayout.tsx:1)
-  - Contract overlay: [ContractOverlay.tsx](services/frontend/src/components/mission-control/overlays/ContractOverlay.tsx:1)
-  - Console panel: [ConsolePanel.tsx](services/frontend/src/components/mission-control/panels/ConsolePanel.tsx:1)
-  - Issues panel: [IssuesPanel.tsx](services/frontend/src/components/mission-control/panels/IssuesPanel.tsx:1)
-  - Linter services: [services.ts](services/frontend/src/services/mission-control/services.ts:1)
+## Canonical Internal Docs
 
-Status
-- Directory cleaned: canonical docs established; historical docs tagged as ARCHIVED; central index present.
+| Document | Description |
+|----------|-------------|
+| [overview.md](overview.md) | Platform overview |
+| [architecture.md](architecture.md) | System architecture |
+| [agent-sdk.md](agent-sdk.md) | Agent contract, event protocol, SDKs |
+| [agents.md](agents.md) | Agent types and capabilities |
+| [flows.md](flows.md) | Flow schema and examples |
+| [orchestrator_design.md](orchestrator_design.md) | Orchestrator internals |
+| [ui-mission-control.md](ui-mission-control.md) | Mission Control UI guide |
+
+## Operational Docs
+
+| Document | Description |
+|----------|-------------|
+| [ci-cd-setup.md](ci-cd-setup.md) | CI/CD pipeline configuration |
+| [local-development-guide.md](local-development-guide.md) | Local dev environment setup |
+| [local-testing-guide.md](local-testing-guide.md) | Testing guide |
+| [developer-testing-guide.md](developer-testing-guide.md) | Developer testing patterns |
+
+## Roadmap Tracking
+
+| Document | Description |
+|----------|-------------|
+| [../ROADMAP.md](../ROADMAP.md) | Current milestone status |
+| [../.loom/30-implementation-plan.md](../.loom/30-implementation-plan.md) | Detailed M0-M4 plan |
+| Reconciliation docs | `roadmap-reconciliation-2026-02-*.md` |
+
+## Archived
+
+Aspirational milestone specs moved to [archive/milestone-specs/](archive/milestone-specs/):
+- v1.0/v1.1/v2.0 milestone specs and summaries
+- WASM runtime and PKI implementation guides
+- WebUI rearchitecture plan and gap analysis

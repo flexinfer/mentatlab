@@ -15,8 +15,8 @@ import {
 import 'reactflow/dist/style.css';
 import { ReactFlowProvider } from 'reactflow';
 
-import { useStreamingStore } from '../../../store/index';
-import { StreamConnectionState } from '../../../types/streaming';
+import { useStreamingStore } from '@/stores';
+import { useWorkspace } from '@/components/mission-control/layout/WorkspaceProvider';
 import { flightRecorder } from '../../../services/mission-control/services';
 import { FeatureFlags } from '../../../config/features';
 import { getOrchestratorBaseUrl } from '@/config/orchestrator';
@@ -63,10 +63,10 @@ function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean
   return (
     <div
       className={[
-        'px-2 py-1 rounded-md border text-[11px] shadow-lg relative transition-all duration-200 backdrop-blur-md',
-        hasError ? healthColor : 'bg-card/80 border-primary/30 text-foreground',
-        isHot ? 'ring-2 ring-primary shadow-[0_0_15px_hsl(var(--primary)/0.5)] scale-[1.05]' : 'ring-0',
-        selected ? 'ring-1 ring-primary shadow-[0_0_10px_hsl(var(--primary)/0.3)]' : '',
+        'px-2 py-1 rounded-md border border-border/70 text-[11px] shadow-sm relative transition-all duration-200 backdrop-blur-md',
+        hasError ? healthColor : 'bg-card/90 text-foreground',
+        isHot ? 'ring-1 ring-primary/30 scale-[1.03]' : 'ring-0',
+        selected ? 'ring-1 ring-primary/40 shadow-sm' : '',
       ].join(' ')}
       style={{ minWidth: 120 }}
     >
@@ -97,7 +97,7 @@ function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean
       <div className="mt-0.5 text-[10px] text-muted-foreground flex items-center justify-between font-mono">
         <span>execs: {data.execs ?? 0}</span>
         {(data.throughput ?? 0) > 0 && (
-          <span className="text-primary neon-text" title="Messages per second">
+          <span className="text-primary" title="Messages per second">
             {data.throughput?.toFixed(1)}/s
           </span>
         )}
@@ -171,15 +171,16 @@ function useThroughputMeter(windowMs = 5000) {
 }
 
 export default function NetworkPanel({ runId }: Props) {
-  // Streaming connection status
+  const { isLiveConnected, startLiveConnection, stopLiveConnection } = useWorkspace();
   const connectionStatus = useStreamingStore((s) => s.connectionStatus);
   const cs = String(connectionStatus);
-  const liveDisabled = cs === 'connecting' || cs === 'reconnecting' || cs === 'connected';
 
   // Nodes/Edges state (generic is the data type, not Node<>)
   const [nodes, setNodes, onNodesChange] = useNodesState<AgentNodeData>([] as RFNode[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const underlayRef = React.useRef<PixiUnderlayHandle | null>(null);
+  const reactFlowRef = React.useRef<any>(null);
+  const didAutoFitRef = React.useRef(false);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [viewport, setViewport] = React.useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
   const [canvasSize, setCanvasSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -195,19 +196,19 @@ export default function NetworkPanel({ runId }: Props) {
   const statusBadge = React.useMemo(() => {
     switch (cs) {
       case 'disconnected':
-        return { color: 'bg-gray-500', text: 'Disconnected' };
+        return { color: 'bg-zinc-500', text: 'Disconnected' };
       case 'connecting':
         return { color: 'bg-amber-500', text: 'Connecting' };
       case 'connected':
-        return { color: 'bg-primary shadow-[0_0_8px_hsl(var(--primary))]', text: 'Connected' };
+        return { color: 'bg-primary', text: 'Connected' };
       case 'reconnecting':
         return { color: 'bg-secondary', text: 'Reconnecting' };
       case 'error':
         return { color: 'bg-destructive', text: 'Error' };
       default:
-        return { color: 'bg-gray-500', text: String(connectionStatus) };
+        return { color: 'bg-zinc-500', text: 'Disconnected' };
     }
-  }, [cs, connectionStatus]);
+  }, [cs]);
 
   // Fetch agents once on mount (resilient)
   const [fetchError, setFetchError] = React.useState<string | null>(null);
@@ -450,16 +451,6 @@ export default function NetworkPanel({ runId }: Props) {
               )
             );
 
-            // recompute active count based on recent activity (handled by interval below too)
-            setActiveNodes((_) => {
-              const now = Date.now();
-              const count = nodes.reduce((acc, n) => {
-                const la = n.data?.lastActiveAt;
-                return acc + (la && now - la <= 1500 ? 1 : 0);
-              }, 0);
-              return count;
-            });
-
             // clear 'active' style soon
             window.setTimeout(() => {
               setNodes((prev) =>
@@ -585,7 +576,7 @@ export default function NetworkPanel({ runId }: Props) {
       });
       subsRef.current = [];
     };
-  }, [runId, setNodes, setEdges, markMsg, nodes]);
+  }, [runId, setNodes, setEdges]);
 
   // Recompute active nodes metric periodically
   React.useEffect(() => {
@@ -606,26 +597,9 @@ export default function NetworkPanel({ runId }: Props) {
     [setEdges]
   );
 
-  const connectLive = React.useCallback(async () => {
-    try {
-      // Mirrors MissionControlLayout dynamic import convention
-      const mod = await import('../../../services/api/streamingService');
-      await (mod as any).default.connect();
-    } catch (e) {
-      console.error('[NetworkPanel] Live connect failed', e);
-    }
-  }, []);
-
   const empty = nodes.length === 0;
 
-  // Auto-attempt live connection only when explicitly enabled
-  React.useEffect(() => {
-    if (!FeatureFlags.AUTO_CONNECT) return;
-    (async () => {
-      try { await connectLive(); } catch {}
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Auto-connect is now handled by WorkspaceProvider (M14.3)
 
   React.useEffect(() => {
     if (!containerRef.current) return;
@@ -650,6 +624,22 @@ export default function NetworkPanel({ runId }: Props) {
     try { underlayRef.current?.setViewport(vp); } catch {}
   }, []);
 
+  React.useEffect(() => {
+    if (nodes.length === 0) {
+      didAutoFitRef.current = false;
+      return;
+    }
+    if (didAutoFitRef.current) return;
+
+    const instance = reactFlowRef.current;
+    if (!instance?.fitView) return;
+
+    didAutoFitRef.current = true;
+    try {
+      instance.fitView({ padding: 0.2, includeHiddenNodes: true });
+    } catch {}
+  }, [edges.length, nodes.length]);
+
   const underlayNodes = React.useMemo(() => nodes.map(n => ({ id: n.id, position: n.position })), [nodes]);
 
   return (
@@ -670,18 +660,18 @@ export default function NetworkPanel({ runId }: Props) {
         }
       `}</style>
 
-      <div className="px-2 h-8 border-b border-white/10 bg-card/40 backdrop-blur flex items-center justify-between text-[11px]">
+      <div className="px-2 h-8 border-b border-border/70 bg-card/80 backdrop-blur flex items-center justify-between text-[11px]">
         <div className="flex items-center gap-2">
           <span className="uppercase tracking-wide text-muted-foreground">Network</span>
-          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground/25">|</span>
           <span className="text-muted-foreground">
             Active Nodes: <strong className="text-foreground">{activeNodes}</strong>
           </span>
-          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground/25">|</span>
           <span className="text-muted-foreground">
             Msgs/s: <strong className="text-foreground">{perSec}</strong>
           </span>
-          <span className="text-white/20">|</span>
+          <span className="text-muted-foreground/25">|</span>
           <span className="inline-flex items-center gap-1">
             <span className={['w-1.5 h-1.5 rounded-full', statusBadge.color].join(' ')} /> {statusBadge.text}
           </span>
@@ -690,14 +680,19 @@ export default function NetworkPanel({ runId }: Props) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {cs !== 'connected' && FeatureFlags.CONNECT_WS && (
+          {FeatureFlags.CONNECT_WS && (
             <button
-              className="h-6 px-2 rounded border border-white/10 bg-white/5 hover:bg-white/10 text-[11px] disabled:opacity-60 transition-colors"
-              onClick={connectLive}
-              disabled={liveDisabled}
-              title={liveDisabled ? 'Already connected/connecting' : 'Connect live stream'}
+              className="h-6 px-2 rounded border border-border/70 bg-muted/20 hover:bg-muted/40 text-[11px] disabled:opacity-60 transition-colors"
+              onClick={() => {
+                if (isLiveConnected) {
+                  stopLiveConnection();
+                  return;
+                }
+                void startLiveConnection();
+              }}
+              title={isLiveConnected ? 'Disconnect live stream' : 'Connect live stream'}
             >
-              {cs === 'connecting' || cs === 'reconnecting' ? '🔄 Connecting…' : '🔌 Connect Live'}
+              {isLiveConnected ? 'Disconnect' : 'Live'}
             </button>
           )}
         </div>
@@ -728,6 +723,7 @@ export default function NetworkPanel({ runId }: Props) {
             onConnect={onConnect}
             // Initialize underlay viewport on first mount
             onInit={(instance: any) => {
+              reactFlowRef.current = instance;
               try {
                 const vp = instance?.getViewport?.() || { x: 0, y: 0, zoom: 1 };
                 setViewport(vp);
@@ -736,13 +732,11 @@ export default function NetworkPanel({ runId }: Props) {
             }}
             // keep underlay in sync with pan/zoom
             onMove={onMove}
-            fitView
-            fitViewOptions={{ padding: 0.2 }}
             defaultEdgeOptions={{ animated: true, markerEnd: { type: MarkerType.ArrowClosed } }}
           >
             <BackgroundAny gap={24} size={1} color="hsl(var(--primary)/0.1)" />
-            <MiniMapAny pannable zoomable className="!bg-card/40 !border-white/10 rounded-lg backdrop-blur-md" />
-            <ControlsAny position="bottom-right" className="!bg-card/40 !border-white/10 rounded-lg backdrop-blur-md [&>button]:!border-white/10 [&>button]:!text-foreground hover:[&>button]:!bg-white/10" />
+            <MiniMapAny pannable zoomable className="!bg-card/80 !border-border/70 rounded-lg backdrop-blur-md" />
+            <ControlsAny position="bottom-right" className="!bg-card/80 !border-border/70 rounded-lg backdrop-blur-md [&>button]:!border-border/70 [&>button]:!text-foreground hover:[&>button]:!bg-muted/40" />
           </ReactFlow>
         </ReactFlowProvider>
 

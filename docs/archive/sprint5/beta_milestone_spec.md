@@ -1,8 +1,8 @@
 # MentatLab Beta Milestone Technical Specification
 ## Multimodal Support & Streaming Inference API
 
-*Version: 1.0*  
-*Date: August 1, 2025*  
+*Version: 1.0*
+*Date: August 1, 2025*
 *Timeline: Q3-Q4 2025*
 
 ---
@@ -35,7 +35,7 @@ Extend the current pin types in `schemas/agent.schema.json`:
           "type": "string",
           "enum": [
             "string",
-            "number", 
+            "number",
             "boolean",
             "json",
             "binary",
@@ -78,17 +78,17 @@ graph LR
         A1[Process] --> A2[Upload to S3]
         A2 --> A3[Emit Reference]
     end
-    
+
     subgraph Orchestrator
         O1[Receive Reference] --> O2[Update Edge Data]
         O2 --> O3[Notify Next Agent]
     end
-    
+
     subgraph Agent B
         B1[Receive Reference] --> B2[Download from S3]
         B2 --> B3[Process]
     end
-    
+
     A3 --> O1
     O3 --> B1
 ```
@@ -147,19 +147,19 @@ sequenceDiagram
     participant Gateway
     participant Orchestrator
     participant Client
-    
+
     Agent->>Gateway: POST /streams/init
     Gateway->>Agent: {stream_id, ws_url}
     Agent->>Gateway: WS Connect
     Agent->>Gateway: stream_start
     Gateway->>Orchestrator: Register Stream
     Orchestrator->>Client: stream_available
-    
+
     loop Streaming
         Agent->>Gateway: stream_data[n]
         Gateway->>Client: stream_data[n]
     end
-    
+
     Agent->>Gateway: stream_end
     Gateway->>Orchestrator: Stream Complete
     Orchestrator->>Client: stream_complete
@@ -200,8 +200,8 @@ class StreamingConnectionManager(ConnectionManager):
         super().__init__()
         self.stream_sessions: Dict[str, StreamSession] = {}
         self.stream_subscriptions: Dict[str, List[WebSocket]] = {}
-    
-    async def register_stream(self, stream_id: str, node_id: str, 
+
+    async def register_stream(self, stream_id: str, node_id: str,
                             agent_connection: WebSocket):
         """Register a new streaming session"""
         session = StreamSession(
@@ -211,14 +211,14 @@ class StreamingConnectionManager(ConnectionManager):
             created_at=datetime.utcnow()
         )
         self.stream_sessions[stream_id] = session
-        
-    async def subscribe_to_stream(self, stream_id: str, 
+
+    async def subscribe_to_stream(self, stream_id: str,
                                 client_connection: WebSocket):
         """Subscribe a client to a stream"""
         if stream_id not in self.stream_subscriptions:
             self.stream_subscriptions[stream_id] = []
         self.stream_subscriptions[stream_id].append(client_connection)
-        
+
     async def forward_stream_data(self, stream_id: str, data: dict):
         """Forward stream data to all subscribers"""
         if stream_id in self.stream_subscriptions:
@@ -241,7 +241,7 @@ resources:
       memory: "4Gi"
       gpu: false
       ephemeralStorage: "10Gi"
-    
+
     - name: "video_processing"
       cpu: "4"
       memory: "8Gi"
@@ -249,7 +249,7 @@ resources:
       gpuType: "nvidia.com/gpu"
       gpuCount: 1
       ephemeralStorage: "50Gi"
-    
+
     - name: "audio_processing"
       cpu: "1"
       memory: "2Gi"
@@ -262,20 +262,20 @@ resources:
 ```python
 class ResourceCalculator:
     """Calculate resources based on input characteristics"""
-    
+
     def calculate_video_resources(self, metadata: VideoMetadata) -> ResourceProfile:
         base_memory = 2 * 1024 * 1024 * 1024  # 2GB base
-        
+
         # Scale by resolution and duration
         pixel_count = metadata.width * metadata.height
         memory_multiplier = pixel_count / (1920 * 1080)  # HD baseline
         duration_multiplier = metadata.duration / 60  # per minute
-        
+
         required_memory = int(base_memory * memory_multiplier * duration_multiplier)
-        
+
         # GPU needed for 4K+ or 60+ fps
         needs_gpu = pixel_count > 3840 * 2160 or metadata.fps > 60
-        
+
         return ResourceProfile(
             memory=f"{required_memory // (1024**3)}Gi",
             gpu=needs_gpu,
@@ -378,19 +378,19 @@ resources:
 class MultimodalPin(Pin):
     metadata: Optional[Dict[str, Any]] = None
     storage_ref: Optional[str] = None
-    
+
     def validate_multimodal(self):
         """Validate multimodal-specific constraints"""
         if self.type in ["audio", "image", "video"]:
             if not self.metadata:
                 raise ValueError(f"Metadata required for {self.type} pin")
-            
+
             required_fields = {
                 "audio": ["mimeType", "sampleRate"],
                 "image": ["mimeType", "width", "height"],
                 "video": ["mimeType", "width", "height", "fps"]
             }
-            
+
             for field in required_fields.get(self.type, []):
                 if field not in self.metadata:
                     raise ValueError(f"Missing required metadata field: {field}")
@@ -403,11 +403,11 @@ class MultimodalPin(Pin):
 class MultimodalEdgeProcessor:
     def __init__(self, storage_client):
         self.storage = storage_client
-        
+
     async def process_edge_data(self, edge: Edge, data: Any) -> Any:
         """Process edge data, handling multimodal references"""
         source_pin_type = self.get_pin_type(edge.from_node)
-        
+
         if source_pin_type in ["audio", "image", "video"]:
             # Data should be a reference, not raw bytes
             if isinstance(data, dict) and "ref" in data:
@@ -415,11 +415,11 @@ class MultimodalEdgeProcessor:
             else:
                 # Upload raw data and create reference
                 return await self.upload_and_create_reference(data, source_pin_type)
-        
+
         # Handle streaming data
         elif source_pin_type == "stream":
             return await self.setup_stream_forwarding(edge, data)
-        
+
         # Traditional data types
         return data
 ```
@@ -437,7 +437,7 @@ cache:
     metadata: "mm:meta:{file_hash}"  # TTL: 1 hour
     thumbnails: "mm:thumb:{file_hash}"  # TTL: 24 hours
     processed: "mm:proc:{agent_id}:{input_hash}"  # TTL: 1 hour
-  
+
   streams:
     buffers: "stream:buf:{stream_id}"  # TTL: 5 minutes
     metadata: "stream:meta:{stream_id}"  # TTL: 1 hour
@@ -453,7 +453,7 @@ class MultimodalNetworkOptimizer:
             "audio": 5 * 1024 * 1024,  # 5MB
             "video": 10 * 1024 * 1024  # 10MB
         }
-    
+
     def optimize_transfer(self, data_type: str, size: int) -> TransferStrategy:
         if size > self.compression_thresholds.get(data_type, float('inf')):
             return TransferStrategy.CHUNKED_COMPRESSED
@@ -483,16 +483,16 @@ class TestMultimodalPins:
             }
         )
         assert pin.validate_multimodal() is None
-    
+
     def test_streaming_pin_lifecycle(self):
         pin = StreamingPin(name="output", type="stream")
         stream_id = pin.init_stream()
         assert stream_id is not None
-        
+
         # Test chunk sending
         for i in range(10):
             pin.send_chunk(f"chunk_{i}")
-        
+
         pin.end_stream()
         assert pin.is_complete()
 ```
@@ -512,18 +512,18 @@ graph:
       type: test.image-generator
       outputs:
         image: "test_pattern.jpg"
-    
+
     - id: classifier
       type: mentatlab.image-classifier
-    
+
     - id: transcriber
       type: mentatlab.audio-transcriber
       params:
         streaming: true
-    
+
     - id: console
       type: ui.stream-console
-  
+
   edges:
     - from: image_input.image
       to: classifier.image
@@ -597,19 +597,19 @@ class MultimodalSecurityValidator:
             "audio": ["audio/wav", "audio/mp3", "audio/ogg"],
             "video": ["video/mp4", "video/webm"]
         }
-        
-    async def validate_upload(self, file_data: bytes, 
-                            declared_type: str, 
+
+    async def validate_upload(self, file_data: bytes,
+                            declared_type: str,
                             declared_mime: str) -> bool:
         # Verify MIME type matches content
         detected_mime = magic.from_buffer(file_data, mime=True)
         if detected_mime != declared_mime:
             raise SecurityError("MIME type mismatch")
-        
+
         # Check against whitelist
         if declared_mime not in self.mime_whitelist.get(declared_type, []):
             raise SecurityError("Unsupported MIME type")
-        
+
         # Scan for malicious content
         return await self.scan_content(file_data)
 ```
@@ -625,7 +625,7 @@ roles:
       - upload:audio
       - upload:video
       - create:stream
-  
+
   multimodal_consumer:
     permissions:
       - read:image
@@ -754,57 +754,57 @@ graph:
       params:
         accept: "image/*"
         maxSize: "10MB"
-    
+
     - id: image_analyzer
       type: mentatlab.image-classifier
-    
+
     - id: audio_input
       type: ui.audio-recorder
       params:
         maxDuration: 60
-    
+
     - id: transcriber
       type: mentatlab.audio-transcriber
       params:
         streaming: true
         language: "auto"
-    
+
     - id: video_upload
       type: ui.file-upload
       params:
         accept: "video/*"
         maxSize: "100MB"
-    
+
     - id: video_processor
       type: mentatlab.video-analyzer
       params:
         analysis_type: "object_detection"
-    
+
     - id: results_aggregator
       type: mentatlab.multimodal-aggregator
-    
+
     - id: stream_display
       type: ui.stream-viewer
-  
+
   edges:
     - from: image_upload.file
       to: image_analyzer.image
-    
+
     - from: audio_input.audio
       to: transcriber.audio
-    
+
     - from: video_upload.file
       to: video_processor.video
-    
+
     - from: image_analyzer.classification
       to: results_aggregator.image_results
-    
+
     - from: transcriber.transcript
       to: results_aggregator.audio_stream
-    
+
     - from: video_processor.analysis_stream
       to: results_aggregator.video_stream
-    
+
     - from: results_aggregator.combined_stream
       to: stream_display.input
 ```
@@ -823,25 +823,25 @@ import httpx
 
 class MultimodalAgent(ABC):
     """Base class for multimodal agents"""
-    
+
     def __init__(self):
         self.storage_client = self._init_storage()
         self.stream_client = self._init_streaming()
-    
+
     async def download_media(self, reference: dict) -> bytes:
         """Download media from storage reference"""
         url = reference["ref"]["url"]
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             return response.content
-    
-    async def upload_result(self, data: bytes, 
+
+    async def upload_result(self, data: bytes,
                           media_type: str,
                           metadata: dict) -> dict:
         """Upload result and return reference"""
         key = self._generate_storage_key(media_type)
         await self.storage_client.upload(key, data)
-        
+
         return {
             "type": media_type,
             "ref": {
@@ -850,19 +850,19 @@ class MultimodalAgent(ABC):
                 "metadata": metadata
             }
         }
-    
-    async def stream_output(self, 
+
+    async def stream_output(self,
                           stream_id: str,
                           data_iterator: AsyncIterator[str]):
         """Stream output data"""
         await self.stream_client.start_stream(stream_id)
-        
+
         try:
             async for chunk in data_iterator:
                 await self.stream_client.send_chunk(stream_id, chunk)
         finally:
             await self.stream_client.end_stream(stream_id)
-    
+
     @abstractmethod
     async def process(self, inputs: dict) -> dict:
         """Process multimodal inputs"""

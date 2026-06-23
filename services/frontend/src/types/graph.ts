@@ -244,6 +244,7 @@ export enum NodeCategory {
   LOGIC = 'logic',
   MEDIA = 'media',
   AI = 'ai',
+  AI_INFERENCE = 'ai_inference',
   INTEGRATION = 'integration',
   UTILITY = 'utility',
 }
@@ -259,7 +260,7 @@ export enum MediaNodeType {
   SCREEN_CAPTURE = 'media:screen',
   FILE_WATCHER = 'media:file:watcher',
   STREAM_RECEIVER = 'media:stream:receiver',
-  
+
   // Processing nodes
   IMAGE_RESIZE = 'media:image:resize',
   IMAGE_FILTER = 'media:image:filter',
@@ -276,7 +277,7 @@ export enum MediaNodeType {
   VIDEO_EFFECTS = 'media:video:effects',
   DOCUMENT_PARSE = 'media:document:parse',
   DOCUMENT_CONVERT = 'media:document:convert',
-  
+
   // AI nodes
   IMAGE_RECOGNITION = 'ai:image:recognition',
   OBJECT_DETECTION = 'ai:object:detection',
@@ -289,12 +290,12 @@ export enum MediaNodeType {
   AUDIO_GENERATION = 'ai:audio:generation',
   SENTIMENT_ANALYSIS = 'ai:sentiment:analysis',
   CONTENT_MODERATION = 'ai:content:moderation',
-  
+
   // Analysis nodes
   MEDIA_ANALYZER = 'media:analyze',
   QUALITY_CHECKER = 'media:quality:check',
   METADATA_EXTRACTOR = 'media:metadata:extract',
-  
+
   // Output nodes
   MEDIA_DISPLAY = 'media:display',
   MEDIA_DOWNLOAD = 'media:download',

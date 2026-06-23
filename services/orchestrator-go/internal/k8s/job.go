@@ -64,9 +64,35 @@ type JobBuilder struct {
 }
 
 // NewJobBuilder creates a new JobBuilder.
+// Missing resource fields are filled from DefaultJobConfig.
 func NewJobBuilder(cfg *JobConfig) *JobBuilder {
 	if cfg == nil {
 		cfg = DefaultJobConfig()
+	}
+	defaults := DefaultJobConfig()
+	if cfg.DefaultCPULimit == "" {
+		cfg.DefaultCPULimit = defaults.DefaultCPULimit
+	}
+	if cfg.DefaultMemoryLimit == "" {
+		cfg.DefaultMemoryLimit = defaults.DefaultMemoryLimit
+	}
+	if cfg.DefaultCPURequest == "" {
+		cfg.DefaultCPURequest = defaults.DefaultCPURequest
+	}
+	if cfg.DefaultMemRequest == "" {
+		cfg.DefaultMemRequest = defaults.DefaultMemRequest
+	}
+	if cfg.TTLSecondsAfterFinished == nil {
+		cfg.TTLSecondsAfterFinished = defaults.TTLSecondsAfterFinished
+	}
+	if cfg.BackoffLimit == nil {
+		cfg.BackoffLimit = defaults.BackoffLimit
+	}
+	if cfg.ActiveDeadlineSeconds == nil {
+		cfg.ActiveDeadlineSeconds = defaults.ActiveDeadlineSeconds
+	}
+	if cfg.ServiceAccountName == "" {
+		cfg.ServiceAccountName = defaults.ServiceAccountName
 	}
 	return &JobBuilder{config: cfg}
 }

@@ -9,14 +9,14 @@ class SelfAgent(BaseAgent):
     The Self represents the unified whole of conscious and unconscious,
     the archetype of wholeness and the regulating center of the psyche.
     """
-    
+
     def __init__(self, llm_config=None):
         super().__init__("Self", llm_config)
-        
+
     def _create_prompt_template(self):
         """Override to create Self-specific prompt"""
         from langchain.prompts import PromptTemplate
-        
+
         template = """
 You are the Self - the archetype of wholeness, the unified totality of conscious and unconscious. You embody:
 - The drive toward individuation and psychological wholeness
@@ -43,7 +43,7 @@ Other Agents' Perspectives:
 As the Self, what path leads toward wholeness? How can all aspects be honored and integrated?
 
 Self's Response:"""
-        
+
         return PromptTemplate(
             input_variables=["situation", "chat_history", "other_agents"],
             template=template

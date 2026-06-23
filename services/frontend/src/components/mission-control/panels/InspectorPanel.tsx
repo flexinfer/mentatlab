@@ -1,9 +1,157 @@
 import React from 'react';
 import { flightRecorder } from '@/services/mission-control/services';
+import type { BackoffType } from '@/types/orchestrator';
+import { useCanvasStore } from '@/stores/canvas';
+
+interface RetryPolicyState {
+  max_retries: number;
+  backoff_type: BackoffType;
+  backoff_base: number;
+  backoff_max: number;
+}
+
+interface ChecklistItem {
+  label: string;
+  detail: string;
+  done: boolean;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function hasText(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isPlaceholder(value: unknown): boolean {
+  return typeof value === 'string' && /^\$\{[^}]+\}$/.test(value.trim());
+}
+
+function hasAnyConfigured(data: Record<string, unknown>, keys: string[]): boolean {
+  return keys.some((key) => {
+    const value = data[key];
+    if (typeof value === 'number' || typeof value === 'boolean') return true;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object' && value !== null) return Object.keys(value).length > 0;
+    return hasText(value);
+  });
+}
+
+function runtimeContractRequiredEnv(data: Record<string, unknown>): string[] {
+  const contract = asRecord(data.runtime_contract);
+  const requiredEnv = contract.required_env;
+  return Array.isArray(requiredEnv)
+    ? requiredEnv.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
+
+function runtimeEnvConfigured(data: Record<string, unknown>, envNames: string[]): boolean {
+  if (envNames.length === 0) return true;
+  const env = asRecord(data.env);
+  const toolArgs = asRecord(data.tool_args);
+  return envNames.every((name) => {
+    const envValue = env[name];
+    if (hasText(envValue) && !isPlaceholder(envValue)) return true;
+
+    const argKey = name
+      .replace(/^FLEXINFER_/, '')
+      .toLowerCase();
+    const argValue = toolArgs[argKey] ?? toolArgs[name.toLowerCase()];
+    return hasText(argValue) && !isPlaceholder(argValue);
+  });
+}
+
+function selectedNodeChecklist(selectedNode: { type?: string; data?: unknown } | null): ChecklistItem[] {
+  if (!selectedNode) return [];
+
+  const type = selectedNode.type ?? 'agent';
+  const data = asRecord(selectedNode.data);
+  const checklist: ChecklistItem[] = [
+    {
+      label: 'Label',
+      detail: hasText(data.label) ? String(data.label) : 'Add an operator-readable label',
+      done: hasText(data.label),
+    },
+  ];
+
+  if (type === 'chat') {
+    checklist.push({
+      label: 'Prompt',
+      detail: hasText(data.prompt) ? 'Prompt configured' : 'Add the instruction this agent should follow',
+      done: hasText(data.prompt),
+    });
+  } else if (type === 'conditional') {
+    checklist.push({
+      label: 'Branch expression',
+      detail: hasText(data.expression) ? String(data.expression) : 'Set the expression that chooses a branch',
+      done: hasText(data.expression),
+    });
+  } else if (type === 'forEach') {
+    checklist.push({
+      label: 'Collection',
+      detail: hasText(data.collection) ? String(data.collection) : 'Choose the collection to iterate over',
+      done: hasText(data.collection),
+    });
+  } else if (type === 'gate') {
+    checklist.push({
+      label: 'Approval prompt',
+      detail: hasText(data.description) ? String(data.description) : 'Describe what the operator is approving',
+      done: hasText(data.description),
+    });
+  } else if (type.startsWith('mcp:')) {
+    const requiredEnv = runtimeContractRequiredEnv(data);
+    checklist.push(
+      {
+        label: 'MCP tool',
+        detail: hasText(data.tool_name) ? String(data.tool_name) : 'Choose a tool from the MCP catalog',
+        done: hasText(data.tool_name),
+      },
+      {
+        label: 'Runtime env',
+        detail: requiredEnv.length > 0 ? requiredEnv.join(', ') : 'No required environment variables',
+        done: runtimeEnvConfigured(data, requiredEnv),
+      }
+    );
+  } else if (type.startsWith('media:') || type.startsWith('ai:')) {
+    checklist.push({
+      label: 'Media contract',
+      detail: hasAnyConfigured(data, ['source', 'media_ref', 'accepted_types', 'format', 'width', 'height', 'model', 'prompt'])
+        ? 'Media input or operation settings configured'
+        : 'Set media input, output, or operation fields for this step',
+      done: hasAnyConfigured(data, ['source', 'media_ref', 'accepted_types', 'format', 'width', 'height', 'model', 'prompt']),
+    });
+  } else {
+    checklist.push({
+      label: 'Execution target',
+      detail: hasAnyConfigured(data, ['agent_id', 'agentId', 'command', 'image'])
+        ? 'Agent or command target configured'
+        : 'Choose an agent, command, or image for this step',
+      done: hasAnyConfigured(data, ['agent_id', 'agentId', 'command', 'image']),
+    });
+  }
+
+  checklist.push({
+    label: 'Runtime safety',
+    detail: data.timeout || data.retry_policy ? 'Timeout or retry guard configured' : 'Consider timeout and retry settings before running',
+    done: Boolean(data.timeout || data.retry_policy),
+  });
+
+  return checklist;
+}
 
 export default function InspectorPanel({ runId }: { runId: string | null }) {
   const [stats, setStats] = React.useState<{ checkpoints: number; status?: string }>({ checkpoints: 0 });
-  const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null);
+  const [eventSelectedNodeId, setEventSelectedNodeId] = React.useState<string | null>(null);
+  const canvasSelectedNodeId = typeof useCanvasStore === 'function'
+    ? useCanvasStore((state) => state.selectedNodeId)
+    : null;
+  const canvasNodes = typeof useCanvasStore === 'function'
+    ? useCanvasStore((state) => state.nodes)
+    : null;
+  const selectedNodeId = canvasSelectedNodeId ?? eventSelectedNodeId;
 
   React.useEffect(() => {
     if (!runId) {
@@ -27,12 +175,12 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
     const onSel = (e: Event) => {
       try {
         const id = (e as CustomEvent).detail?.nodeId as string | undefined;
-        setSelectedNodeId(id ?? null);
+        setEventSelectedNodeId(id ?? null);
       } catch {
-        setSelectedNodeId(null);
+        setEventSelectedNodeId(null);
       }
     };
-    const onClear = () => setSelectedNodeId(null);
+    const onClear = () => setEventSelectedNodeId(null);
     window.addEventListener('graphNodeSelected', onSel as EventListener);
     window.addEventListener('graphNodeCleared', onClear as EventListener);
     return () => {
@@ -41,11 +189,83 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
     };
   }, []);
 
+  // Get selected node data from canvas store
+  const selectedNode = React.useMemo(() => {
+    if (!selectedNodeId) return null;
+    const nodes = canvasNodes ?? useCanvasStore.getState().nodes;
+    return nodes.find((n) => n.id === selectedNodeId) ?? null;
+  }, [canvasNodes, selectedNodeId]);
+  const checklist = React.useMemo(() => selectedNodeChecklist(selectedNode), [selectedNode]);
+
+  // Local state for retry policy editing
+  const [retryPolicy, setRetryPolicy] = React.useState<RetryPolicyState>({
+    max_retries: 3,
+    backoff_type: 'exponential',
+    backoff_base: 2,
+    backoff_max: 60,
+  });
+
+  const [nodeTimeout, setNodeTimeout] = React.useState<string>('');
+
+  // Sync local state when selected node changes
+  React.useEffect(() => {
+    if (selectedNode?.data?.retry_policy) {
+      const rp = selectedNode.data.retry_policy;
+      setRetryPolicy({
+        max_retries: rp.max_retries ?? 3,
+        backoff_type: rp.backoff_type ?? 'exponential',
+        backoff_base: rp.backoff_base ?? 2,
+        backoff_max: rp.backoff_max ?? 60,
+      });
+    } else {
+      setRetryPolicy({ max_retries: 3, backoff_type: 'exponential', backoff_base: 2, backoff_max: 60 });
+    }
+    setNodeTimeout(selectedNode?.data?.timeout ? String(selectedNode.data.timeout) : '');
+  }, [selectedNode]);
+
+  function handleRetryChange(field: keyof RetryPolicyState, value: string) {
+    const updated = { ...retryPolicy };
+    if (field === 'backoff_type') {
+      updated.backoff_type = value as BackoffType;
+    } else {
+      updated[field] = parseInt(value, 10) || 0;
+    }
+    setRetryPolicy(updated);
+
+    // Persist to canvas store
+    if (selectedNodeId) {
+      useCanvasStore.getState().updateNodeConfig(selectedNodeId, { retry_policy: updated });
+    }
+  }
+
+  function handleTimeoutChange(value: string) {
+    setNodeTimeout(value);
+    if (selectedNodeId) {
+      const seconds = parseInt(value, 10) || 0;
+      useCanvasStore.getState().updateNodeConfig(selectedNodeId, {
+        timeout: seconds > 0 ? seconds * 1e9 : undefined,
+      });
+    }
+  }
+
   return (
-    <div className="space-y-2 text-xs">
-      <div className="font-medium">Run</div>
+    <div className="space-y-4 text-xs">
+      <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Run</div>
+            <div className="mt-1 text-sm font-semibold text-foreground">
+              {runId ? 'Live run' : 'Design mode'}
+            </div>
+          </div>
+          <div className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+            runId ? 'bg-emerald-500/10 text-emerald-500' : 'bg-cyan-500/10 text-cyan-500'
+          }`}>
+            {runId ? 'ACTIVE' : 'DRAFT'}
+          </div>
+        </div>
       {runId ? (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="mt-3 grid grid-cols-2 gap-2">
           <div className="text-gray-500">runId</div>
           <div className="font-mono truncate" title={runId}>{runId}</div>
           <div className="text-gray-500">status</div>
@@ -54,17 +274,158 @@ export default function InspectorPanel({ runId }: { runId: string | null }) {
           <div>{stats.checkpoints}</div>
         </div>
       ) : (
-        <div className="text-gray-500">No active run</div>
+        <div className="mt-2 text-muted-foreground">
+          <div>No active run</div>
+          <div className="mt-1">Build, validate, then press Run when the DAG is ready.</div>
+        </div>
       )}
+      </div>
 
-      <div className="font-medium mt-3">Selection</div>
+      <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Selection</div>
       {selectedNodeId ? (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="text-gray-500">nodeId</div>
-          <div className="font-mono truncate" title={selectedNodeId}>{selectedNodeId}</div>
+        <div className="space-y-3 rounded-xl border border-border/70 bg-card/80 p-3">
+          <div>
+            <div className="text-sm font-semibold text-foreground">
+              {(selectedNode?.data?.label as string | undefined) ?? 'Selected node'}
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Configure execution safety and runtime behavior for this step.
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted/20 p-2">
+            <div className="text-muted-foreground">nodeId</div>
+            <div className="font-mono truncate" title={selectedNodeId}>{selectedNodeId}</div>
+            {selectedNode?.type && (
+              <>
+                <div className="text-muted-foreground">type</div>
+                <div>{selectedNode.type}</div>
+              </>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border/70 bg-background/50 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="font-medium text-foreground">Configuration Checklist</div>
+              <span className="text-[10px] text-muted-foreground">
+                {checklist.filter((item) => item.done).length}/{checklist.length} ready
+              </span>
+            </div>
+            <div className="space-y-2">
+              {checklist.map((item) => (
+                <div key={item.label} className="flex items-start gap-2">
+                  <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+                    item.done ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`} />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-foreground">{item.label}</span>
+                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
+                        item.done
+                          ? 'bg-emerald-500/10 text-emerald-500'
+                          : 'bg-amber-500/10 text-amber-500'
+                      }`}>
+                        {item.done ? 'Ready' : 'Pending'}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 break-words text-[10px] leading-4 text-muted-foreground">
+                      {item.detail}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Timeout config */}
+          <div className="rounded-lg border border-border/70 bg-background/50 p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="font-medium text-foreground">Timeout</div>
+              <span className="text-[10px] text-muted-foreground">Safety guard</span>
+            </div>
+            <div className="mb-2 text-[11px] text-muted-foreground">
+              Prevent stalled agent work from blocking the whole workflow.
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                placeholder="seconds"
+                value={nodeTimeout}
+                onChange={(e) => handleTimeoutChange(e.target.value)}
+                className="w-24 rounded-md border border-border bg-background px-2 py-1.5 text-[11px] text-foreground outline-none focus:border-primary"
+              />
+              <span className="text-muted-foreground text-[10px]">seconds, 0 = no timeout</span>
+            </div>
+          </div>
+
+          {/* Retry policy editor */}
+          <div className="rounded-lg border border-border/70 bg-background/50 p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="font-medium text-foreground">Retry Policy</div>
+              <span className="text-[10px] text-muted-foreground">Failure recovery</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-muted-foreground text-[10px]">Max retries</label>
+              <input
+                type="number"
+                min="0"
+                max="10"
+                value={retryPolicy.max_retries}
+                onChange={(e) => handleRetryChange('max_retries', e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary"
+              />
+
+              <label className="text-muted-foreground text-[10px]">Backoff type</label>
+              <select
+                value={retryPolicy.backoff_type}
+                onChange={(e) => handleRetryChange('backoff_type', e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary"
+              >
+                <option value="exponential">Exponential</option>
+                <option value="fixed">Fixed</option>
+                <option value="linear">Linear</option>
+              </select>
+
+              <label className="text-muted-foreground text-[10px]">Base (sec)</label>
+              <input
+                type="number"
+                min="1"
+                max="300"
+                value={retryPolicy.backoff_base}
+                onChange={(e) => handleRetryChange('backoff_base', e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary"
+              />
+
+              <label className="text-muted-foreground text-[10px]">Max (sec)</label>
+              <input
+                type="number"
+                min="1"
+                max="3600"
+                value={retryPolicy.backoff_max}
+                onChange={(e) => handleRetryChange('backoff_max', e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[10px] text-foreground outline-none focus:border-primary"
+              />
+            </div>
+          </div>
         </div>
       ) : (
-        <div className="text-gray-500">No node selected</div>
+        <div className="rounded-xl border border-dashed border-border/80 bg-muted/10 p-4">
+          <div className="text-sm font-semibold text-foreground">No node selected</div>
+          <div className="mt-2 text-[11px] leading-5 text-muted-foreground">
+            Select a canvas node to edit retries, timeouts, and runtime metadata. The builder should feel like a checklist, not a treasure hunt.
+          </div>
+          <div className="mt-3 space-y-2">
+            {['Choose a starter recipe', 'Wire inputs to agents', 'Run and inspect checkpoints'].map((step, index) => (
+              <div key={step} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[9px] font-semibold text-primary">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                {step}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

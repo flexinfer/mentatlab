@@ -4,6 +4,12 @@ image: registry.harbor.lan/library/mentatlab-ctm-cogpack:latest
 description: Continuous Thought Machine (CTM) Cogpack — tick-based temporal processing agent with neuron-level MLPs
 runtime: python3.12
 longRunning: false
+
+capabilities:
+  actions: []
+  supports_progress: false
+  supports_heartbeat: false
+
 env:
   - "VLLM_BASE_URL=http://vllm-optimized-lb.ai.svc.cluster.local:8000"
 ui:

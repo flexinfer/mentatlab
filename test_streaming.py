@@ -10,9 +10,9 @@ GATEWAY_URL = "http://localhost:8080"
 
 def test_streaming():
     """Test the streaming pipeline by initializing a stream and publishing events."""
-    
+
     print("=== Testing Streaming Pipeline ===\n")
-    
+
     # 1. Initialize a stream
     print("1. Initializing stream...")
     init_response = requests.post(
@@ -25,17 +25,17 @@ def test_streaming():
             }
         }
     )
-    
+
     if init_response.status_code != 200:
         print(f"❌ Failed to initialize stream: {init_response.text}")
         return
-        
+
     stream_data = init_response.json()
     stream_id = stream_data["stream_id"]
     print(f"✅ Stream initialized: {stream_id}")
     print(f"   WS URL: {stream_data['ws_url']}")
     print(f"   SSE URL: {stream_data['sse_url']}")
-    
+
     # 2. List active streams
     print("\n2. Listing active streams...")
     list_response = requests.get(f"{GATEWAY_URL}/api/v1/streams")
@@ -51,13 +51,13 @@ def test_streaming():
                     print(f"   - {sid}")
         else:
             print(f"✅ Active streams: {len(streams)}")
-    
+
     # 3. Publish test events
     print(f"\n3. Publishing events to stream {stream_id}...")
-    
+
     # Use the actual stream_id from initialization
     publish_url = f"{GATEWAY_URL}/api/v1/streams/{stream_id}/publish"
-    
+
     # Agent started event
     print("   Publishing agent_started...")
     requests.post(
@@ -74,7 +74,7 @@ def test_streaming():
         }
     )
     time.sleep(0.5)
-    
+
     # Progress events
     for i in range(1, 4):
         progress = i * 25
@@ -96,7 +96,7 @@ def test_streaming():
             }
         )
         time.sleep(1)
-    
+
     # Agent output
     print("   Publishing agent output...")
     requests.post(
@@ -116,7 +116,7 @@ def test_streaming():
         }
     )
     time.sleep(0.5)
-    
+
     # Agent completed event
     print("   Publishing agent_completed...")
     requests.post(
@@ -132,21 +132,21 @@ def test_streaming():
             "timestamp": datetime.now().isoformat()
         }
     )
-    
+
     print("\n✅ Test events published successfully!")
     print(f"\n4. Stream should be visible in the UI:")
     print(f"   - StreamingCanvas should auto-discover and connect to stream")
     print(f"   - NetworkPanel should show activity if connected")
     print(f"   - StreamingEventViewer (if mounted) should display events")
-    
+
     print("\n5. Keeping stream alive for 10 seconds...")
     print("   Check the UI now to see the streaming data!")
     time.sleep(10)
-    
+
     # Optional: Close the stream
     print("\n6. Closing stream...")
     # Note: There's no explicit close endpoint, streams timeout after inactivity
-    
+
     print("\n=== Test Complete ===")
 
 if __name__ == "__main__":

@@ -15,8 +15,8 @@ export const FeatureFlags = {
   // Runtime connection control: when false, UI shows streaming surfaces without attempting WS connect
   // Default ON in dev so the live connect control is available immediately
   CONNECT_WS: (env.VITE_CONNECT_WS ?? 'true') === 'true',
-  // Auto-connect live stream on page load (off by default in prod)
-  AUTO_CONNECT: (env.VITE_FF_AUTO_CONNECT ?? 'false') === 'true',
+  // Auto-connect live stream on page load (on by default; disable via VITE_FF_AUTO_CONNECT=false)
+  AUTO_CONNECT: (env.VITE_FF_AUTO_CONNECT ?? 'true') === 'true',
   // Visual contract checking overlay
   CONTRACT_OVERLAY: (env.VITE_FF_CONTRACT_OVERLAY ?? (env.DEV ? 'true' : 'false')) === 'true',
   // Orchestrator Runs panel (dev/demo only)
@@ -30,6 +30,10 @@ export const FeatureFlags = {
   MISSION_GRAPH: (env.VITE_FF_MISSION_GRAPH ?? 'true') === 'true',
   // NEW: Mission Control Console – default on in dev
   MISSION_CONSOLE: (env.VITE_FF_MISSION_CONSOLE ?? 'true') === 'true',
+  // Demo mode: load example flows when backend returns empty
+  DEMO_MODE: (env.VITE_FF_DEMO_MODE ?? 'true') === 'true',
+  // Legacy /streaming page (off by default; enable via VITE_FF_LEGACY_STREAMING_PAGE=true for diagnostics)
+  LEGACY_STREAMING_PAGE: (env.VITE_FF_LEGACY_STREAMING_PAGE ?? 'false') === 'true',
 } as const;
 
 /**

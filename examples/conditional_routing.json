@@ -1,0 +1,59 @@
+{
+  "apiVersion": "v1alpha1",
+  "kind": "Flow",
+  "meta": {
+    "id": "demo.conditional-routing",
+    "name": "Conditional Routing",
+    "description": "Classify input and route to different processing agents based on category",
+    "version": "0.1.0",
+    "createdBy": "@mentatlab",
+    "createdAt": "2026-02-15T00:00:00Z"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "classifier",
+        "type": "mentatlab.echo",
+        "position": {"x": 120, "y": 160},
+        "params": {"prompt": "Classify the input as 'technical' or 'creative'"}
+      },
+      {
+        "id": "router",
+        "type": "conditional",
+        "position": {"x": 400, "y": 160},
+        "params": {
+          "conditional": {
+            "type": "switch",
+            "expression": "inputs.classifier.result",
+            "branches": {
+              "technical": {"targets": ["tech_agent"]},
+              "creative": {"targets": ["creative_agent"]}
+            },
+            "default": "tech_agent"
+          }
+        }
+      },
+      {
+        "id": "tech_agent",
+        "type": "mentatlab.echo",
+        "position": {"x": 680, "y": 80},
+        "params": {"prompt": "Process as technical content"}
+      },
+      {
+        "id": "creative_agent",
+        "type": "mentatlab.echo",
+        "position": {"x": 680, "y": 240},
+        "params": {"prompt": "Process as creative content"}
+      }
+    ],
+    "edges": [
+      {"from": "classifier.result", "to": "router.input"},
+      {"from": "router.output", "to": "tech_agent.text"},
+      {"from": "router.output", "to": "creative_agent.text"}
+    ]
+  },
+  "layout": {
+    "zoom": 0.85,
+    "viewport": {"x": 0, "y": 0}
+  }
+}

@@ -24,7 +24,7 @@ agent = typer.Typer(
 @agent.command("create")
 def create_agent(
     name: str = typer.Argument(..., help="Agent name (will be used as directory name)"),
-    template: Literal["python", "nodejs", "rust"] = typer.Option(
+    template: Literal["python", "nodejs", "rust", "go"] = typer.Option(
         "python", "--template", help="Agent template to use"
     ),
     directory: Optional[Path] = typer.Option(

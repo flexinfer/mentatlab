@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Optional, Callable
 
 try:
     from analysis.real_time_analytics import (
-        get_analytics_dashboard, RealTimeAnalyticsDashboard, 
+        get_analytics_dashboard, RealTimeAnalyticsDashboard,
         AnalysisType, StatisticalAnalyzer, PsychologicalAnalyzer
     )
     from utils.data_exporter import (
@@ -34,14 +34,14 @@ class AnalyticsExportManager:
     Specialized manager for analytics data export with psychology-focused
     data formatting and enhanced filtering capabilities.
     """
-    
+
     def __init__(self):
         """Initialize the analytics export manager."""
         self.analytics_dashboard = None
         self.data_exporter = None
         self.performance_monitor = None
         self.websocket_manager = None
-        
+
         try:
             self.analytics_dashboard = get_analytics_dashboard()
             self.data_exporter = get_data_exporter()
@@ -49,7 +49,7 @@ class AnalyticsExportManager:
             self.websocket_manager = get_event_manager()
         except Exception as e:
             logger.warning(f"Could not initialize all components: {e}")
-    
+
     def create_psychology_export_request(
         self,
         format: ExportFormat = ExportFormat.JSON,
@@ -63,7 +63,7 @@ class AnalyticsExportManager:
     ) -> Optional[ExportRequest]:
         """
         Create a specialized export request for psychology data.
-        
+
         Args:
             format: Export format
             time_range_hours: Hours of data to export
@@ -73,40 +73,40 @@ class AnalyticsExportManager:
             include_psychological_metrics: Include psychological metrics
             compression: Compression type
             **kwargs: Additional export parameters
-        
+
         Returns:
             ExportRequest configured for psychology data
         """
         if not self.data_exporter:
             logger.error("Data exporter not available")
             return None
-        
+
         # Configure data types based on psychology focus
         data_types = ["analytics"]
-        
+
         if include_conversation_patterns:
             data_types.append("conversations")
-        
+
         if include_psychological_metrics:
             data_types.extend(["performance", "agents"])
-        
+
         # Configure filters
         filters = {}
-        
+
         # Time range filter
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=time_range_hours)
         filters['start_time'] = start_time
         filters['end_time'] = end_time
-        
+
         # Agent type filter
         if agent_types:
             filters['agent_types'] = agent_types
-        
+
         # Psychology-specific filters
         if include_sentiment_analysis:
             filters['include_sentiment'] = True
-        
+
         # Create request
         request = self.data_exporter.create_export_request(
             format=format,
@@ -116,9 +116,9 @@ class AnalyticsExportManager:
             include_metadata=True,
             **kwargs
         )
-        
+
         return request
-    
+
     async def export_psychology_session(
         self,
         session_name: str = "psychology_session",
@@ -127,19 +127,19 @@ class AnalyticsExportManager:
     ) -> Optional[ExportResult]:
         """
         Export a complete psychology session with all relevant data.
-        
+
         Args:
             session_name: Name for the export session
             format: Export format
             include_charts: Include charts in PDF exports
-        
+
         Returns:
             ExportResult with session data
         """
         if not self.analytics_dashboard or not self.data_exporter:
             logger.error("Required components not available")
             return None
-        
+
         try:
             # Create comprehensive export request
             request = self.create_psychology_export_request(
@@ -151,31 +151,31 @@ class AnalyticsExportManager:
                 include_charts=include_charts,
                 filename=f"{session_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             )
-            
+
             if not request:
                 return None
-            
+
             # Add psychology-specific callback
             request.callback = self._on_psychology_export_complete
-            
+
             # Execute export
             result = await self.data_exporter.export_data_async(request)
-            
+
             if result.status == ExportStatus.COMPLETED:
                 logger.info(f"Psychology session export completed: {result.file_path}")
             else:
                 logger.error(f"Psychology session export failed: {result.error_message}")
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Error exporting psychology session: {e}")
             return None
-    
+
     def get_psychology_data_summary(self) -> Dict[str, Any]:
         """
         Get a summary of available psychology data for export.
-        
+
         Returns:
             Dictionary with data availability summary
         """
@@ -187,23 +187,23 @@ class AnalyticsExportManager:
             "time_range": {},
             "data_types": []
         }
-        
+
         try:
             if self.analytics_dashboard:
                 analytics_summary = self.analytics_dashboard.get_analytics_summary()
-                
+
                 summary["analytics_available"] = True
                 summary["time_range"] = {
                     "start": analytics_summary.get("timestamp", 0) - 3600,  # Last hour
                     "end": analytics_summary.get("timestamp", 0)
                 }
-                
+
                 # Extract conversation data info
                 comm_patterns = analytics_summary.get("communication_patterns", {})
                 if comm_patterns:
                     summary["conversation_data_count"] = comm_patterns.get("total_messages", 0)
                     summary["agent_types"] = list(comm_patterns.get("agent_send_counts", {}).keys())
-                
+
                 # Extract sentiment data info
                 sentiment_trends = analytics_summary.get("sentiment_trends", {})
                 if sentiment_trends:
@@ -211,27 +211,27 @@ class AnalyticsExportManager:
                     summary["sentiment_data_points"] = sum(
                         agent_data.get("count", 0) for agent_data in agent_sentiments.values()
                     )
-                
+
                 # Available data types
                 summary["data_types"] = ["analytics", "conversations", "performance", "system"]
-                
+
         except Exception as e:
             logger.error(f"Error getting psychology data summary: {e}")
-        
+
         return summary
-    
+
     def create_quick_export_buttons(self, container) -> List[ExportButton]:
         """
         Create quick export buttons for common psychology export scenarios.
-        
+
         Args:
             container: UI container to add buttons to
-        
+
         Returns:
             List of created ExportButton instances
         """
         buttons = []
-        
+
         try:
             # Analytics JSON export
             analytics_button = ExportButton(
@@ -243,7 +243,7 @@ class AnalyticsExportManager:
                 quick_export=True
             )
             buttons.append(analytics_button)
-            
+
             # Conversation CSV export
             conversation_button = ExportButton(
                 container,
@@ -254,7 +254,7 @@ class AnalyticsExportManager:
                 quick_export=True
             )
             buttons.append(conversation_button)
-            
+
             # Full psychology PDF report
             report_button = ExportButton(
                 container,
@@ -264,12 +264,12 @@ class AnalyticsExportManager:
                 default_data_types=["analytics", "conversations", "performance"]
             )
             buttons.append(report_button)
-            
+
         except Exception as e:
             logger.error(f"Error creating export buttons: {e}")
-        
+
         return buttons
-    
+
     async def _on_psychology_export_complete(self, result: ExportResult):
         """Handle completion of psychology export."""
         try:
@@ -284,7 +284,7 @@ class AnalyticsExportManager:
                         "records_exported": result.records_exported,
                         "duration_seconds": result.duration_seconds
                     }
-                    
+
                     # Create system status event with export info
                     event = self.websocket_manager.create_system_status(
                         status="healthy",
@@ -298,26 +298,26 @@ class AnalyticsExportManager:
                     )
                     event.data["psychology_export_completed"] = event_data
                     self.websocket_manager.emit_event(event)
-                
+
                 logger.info(f"Psychology export completed successfully: {result.export_id}")
             else:
                 logger.error(f"Psychology export failed: {result.error_message}")
-                
+
         except Exception as e:
             logger.error(f"Error in psychology export completion handler: {e}")
-    
+
     def get_export_recommendations(self) -> List[Dict[str, Any]]:
         """
         Get recommendations for export based on current data state.
-        
+
         Returns:
             List of export recommendations
         """
         recommendations = []
-        
+
         try:
             data_summary = self.get_psychology_data_summary()
-            
+
             # Recommend based on data availability
             if data_summary["analytics_available"]:
                 if data_summary["conversation_data_count"] > 50:
@@ -328,7 +328,7 @@ class AnalyticsExportManager:
                         "data_types": ["conversations", "analytics"],
                         "priority": "high"
                     })
-                
+
                 if data_summary["sentiment_data_points"] > 100:
                     recommendations.append({
                         "title": "Export Sentiment Timeline",
@@ -337,7 +337,7 @@ class AnalyticsExportManager:
                         "data_types": ["analytics"],
                         "priority": "medium"
                     })
-                
+
                 if len(data_summary["agent_types"]) >= 3:
                     recommendations.append({
                         "title": "Generate Psychology Report",
@@ -346,10 +346,10 @@ class AnalyticsExportManager:
                         "data_types": ["analytics", "conversations", "performance"],
                         "priority": "high"
                     })
-            
+
         except Exception as e:
             logger.error(f"Error generating export recommendations: {e}")
-        
+
         return recommendations
 
 
@@ -360,10 +360,10 @@ _global_analytics_export_manager: Optional[AnalyticsExportManager] = None
 def get_analytics_export_manager() -> AnalyticsExportManager:
     """Get or create the global analytics export manager instance."""
     global _global_analytics_export_manager
-    
+
     if _global_analytics_export_manager is None:
         _global_analytics_export_manager = AnalyticsExportManager()
-    
+
     return _global_analytics_export_manager
 
 
@@ -391,24 +391,24 @@ def get_psychology_export_recommendations() -> List[Dict[str, Any]]:
 # Example usage and testing
 if __name__ == "__main__":
     import asyncio
-    
+
     async def test_analytics_export_integration():
         """Test the analytics export integration."""
         print("Testing analytics export integration...")
-        
+
         # Initialize manager
         manager = AnalyticsExportManager()
-        
+
         # Get data summary
         summary = manager.get_psychology_data_summary()
         print(f"Data summary: {json.dumps(summary, indent=2, default=str)}")
-        
+
         # Get recommendations
         recommendations = manager.get_export_recommendations()
         print(f"Export recommendations: {len(recommendations)}")
         for rec in recommendations:
             print(f"  - {rec['title']}: {rec['description']}")
-        
+
         # Test export request creation
         request = manager.create_psychology_export_request(
             format=ExportFormat.JSON,
@@ -416,13 +416,13 @@ if __name__ == "__main__":
             agent_types=["ego", "shadow"],
             include_sentiment_analysis=True
         )
-        
+
         if request:
             print(f"Created export request: {request.export_id}")
             print(f"Data types: {request.data_types}")
             print(f"Filters: {request.filters}")
-        
+
         print("Analytics export integration test completed")
-    
+
     # Run test
     asyncio.run(test_analytics_export_integration())

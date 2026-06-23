@@ -1,0 +1,189 @@
+[0KRunning with gitlab-runner 18.6.2 (83dc1e70)[0;m
+[0K  on gitlab-runner-df4564c79-gmknb Cu6PT6lcn, system ID: r_T2o9x1Re1gWX[0;m
+[0K  feature flags: FF_USE_FASTZIP:true, FF_SCRIPT_SECTIONS:true, FF_ENABLE_JOB_CLEANUP:true, FF_CLEAN_UP_FAILED_CACHE_EXTRACT:true[0;m
+section_start:1772901754:prepare_executor[0K[0K[36;1mPreparing the "kubernetes" executor[0;m[0;m
+[0KUsing Kubernetes namespace: ci-jobs[0;m
+[0KUsing Kubernetes executor with image registry.harbor.lan/library/ci-builder:latest ...[0;m
+[0KUsing attach strategy to execute scripts...[0;m
+[0KUsing effective pull policy of [IfNotPresent] for container helper[0;m
+[0KUsing effective pull policy of [IfNotPresent] for container init-permissions[0;m
+[0KUsing effective pull policy of [IfNotPresent] for container build[0;m
+section_end:1772901754:prepare_executor[0Ksection_start:1772901754:prepare_script[0K[0K[36;1mPreparing environment[0;m[0;m
+[0KUsing FF_USE_POD_ACTIVE_DEADLINE_SECONDS, the Pod activeDeadlineSeconds will be set to the job timeout: 2h0m0s...[0;m
+Running on runner-cu6pt6lcn-project-8-concurrent-0-0q9lv156 via gitlab-runner-df4564c79-gmknb...
+
+section_end:1772901773:prepare_script[0Ksection_start:1772901773:get_sources[0K[0K[36;1mGetting source from Git repository[0;m[0;m
+[32;1mSkipping Git repository setup[0;m
+[32;1mSkipping Git checkout[0;m
+[32;1mSkipping Git submodules setup[0;m
+
+section_end:1772901774:get_sources[0Ksection_start:1772901774:step_script[0K[0K[36;1mExecuting "step_script" stage of the job script[0;m[0;m
+section_start:1772901774:section_pre_build_script_0[hide_duration=true,collapsed=true][0K[32;1m$ export BUILDKIT_HOST=${BUILDKIT_HOST}
+    export BUILDKIT_CACHE_PREFIX=${BUILDKIT_CACHE_PREFIX}
+    # Copy Docker config from read-only secret mount to writable directory
+    mkdir -p /root/.docker
+    cp /docker-secrets/config.json /root/.docker/config.json 2>/dev/null || true
+    # Wait for DinD service container to be ready (if DOCKER_HOST is set to localhost)
+    if [ "${DOCKER_HOST}" = "tcp://localhost:2375" ]; then
+      echo "Waiting for Docker daemon..."
+      for i in $(seq 1 30); do
+        docker info >/dev/null 2>&1 && break
+        sleep 1
+      done
+    fi[0;m
+section_end:1772901774:section_pre_build_script_0[0K
+Waiting for Docker daemon...
+section_start:1772901804:section_script_step_0[hide_duration=true,collapsed=true][0K[32;1m$ set -euo pipefail
+if [ -d ".git" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "Repository already present"
+  exit 0
+fi
+echo "Cloning via external host ${GITLAB_EXTERNAL_HOST}..."
+git init -q .
+git remote remove origin >/dev/null 2>&1 || true
+git remote add origin "https://gitlab-ci-token:${CI_JOB_TOKEN}@${GITLAB_EXTERNAL_HOST}/${CI_PROJECT_PATH}.git"
+for i in 1 2 3 4 5; do
+  if git fetch -q --depth "${GIT_DEPTH:-20}" origin "${CI_COMMIT_SHA}"; then
+    break
+  fi
+  if [ "$i" -eq 5 ]; then
+    echo "ERROR: git fetch failed after ${i} attempts"
+    exit 1
+  fi
+  echo "git fetch failed (attempt ${i}/5); retrying..."
+  sleep $((i * 2))
+done
+git checkout -q -f "${CI_COMMIT_SHA}"[0;m
+section_end:1772901804:section_script_step_0[0K
+Cloning via external host gitlab.flexinfer.ai...
+section_start:1772901811:section_script_step_1[hide_duration=true,collapsed=true][0K[32;1m$ echo "Waiting for BuildKit..."
+for i in $(seq 1 30); do
+  if buildctl --addr "${BUILDKIT_HOST}" debug info >/dev/null 2>&1; then
+    echo "BuildKit is ready"; break
+  fi
+  echo "[$i/30] not ready yet"; sleep 2
+done
+buildctl --addr "${BUILDKIT_HOST}" debug info[0;m
+section_end:1772901811:section_script_step_1[0K
+Waiting for BuildKit...
+BuildKit is ready
+BuildKit: github.com/moby/buildkit v0.12.5 bac3f2b673f3f9d33e79046008e7a38e856b3dc6
+section_start:1772901811:section_script_step_2[hide_duration=true,collapsed=true][0K[32;1m$ # Shared build_image function with zstd compression and retry-with-fallback
+CACHE_REPO="registry.harbor.lan/library/build-cache"
+
+build_image() {
+  local name="$1" context="$2"
+  echo "=== Building ${name} from ${context} ==="
+
+  local output="type=image,push=true,compression=zstd,compression-level=3"
+  output="${output},name=${REGISTRY}/${name}:${CI_COMMIT_SHORT_SHA}"
+  if [ "$CI_COMMIT_BRANCH" = "main" ]; then
+    output="${output},name=${REGISTRY}/${name}:latest"
+  fi
+
+  # First attempt: build with cache
+  if buildctl --addr "${BUILDKIT_HOST}" build \
+    --frontend dockerfile.v0 \
+    --local "context=${context}" \
+    --local "dockerfile=${context}" \
+    --opt platform=linux/amd64 \
+    --opt "build-arg:GOPROXY=${GOPROXY:-}" \
+    --opt "build-arg:npm_config_registry=${npm_config_registry:-}" \
+    --opt "build-arg:NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY:-}" \
+    --opt "build-arg:PIP_INDEX_URL=${PIP_INDEX_URL:-}" \
+    --opt "build-arg:PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}" \
+    --export-cache "type=registry,ref=${CACHE_REPO}:${name},mode=max,image-manifest=true" \
+    --import-cache "type=registry,ref=${CACHE_REPO}:${name}" \
+    --output "${output}"; then
+    echo "=== ${name} built successfully ==="
+    return 0
+  fi
+
+  # Second attempt: retry without import-cache (handles cold/corrupt cache)
+  echo "WARNING: ${name} build failed with cache, retrying without cache..."
+  buildctl --addr "${BUILDKIT_HOST}" build \
+    --frontend dockerfile.v0 \
+    --local "context=${context}" \
+    --local "dockerfile=${context}" \
+    --opt platform=linux/amd64 \
+    --opt "build-arg:GOPROXY=${GOPROXY:-}" \
+    --opt "build-arg:npm_config_registry=${npm_config_registry:-}" \
+    --opt "build-arg:NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY:-}" \
+    --opt "build-arg:PIP_INDEX_URL=${PIP_INDEX_URL:-}" \
+    --opt "build-arg:PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-}" \
+    --export-cache "type=registry,ref=${CACHE_REPO}:${name},mode=max,image-manifest=true" \
+    --output "${output}"
+  echo "=== ${name} built successfully (no-cache retry) ==="
+}[0;m
+section_end:1772901811:section_script_step_2[0K
+[32;1m$ build_image "mentatlab-orchestrator-go" "services/orchestrator-go"[0;m
+=== Building mentatlab-orchestrator-go from services/orchestrator-go ===
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 730B done
+#1 DONE 2.4s
+
+#2 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/golang:1.24-alpine
+#2 ...
+
+#3 [auth] dockerhub-cache/library/alpine:pull token for registry.harbor.lan
+#3 DONE 0.0s
+
+#4 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/alpine:latest
+#4 ...
+
+#5 [auth] dockerhub-cache/library/golang:pull token for registry.harbor.lan
+#5 DONE 0.0s
+
+#4 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/alpine:latest
+#4 ...
+
+#2 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/golang:1.24-alpine
+#2 DONE 44.9s
+
+#4 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/alpine:latest
+#4 ERROR: registry.harbor.lan/dockerhub-cache/library/alpine:latest: not found
+------
+ > [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/alpine:latest:
+------
+Dockerfile:17
+--------------------
+  15 |         CGO_ENABLED=0 go build -ldflags="-s -w" -o orchestrator ./cmd/orchestrator/
+  16 |     
+  17 | >>> FROM ${BASE_REGISTRY}/alpine:latest
+  18 |     RUN apk --no-cache add ca-certificates curl
+  19 |     WORKDIR /app
+--------------------
+error: failed to solve: registry.harbor.lan/dockerhub-cache/library/alpine:latest: registry.harbor.lan/dockerhub-cache/library/alpine:latest: not found
+WARNING: mentatlab-orchestrator-go build failed with cache, retrying without cache...
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 730B done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/golang:1.24-alpine
+#2 ...
+
+#3 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/alpine:latest
+#3 ...
+
+#2 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/golang:1.24-alpine
+#2 DONE 30.5s
+
+#3 [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/alpine:latest
+#3 ERROR: registry.harbor.lan/dockerhub-cache/library/alpine:latest: not found
+------
+ > [internal] load metadata for registry.harbor.lan/dockerhub-cache/library/alpine:latest:
+------
+Dockerfile:17
+--------------------
+  15 |         CGO_ENABLED=0 go build -ldflags="-s -w" -o orchestrator ./cmd/orchestrator/
+  16 |     
+  17 | >>> FROM ${BASE_REGISTRY}/alpine:latest
+  18 |     RUN apk --no-cache add ca-certificates curl
+  19 |     WORKDIR /app
+--------------------
+error: failed to solve: registry.harbor.lan/dockerhub-cache/library/alpine:latest: registry.harbor.lan/dockerhub-cache/library/alpine:latest: not found
+
+section_end:1772901949:step_script[0Ksection_start:1772901949:cleanup_file_variables[0K[0K[36;1mCleaning up project directory and file based variables[0;m[0;m
+[32;1mSkipping build directory cleanup step[0;m
+
+section_end:1772901950:cleanup_file_variables[0K[31;1mERROR: Job failed: command terminated with exit code 1[0;m

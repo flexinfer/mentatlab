@@ -27,58 +27,58 @@ class RetryConfig:
 
 class RetryPolicy:
     """Retry policy with exponential backoff and jitter"""
-    
+
     def __init__(self, config: RetryConfig = None):
         self.config = config or RetryConfig()
-    
+
     def get_delay(self, attempt: int) -> float:
         """Calculate delay for the given attempt number"""
         if attempt <= 0:
             return 0
-        
+
         # Calculate exponential backoff
         delay = min(
             self.config.base_delay * (self.config.exponential_base ** (attempt - 1)),
             self.config.max_delay
         )
-        
+
         # Add jitter if enabled
         if self.config.jitter:
             delay = delay * (0.5 + random.random() * 0.5)
-        
+
         return delay
-    
+
     def __call__(self, func: Callable[..., T]) -> Callable[..., T]:
         """Decorator to add retry logic to a function"""
         def wrapper(*args, **kwargs) -> T:
             return self.execute_with_retry(func, *args, **kwargs)
         return wrapper
-    
+
     def execute_with_retry(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Execute a function with retry logic"""
         last_exception = None
-        
+
         for attempt in range(1, self.config.max_attempts + 1):
             try:
                 result = func(*args, **kwargs)
                 if attempt > 1:
                     logger.info(f"Retry successful after {attempt} attempts")
                 return result
-                
+
             except self.config.retryable_exceptions as e:
                 last_exception = e
-                
+
                 if attempt >= self.config.max_attempts:
                     logger.error(f"Max retry attempts ({self.config.max_attempts}) reached")
                     raise
-                
+
                 delay = self.get_delay(attempt)
                 logger.warning(
                     f"Attempt {attempt} failed: {e}. "
                     f"Retrying in {delay:.2f} seconds..."
                 )
                 time.sleep(delay)
-        
+
         # This should never be reached, but just in case
         if last_exception:
             raise last_exception
@@ -87,36 +87,36 @@ class RetryPolicy:
 
 class LinearRetryPolicy(RetryPolicy):
     """Retry policy with linear backoff"""
-    
+
     def get_delay(self, attempt: int) -> float:
         """Calculate linear delay"""
         if attempt <= 0:
             return 0
-        
+
         delay = min(
             self.config.base_delay * attempt,
             self.config.max_delay
         )
-        
+
         if self.config.jitter:
             delay = delay * (0.5 + random.random() * 0.5)
-        
+
         return delay
 
 
 class FixedRetryPolicy(RetryPolicy):
     """Retry policy with fixed delay"""
-    
+
     def get_delay(self, attempt: int) -> float:
         """Return fixed delay"""
         if attempt <= 0:
             return 0
-        
+
         delay = self.config.base_delay
-        
+
         if self.config.jitter:
             delay = delay * (0.5 + random.random() * 0.5)
-        
+
         return delay
 
 

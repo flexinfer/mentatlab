@@ -1,0 +1,16 @@
+# URL configuration for MentatLab services.
+# Base uses cluster-internal URLs; production overlay overrides with public domains.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mentatlab-urls
+  namespace: mentatlab
+  labels:
+    app.kubernetes.io/part-of: mentatlab
+data:
+  # Public-facing gateway URL (used by frontend for API + WS)
+  GATEWAY_PUBLIC_URL: "https://mentatlab.flexinfer.ai"
+  # CORS origins (comma-separated)
+  CORS_ORIGINS: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"
+  # Frontend URLs for CORS/redirect purposes
+  FRONTEND_URLS: "http://mentatlab.lan,https://mentatlab.flexinfer.ai"

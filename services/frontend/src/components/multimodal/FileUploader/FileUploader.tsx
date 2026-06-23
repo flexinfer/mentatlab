@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useRef } from 'react';
-import { useMediaStore } from '../../../store/index';
+import { useMediaStore } from '@/stores';
 import { DropZone } from './components/DropZone';
 import { UploadConfig, FileUploadState, FileValidationConfig } from './FileUploader.types';
 

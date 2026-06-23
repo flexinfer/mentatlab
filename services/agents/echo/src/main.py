@@ -1,95 +1,104 @@
 #!/usr/bin/env python3
-"""
-Echo Agent - A simple agent that echoes back the input text.
-Follows MentatLab roadmap standards with stdin/stdout JSON I/O model.
-"""
+"""Container-packaged echo agent compatible with subprocess and K8s execution."""
 
-import sys
+from __future__ import annotations
+
+import ast
 import json
+import os
+import sys
 import time
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 
-def process_request(input_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Process the echo request by returning the input text as output.
-    
-    Args:
-        input_data: Dictionary containing the input data
-        
-    Returns:
-        Dictionary containing the output and metadata
-    """
-    start_time = time.time()
-    
-    # Extract input text
-    input_text = input_data.get("text", "")
-    
-    # Echo processing (simply return the input)
-    output_text = input_text
-    
-    # Calculate processing time
-    processing_time = time.time() - start_time
-    
-    # Return response with mentat_meta for metrics collection
+AGENT_MODEL = "echo-agent"
+
+
+def _parse_object(raw: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    try:
+        parsed = ast.literal_eval(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+
+    return None
+
+
+def read_input_contract() -> Dict[str, Any]:
+    stdin_payload = _parse_object(sys.stdin.read().strip())
+    if stdin_payload is not None:
+        if "spec" in stdin_payload or "context" in stdin_payload:
+            return {
+                "spec": stdin_payload.get("spec") if isinstance(stdin_payload.get("spec"), dict) else {},
+                "context": stdin_payload.get("context") if isinstance(stdin_payload.get("context"), dict) else {},
+            }
+        return {"spec": stdin_payload, "context": {}}
+
+    spec = _parse_object(os.environ.get("INPUT_SPEC", "") or "")
+    context = _parse_object(os.environ.get("INPUT_CONTEXT", "") or "")
+    legacy = _parse_object(os.environ.get("AGENT_INPUT", "") or "")
+
+    if spec is not None or context is not None:
+        return {"spec": spec or {}, "context": context or {}}
+    if legacy is not None:
+        return {"spec": legacy, "context": {}}
+    raise ValueError("No input received on stdin or environment variables")
+
+
+def build_result(spec: Dict[str, Any], context: Dict[str, Any], started_at: float) -> Dict[str, Any]:
+    result: Dict[str, Any] = {"spec": spec}
+    if context:
+        result["context"] = context
+
     return {
-        "text": output_text,
+        "result": result,
         "mentat_meta": {
-            "tokens_input": len(input_text.split()) if input_text else 0,
-            "tokens_output": len(output_text.split()) if output_text else 0,
-            "seconds": round(processing_time, 3),
-            "model": "echo-agent"
-        }
+            "tokens_input": 0,
+            "tokens_output": 0,
+            "seconds": round(time.time() - started_at, 4),
+            "model": AGENT_MODEL,
+        },
     }
 
 
-def main():
-    """
-    Main function implementing stdin/stdout JSON I/O model.
-    """
+def build_error(message: str) -> Dict[str, Any]:
+    return {
+        "error": message,
+        "mentat_meta": {
+            "tokens_input": None,
+            "tokens_output": None,
+            "seconds": None,
+            "model": AGENT_MODEL,
+        },
+    }
+
+
+def main() -> int:
+    started_at = time.time()
     try:
-        # Read JSON input from stdin
-        input_line = sys.stdin.read().strip()
-        if not input_line:
-            raise ValueError("No input received from stdin")
-        
-        input_data = json.loads(input_line)
-        
-        # Process the request
-        output_data = process_request(input_data)
-        
-        # Write JSON output to stdout
-        json.dump(output_data, sys.stdout, separators=(',', ':'))
+        incoming = read_input_contract()
+        output = build_result(incoming.get("spec", {}), incoming.get("context", {}), started_at)
+        json.dump(output, sys.stdout, separators=(",", ":"), ensure_ascii=False)
+        sys.stdout.write("\n")
         sys.stdout.flush()
-        
-    except json.JSONDecodeError as e:
-        error_response = {
-            "error": f"Invalid JSON input: {str(e)}",
-            "mentat_meta": {
-                "tokens_input": None,
-                "tokens_output": None,
-                "seconds": None,
-                "model": "echo-agent"
-            }
-        }
-        json.dump(error_response, sys.stdout, separators=(',', ':'))
+        return 0
+    except Exception as exc:
+        json.dump(build_error(f"Processing error: {exc}"), sys.stdout, separators=(",", ":"), ensure_ascii=False)
+        sys.stdout.write("\n")
         sys.stdout.flush()
-        sys.exit(1)
-        
-    except Exception as e:
-        error_response = {
-            "error": f"Processing error: {str(e)}",
-            "mentat_meta": {
-                "tokens_input": None,
-                "tokens_output": None,
-                "seconds": None,
-                "model": "echo-agent"
-            }
-        }
-        json.dump(error_response, sys.stdout, separators=(',', ':'))
-        sys.stdout.flush()
-        sys.exit(1)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

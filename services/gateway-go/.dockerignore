@@ -1,0 +1,23 @@
+# Test files
+*_test.go
+testdata/
+
+# Runtime artifacts (do NOT exclude traces/ — it contains Go source code)
+
+# Build artifacts
+*.exe
+*.test
+*.prof
+
+# IDE / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# CI / docs
+.gitlab-ci.yml
+README.md
+LICENSE
+Makefile
