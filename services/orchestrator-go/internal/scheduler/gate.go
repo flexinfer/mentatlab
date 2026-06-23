@@ -65,10 +65,14 @@ func (s *Scheduler) executeGate(ctx context.Context, rctx *runContext, nodeID st
 	case decision = <-ch:
 		// Received approve or reject
 	case <-timeoutCh:
-		if gate.AutoReject {
-			decision = "reject"
-		} else {
+		// Fail-safe: a timed-out gate rejects unless explicitly configured to
+		// auto-approve. (Previously it auto-approved whenever AutoReject was
+		// false, contradicting the documented behavior and unsafe for approval
+		// gates — a missed approval would silently let the run proceed.)
+		if gate.AutoApprove {
 			decision = "approve"
+		} else {
+			decision = "reject"
 		}
 		s.logger.Info("gate timed out",
 			slog.String("run_id", rctx.runID),
