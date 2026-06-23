@@ -209,12 +209,14 @@ export class EventPipeline {
   destroy(): void {
     if (this.isDestroyed) return;
 
-    this.isDestroyed = true;
-
-    // Flush any remaining events
+    // Flush any remaining events BEFORE marking destroyed — flush() early-returns
+    // when isDestroyed is set, so flushing first avoids silently dropping the
+    // buffered tail on teardown.
     if (this.buffer.length > 0) {
       this.flush();
     }
+
+    this.isDestroyed = true;
 
     // Clear timeout
     if (this.flushTimeoutId !== null) {
