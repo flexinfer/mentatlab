@@ -71,13 +71,18 @@ type GateConfig struct {
 	// Description is a human-readable explanation of what approval is needed.
 	Description string `json:"description,omitempty"`
 
-	// Timeout is the maximum time to wait for approval before auto-rejecting.
-	// Zero means wait indefinitely.
+	// Timeout is the maximum time to wait for approval before the gate
+	// resolves on its own. Zero means wait indefinitely.
 	Timeout time.Duration `json:"timeout,omitempty"`
 
-	// AutoReject determines whether the gate auto-rejects (true) or auto-approves (false)
-	// when the timeout expires. Only relevant when Timeout > 0.
+	// AutoReject is deprecated and no longer changes behavior: a timed-out gate
+	// rejects by default (fail-safe). Retained for backward compatibility with
+	// stored plans. Use AutoApprove to opt into approving on timeout instead.
 	AutoReject bool `json:"auto_reject,omitempty"`
+
+	// AutoApprove makes the gate approve (rather than the fail-safe reject)
+	// when the timeout expires. Only relevant when Timeout > 0.
+	AutoApprove bool `json:"auto_approve,omitempty"`
 }
 
 // NodeType constants for control flow nodes.
