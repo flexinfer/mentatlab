@@ -21,6 +21,7 @@ import (
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/factories"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/k8s"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/mcpclient"
+	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/runstore"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/scheduler"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/tracing"
 	"github.com/flexinfer/mentatlab/services/orchestrator-go/internal/validator"
@@ -75,6 +76,18 @@ func main() {
 		os.Exit(1)
 	}
 	defer store.Close()
+
+	// Recover runs interrupted by a previous orchestrator process. In-flight
+	// runs cannot survive a restart (the scheduler and agent subprocesses are
+	// gone), so mark them failed with a reason instead of leaving orphaned
+	// "running" zombies that never reach a terminal state.
+	recoverCtx, recoverCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if n, rerr := runstore.RecoverInterruptedRuns(recoverCtx, store, logger.With(slog.String("component", "recovery"))); rerr != nil {
+		logger.Warn("startup run recovery scan failed", "error", rerr)
+	} else if n > 0 {
+		logger.Info("startup run recovery: marked interrupted runs failed", "count", n)
+	}
+	recoverCancel()
 
 	// Initialize driver and scheduler
 	emitter := driver.NewRunStoreEmitter(store)
