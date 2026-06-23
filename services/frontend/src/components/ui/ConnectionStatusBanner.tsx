@@ -45,7 +45,7 @@ export function ConnectionStatusBanner({
       role={statusConfig.critical ? 'alert' : 'status'}
       aria-live={statusConfig.critical ? 'assertive' : 'polite'}
       className={cn(
-        'relative z-20 flex flex-wrap items-center gap-3 rounded-md border border-border/70 bg-card/95 px-4 py-2.5 shadow-md backdrop-blur animate-in slide-in-from-top-2 duration-200',
+        'mc-shell relative z-20 flex flex-wrap items-center gap-3 rounded-md px-4 py-2.5 animate-in slide-in-from-top-2 duration-200',
         statusConfig.bgClass,
         className,
       )}
@@ -69,7 +69,7 @@ export function ConnectionStatusBanner({
         <button
           onClick={onRetry}
           className={`
-            ml-2 px-3 py-1 rounded-lg text-xs font-medium
+            ml-2 px-3 py-1 rounded-md text-xs font-medium
             transition-colors
             ${statusConfig.buttonClass}
           `}

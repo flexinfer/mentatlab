@@ -23,7 +23,7 @@ Execution checklist for Mission Control functional UX standardization.
 
 - M16.1 and M16.2 connection/status slices are implemented on `main`.
 - M16.3, M16.4, M16.5, and M16.7 remain checked as complete from prior work.
-- M16.6 visual token/panel chrome and M16.8 screenshot QA remain the main open M16 items.
+- M16.6 visual token/panel chrome has a first implementation slice on shared shell/button/card primitives and the primary Mission Control frame; M16.8 screenshot QA remains open.
 
 ---
 
@@ -126,12 +126,12 @@ Execution checklist for Mission Control functional UX standardization.
   - `services/frontend/src/components/mission-control/layout/*`
   - `services/frontend/src/components/mission-control/panels/*`
 - Tasks:
-  - [ ] Reduce neon/glow defaults in dark mode token set.
-  - [ ] Standardize spacing/border/radius/shadow across main shells.
-  - [ ] Define typography rule: sans for UI, mono for telemetry-only.
+  - [x] Reduce neon/glow defaults in dark mode token set.
+  - [x] Standardize spacing/border/radius/shadow across main shells.
+  - [x] Define typography rule: sans for UI, mono for telemetry-only.
 - Acceptance:
   - [ ] Visual diff shows consistent panel chrome.
-  - [ ] Dense views (canvas + inspector + dock) remain legible.
+  - [x] Dense views (canvas + inspector + dock) remain legible.
   - [ ] No regressions in interaction affordances.
 
 ## Issue 7: Regression Tests for Connection UX

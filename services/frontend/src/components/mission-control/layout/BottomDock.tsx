@@ -61,7 +61,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-medium rounded-md border border-transparent transition-all duration-150 flex items-center gap-1.5 ${
+      className={`flex items-center gap-1.5 rounded-md border border-transparent px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
         active
           ? 'bg-primary text-primary-foreground shadow-sm'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted/70'
@@ -81,7 +81,7 @@ function CollapseHandle({ collapsed, onToggle }: { collapsed: boolean; onToggle:
   return (
     <div
       onDoubleClick={onToggle}
-      className="h-1.5 w-full cursor-row-resize hover:bg-primary/15 transition-colors flex items-center justify-center group"
+      className="group flex h-1.5 w-full cursor-row-resize items-center justify-center transition-colors hover:bg-primary/15"
     >
       <div className="w-8 h-0.5 rounded-full bg-muted-foreground/30 group-hover:bg-primary/40 transition-colors" />
     </div>
@@ -189,8 +189,8 @@ export function BottomDock({ className = '' }: BottomDockProps) {
   if (bottomDockCollapsed) {
     return (
       <>
-        <PanelResizeHandle className="h-0.5 hover:bg-primary/20 transition-colors cursor-row-resize" />
-        <Panel defaultSize={3} minSize={3} maxSize={5} className={`bg-card/90 border-t border-border/70 ${className}`}>
+        <PanelResizeHandle className="mc-resize-handle h-0.5 cursor-row-resize" />
+        <Panel defaultSize={3} minSize={3} maxSize={5} className={`mc-shell rounded-none border-x-0 border-b-0 ${className}`}>
           <div className="h-full flex items-center justify-center">
             <button
               onClick={toggleBottomDock}
@@ -206,19 +206,19 @@ export function BottomDock({ className = '' }: BottomDockProps) {
 
   return (
     <>
-      <PanelResizeHandle className="h-1 hover:bg-primary/20 transition-colors cursor-row-resize" />
+      <PanelResizeHandle className="mc-resize-handle h-1 cursor-row-resize" />
       <Panel
         defaultSize={25}
         minSize={15}
         maxSize={50}
-        className={`flex flex-col bg-card/90 border-t border-border/70 ${className}`}
+        className={`mc-shell flex flex-col rounded-none border-x-0 border-b-0 ${className}`}
         onResize={(size) => setBottomDockHeight(Math.round(size * 6))}
       >
         {/* Collapse handle */}
         <CollapseHandle collapsed={false} onToggle={toggleBottomDock} />
 
         {/* Tab bar */}
-        <div className="h-10 border-b border-border/70 bg-muted/20 flex items-center justify-between px-3">
+        <div className="mc-shell-header flex h-10 items-center justify-between px-3">
           {/* Tabs */}
           <div className="flex items-center gap-1">
             {visibleTabs.map((tab) => (

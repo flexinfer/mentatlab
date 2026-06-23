@@ -24,7 +24,7 @@ describe('Button', () => {
   it('renders with outline variant', () => {
     render(<Button variant="outline">Outline</Button>);
     const button = screen.getByRole('button', { name: 'Outline' });
-    expect(button.className).toContain('bg-white/5');
+    expect(button.className).toContain('bg-background');
   });
 
   it('renders with secondary variant', () => {
@@ -36,7 +36,7 @@ describe('Button', () => {
   it('renders with ghost variant', () => {
     render(<Button variant="ghost">Ghost</Button>);
     const button = screen.getByRole('button', { name: 'Ghost' });
-    expect(button.className).toContain('hover:bg-white/5');
+    expect(button.className).toContain('hover:bg-muted');
   });
 
   it('renders with link variant', () => {
