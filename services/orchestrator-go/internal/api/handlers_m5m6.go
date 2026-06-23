@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -190,7 +191,8 @@ func (h *Handlers) TriggerWebhook(w http.ResponseWriter, r *http.Request) {
 			providedToken = auth[7:]
 		}
 	}
-	if providedToken != expectedToken {
+	// Constant-time comparison to avoid leaking the token via timing.
+	if subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) != 1 {
 		h.respondError(w, r, http.StatusForbidden, "invalid webhook token", errors.New("token mismatch"))
 		return
 	}
