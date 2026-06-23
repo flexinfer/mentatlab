@@ -896,29 +896,45 @@ func (s *RedisStore) Subscribe(ctx context.Context, runID string) (<-chan *types
 	s.subs[runID][ch] = struct{}{}
 	s.subsMu.Unlock()
 
-	// Start background reader from Redis Stream
-	go s.streamReader(ctx, runID, ch)
+	// Start background reader from Redis Stream. stop signals the reader to
+	// exit; the reader closes readerDone once it has fully stopped, so cleanup
+	// can close ch without racing the reader's send (avoids the
+	// "send on closed channel" panic on SSE reconnect).
+	stop := make(chan struct{})
+	readerDone := make(chan struct{})
+	go s.streamReader(ctx, runID, ch, stop, readerDone)
 
+	var once sync.Once
 	cleanup := func() {
-		s.subsMu.Lock()
-		delete(s.subs[runID], ch)
-		if len(s.subs[runID]) == 0 {
-			delete(s.subs, runID)
-		}
-		s.subsMu.Unlock()
-		close(ch)
+		once.Do(func() {
+			// Remove from the subscriber map first so notifySubscribers can no
+			// longer send to ch, then stop the reader and wait for it to exit
+			// before closing ch.
+			s.subsMu.Lock()
+			delete(s.subs[runID], ch)
+			if len(s.subs[runID]) == 0 {
+				delete(s.subs, runID)
+			}
+			s.subsMu.Unlock()
+			close(stop)
+			<-readerDone
+			close(ch)
+		})
 	}
 
 	return ch, cleanup, nil
 }
 
 // streamReader reads from Redis Stream and pushes to channel.
-func (s *RedisStore) streamReader(ctx context.Context, runID string, ch chan *types.Event) {
+func (s *RedisStore) streamReader(ctx context.Context, runID string, ch chan *types.Event, stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
 	lastID := "$" // Start from latest
 
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-stop:
 			return
 		default:
 		}
@@ -962,6 +978,8 @@ func (s *RedisStore) streamReader(ctx context.Context, runID string, ch chan *ty
 				select {
 				case ch <- event:
 				case <-ctx.Done():
+					return
+				case <-stop:
 					return
 				default:
 					// Channel full, skip event

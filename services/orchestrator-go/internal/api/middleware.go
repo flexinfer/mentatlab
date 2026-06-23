@@ -152,3 +152,14 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
 }
+
+// Flush forwards to the underlying ResponseWriter when it supports flushing.
+// Without this passthrough the wrapper does not satisfy http.Flusher, which
+// breaks Server-Sent Events: the SSE handler asserts http.Flusher and returns
+// 500 "streaming not supported" because this middleware wraps every API
+// request (see LoggingMiddleware/AuditMiddleware).
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
