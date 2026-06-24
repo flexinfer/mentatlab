@@ -176,6 +176,19 @@ func main() {
 
 	// Initialize CronRunner for scheduled runs
 	cronRunner := scheduler.NewCronRunner(sched, flows, store, logger.With(slog.String("component", "cron")))
+	// Persist schedules to Redis (when configured) so they survive restarts.
+	if cfg.RunStoreType == "redis" {
+		if opts, oerr := factories.ResolveRedisOptions(cfg); oerr != nil {
+			logger.Warn("cron: failed to resolve redis options; schedules will be in-memory only", "error", oerr)
+		} else {
+			cronRunner.SetScheduleStore(scheduler.NewRedisScheduleStore(redis.NewClient(opts)))
+			if n, lerr := cronRunner.LoadSchedules(context.Background()); lerr != nil {
+				logger.Warn("cron: failed to load persisted schedules", "error", lerr)
+			} else if n > 0 {
+				logger.Info("cron: loaded persisted schedules", "count", n)
+			}
+		}
+	}
 	cronRunner.Start()
 	defer cronRunner.Stop()
 	logger.Info("cron runner started")
