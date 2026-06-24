@@ -34,6 +34,7 @@ type CronRunner struct {
 	flowStore flowstore.FlowStore
 	runStore  runstore.RunStore
 	schedules map[string]*Schedule
+	store     ScheduleStore // optional persistence; nil = in-memory only
 	mu        sync.RWMutex
 	logger    *slog.Logger
 	stopCh    chan struct{}
@@ -49,6 +50,39 @@ func NewCronRunner(sched *Scheduler, fs flowstore.FlowStore, rs runstore.RunStor
 		logger:    logger,
 		stopCh:    make(chan struct{}),
 	}
+}
+
+// SetScheduleStore attaches a persistence backend so schedules survive
+// restarts. Must be called before LoadSchedules/Start.
+func (cr *CronRunner) SetScheduleStore(store ScheduleStore) {
+	cr.store = store
+}
+
+// LoadSchedules repopulates the in-memory schedule set from the persistence
+// backend (if any). Intended to run once at startup before Start. Schedules
+// with an invalid cron expression are skipped with a warning. Returns the
+// number of schedules loaded.
+func (cr *CronRunner) LoadSchedules(ctx context.Context) (int, error) {
+	if cr.store == nil {
+		return 0, nil
+	}
+	scheds, err := cr.store.List(ctx)
+	if err != nil {
+		return 0, err
+	}
+	cr.mu.Lock()
+	defer cr.mu.Unlock()
+	loaded := 0
+	for _, s := range scheds {
+		if _, perr := parseCron(s.Cron); perr != nil {
+			cr.logger.Warn("skipping persisted schedule with invalid cron",
+				slog.String("schedule_id", s.ID), slog.String("cron", s.Cron), slog.Any("error", perr))
+			continue
+		}
+		cr.schedules[s.ID] = s
+		loaded++
+	}
+	return loaded, nil
 }
 
 // Start begins the cron evaluation loop.
@@ -69,20 +103,36 @@ func (cr *CronRunner) AddSchedule(sched *Schedule) error {
 	}
 
 	cr.mu.Lock()
-	defer cr.mu.Unlock()
 	cr.schedules[sched.ID] = sched
+	cr.mu.Unlock()
+
+	// Persist so the schedule survives a restart.
+	if cr.store != nil {
+		if err := cr.store.Save(context.Background(), sched); err != nil {
+			return fmt.Errorf("persist schedule: %w", err)
+		}
+	}
 	return nil
 }
 
 // RemoveSchedule removes a schedule by ID.
 func (cr *CronRunner) RemoveSchedule(id string) error {
 	cr.mu.Lock()
-	defer cr.mu.Unlock()
+	_, ok := cr.schedules[id]
+	if ok {
+		delete(cr.schedules, id)
+	}
+	cr.mu.Unlock()
 
-	if _, ok := cr.schedules[id]; !ok {
+	if !ok {
 		return fmt.Errorf("schedule %s not found", id)
 	}
-	delete(cr.schedules, id)
+
+	if cr.store != nil {
+		if err := cr.store.Delete(context.Background(), id); err != nil {
+			return fmt.Errorf("delete persisted schedule: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -217,13 +267,25 @@ func (cr *CronRunner) triggerRun(sched *Schedule, triggerTime time.Time) {
 	}
 
 	// Update schedule metadata
+	var updated *Schedule
 	cr.mu.Lock()
 	if s, ok := cr.schedules[sched.ID]; ok {
 		s.LastRunAt = &triggerTime
 		s.LastRunID = runID
 		s.UpdatedAt = time.Now().UTC()
+		clone := *s
+		updated = &clone
 	}
 	cr.mu.Unlock()
+
+	// Persist the updated last-run metadata so dedup/missed-tick state survives
+	// a restart (best-effort: a persistence error must not fail the run).
+	if cr.store != nil && updated != nil {
+		if err := cr.store.Save(context.Background(), updated); err != nil {
+			cr.logger.Warn("cron: failed to persist schedule last-run metadata",
+				slog.String("schedule_id", updated.ID), slog.Any("error", err))
+		}
+	}
 
 	cr.logger.Info("cron: triggered run",
 		slog.String("schedule_id", sched.ID),
